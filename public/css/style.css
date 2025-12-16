@@ -1,0 +1,55 @@
+:root {
+  --hc-bg: #000000;
+  --hc-fg: #ffffff;
+  --hc-accent: #ffff00;
+  --hc-link: #00ffff;
+}
+
+.contrast-high body {
+  background-color: var(--hc-bg) !important;
+  color: var(--hc-fg) !important;
+}
+
+.contrast-high .navbar {
+  background-color: var(--hc-bg) !important;
+}
+
+.contrast-high .nav-link,
+.contrast-high .navbar-brand {
+  color: var(--hc-accent) !important;
+}
+
+.contrast-high .dropdown-menu {
+  background-color: var(--hc-bg) !important;
+  color: var(--hc-fg) !important;
+}
+
+.contrast-high .dropdown-item {
+  color: var(--hc-fg) !important;
+}
+
+.contrast-high .btn {
+  background-color: var(--hc-accent) !important;
+  color: #000 !important;
+  border-color: var(--hc-accent) !important;
+}
+
+.contrast-high .badge {
+  background-color: var(--hc-accent) !important;
+  color: #000 !important;
+}
+
+.contrast-high a {
+  color: var(--hc-link) !important;
+  text-decoration-thickness: 2px !important;
+}
+
+.contrast-high .alert {
+  border-width: 2px !important;
+}
+
+/* Improve focus styles for accessibility */
+.contrast-high :focus-visible {
+  outline: 3px solid var(--hc-link);
+  outline-offset: 2px;
+}

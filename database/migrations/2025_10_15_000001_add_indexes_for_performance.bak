@@ -1,0 +1,123 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration {
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        // Índices para viaturas
+        Schema::table('viaturas', function (Blueprint $table) {
+            if (!self::hasIndex('viaturas', 'viaturas_identificacao_index')) {
+                $table->index('identificacao');
+            }
+            if (!self::hasIndex('viaturas', 'viaturas_placa_index')) {
+                $table->index('placa');
+            }
+            if (!self::hasIndex('viaturas', 'viaturas_modelo_index')) {
+                $table->index('modelo');
+            }
+            if (!self::hasIndex('viaturas', 'viaturas_marca_index')) {
+                $table->index('marca');
+            }
+            if (!self::hasIndex('viaturas', 'viaturas_ano_index')) {
+                $table->index('ano');
+            }
+            if (!self::hasIndex('viaturas', 'viaturas_status_operacional_index')) {
+                $table->index('status_operacional');
+            }
+            if (!self::hasIndex('viaturas', 'viaturas_tipo_index')) {
+                $table->index('tipo');
+            }
+            if (!self::hasIndex('viaturas', 'viaturas_created_at_index')) {
+                $table->index('created_at');
+            }
+        });
+
+        // Índices para requisicoes
+        Schema::table('requisicoes', function (Blueprint $table) {
+            if (!self::hasIndex('requisicoes', 'requisicoes_tipo_index')) {
+                $table->index('tipo');
+            }
+            if (!self::hasIndex('requisicoes', 'requisicoes_status_index')) {
+                $table->index('status');
+            }
+            if (!self::hasIndex('requisicoes', 'requisicoes_data_requisicao_index')) {
+                $table->index('data_requisicao');
+            }
+            if (Schema::hasColumn('requisicoes', 'empresa_id') && !self::hasIndex('requisicoes', 'requisicoes_empresa_id_index')) {
+                $table->index('empresa_id');
+            }
+            if (Schema::hasColumn('requisicoes', 'usuario_id') && !self::hasIndex('requisicoes', 'requisicoes_usuario_id_index')) {
+                $table->index('usuario_id');
+            }
+            if (!self::hasIndex('requisicoes', 'requisicoes_codigo_sequencial_index')) {
+                $table->index('codigo_sequencial');
+            }
+            if (!self::hasIndex('requisicoes', 'requisicoes_created_at_index')) {
+                $table->index('created_at');
+            }
+        });
+
+        // Índices para empresas
+        Schema::table('empresas', function (Blueprint $table) {
+            if (!self::hasIndex('empresas', 'empresas_nome_index')) {
+                $table->index('nome');
+            }
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('viaturas', function (Blueprint $table) {
+            $table->dropIndex(['identificacao']);
+            $table->dropIndex(['placa']);
+            $table->dropIndex(['modelo']);
+            $table->dropIndex(['marca']);
+            $table->dropIndex(['ano']);
+            $table->dropIndex(['status_operacional']);
+            $table->dropIndex(['tipo']);
+            $table->dropIndex(['created_at']);
+        });
+
+        Schema::table('requisicoes', function (Blueprint $table) {
+            $table->dropIndex(['tipo']);
+            $table->dropIndex(['status']);
+            $table->dropIndex(['data_requisicao']);
+            if (Schema::hasColumn('requisicoes', 'empresa_id')) {
+                $table->dropIndex(['empresa_id']);
+            }
+            if (Schema::hasColumn('requisicoes', 'usuario_id')) {
+                $table->dropIndex(['usuario_id']);
+            }
+            $table->dropIndex(['codigo_sequencial']);
+            $table->dropIndex(['created_at']);
+        });
+
+        Schema::table('empresas', function (Blueprint $table) {
+            $table->dropIndex(['nome']);
+        });
+    }
+
+    /**
+     * Helper para verificar se o índice já existe.
+     */
+    private static function hasIndex(string $table, string $indexName): bool
+    {
+        // Alguns drivers suportam listar índices via Doctrine; se não disponível, assume falso
+        try {
+            $schema = Schema::getConnection()->getDoctrineSchemaManager();
+            $indexes = $schema->listTableIndexes($table);
+            return array_key_exists($indexName, $indexes);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+};

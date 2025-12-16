@@ -1,0 +1,67 @@
+@extends('layouts.app')
+
+@section('content')
+<div class="container">
+    <div class="mb-3 d-flex align-items-center justify-content-between">
+        <h3>Editar Departamento</h3>
+        <a href="{{ route('departamentos.index') }}" class="btn btn-secondary">Voltar</a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form action="{{ route('departamentos.update', $departamento) }}" method="POST">
+                @csrf
+                @method('PUT')
+                <div class="mb-3">
+                    <label for="nome" class="form-label">Nome</label>
+                    <input type="text" name="nome" id="nome" class="form-control @error('nome') is-invalid @enderror" value="{{ old('nome', $departamento->nome) }}" required>
+                    @error('nome')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+                <div class="mb-3">
+                    <label for="sigla" class="form-label">Sigla</label>
+                    <input type="text" name="sigla" id="sigla" class="form-control @error('sigla') is-invalid @enderror" value="{{ old('sigla', $departamento->sigla) }}" maxlength="10">
+                    @error('sigla')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+                <div class="mb-3">
+                    <label for="gabinete_id" class="form-label">Gabinete</label>
+                    <select name="gabinete_id" id="gabinete_id" class="form-select @error('gabinete_id') is-invalid @enderror" required>
+                        <option value="">— Selecione —</option>
+                        @foreach($gabinetes as $gabinete)
+                            <option value="{{ $gabinete->id }}" {{ old('gabinete_id', $departamento->gabinete_id) == $gabinete->id ? 'selected' : '' }}>{{ $gabinete->nome }}</option>
+                        @endforeach
+                    </select>
+                    @error('gabinete_id')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+                <div class="mb-3">
+                    <label for="chefe_user_id" class="form-label">Chefe de Departamento</label>
+                    <select name="chefe_user_id" id="chefe_user_id" class="form-select @error('chefe_user_id') is-invalid @enderror">
+                        <option value="">— Sem chefe —</option>
+                        @foreach($usuarios as $usuario)
+                            <option value="{{ $usuario->id }}" {{ old('chefe_user_id', optional($chefeAtual)->id) == $usuario->id ? 'selected' : '' }}>
+                                {{ $usuario->name }}
+                                @if($usuario->role && $usuario->role->name === 'chefe-departamento')
+                                    (Atual)
+                                @endif
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('chefe_user_id')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                    <small class="text-muted">Usuários com papel "user" e o chefe atual são listados; contas admin não podem ser definidas como chefe.</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Atualizar</button>
+                    <a href="{{ route('departamentos.index') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endsection
