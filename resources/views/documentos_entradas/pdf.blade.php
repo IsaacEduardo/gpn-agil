@@ -156,7 +156,7 @@
     </table>
 
     <div class="footer">
-        <p>© {{ date('Y') }} GPN-AGIL - Gestão de Documentos</p>
+        <p>© {{ date('Y') }} Ondaka - Gestão de Documentos</p>
     </div>
 </body>
 

@@ -23,6 +23,7 @@ class Anexo extends Model
         'descricao',
         'ordem',
         'user_id',
+        'texto_extraido',
     ];
 
     protected $casts = [

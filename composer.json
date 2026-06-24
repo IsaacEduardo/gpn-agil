@@ -17,6 +17,7 @@
         "minishlink/web-push": "9.0",
         "simplesoftwareio/simple-qrcode": "^4.2",
         "smalot/pdfparser": "^2.12",
+        "spatie/laravel-permission": "*",
         "thiagoalessio/tesseract_ocr": "^2.13"
     },
     "require-dev": {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\DocumentoEntrada;
 use App\Models\DocumentoEspecie;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Cache;
@@ -11,7 +12,7 @@ class StoreDocumentoEntradaRequest extends FormRequest
 {
     public function authorize()
     {
-        return true;
+        return $this->user()->can('create', DocumentoEntrada::class);
     }
 
     public function rules()

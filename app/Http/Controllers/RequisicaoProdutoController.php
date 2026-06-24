@@ -6,7 +6,6 @@ use App\Enums\StatusRequisicao;
 use App\Enums\TipoRequisicao;
 use App\Http\Requests\StoreRequisicaoProdutoRequest;
 use App\Models\Empresa;
-use App\Models\Gabinete;
 use App\Models\Requisicao;
 use App\Models\RequisicaoProduto;
 use App\Support\CatalogCache;
@@ -58,7 +57,7 @@ class RequisicaoProdutoController extends Controller
         }
 
         if (Auth::check()) {
-            $query->accessibleBy(Auth::user());
+            $query->visibleToUser(Auth::user());
         }
 
         $requisicoes = $query->paginate(10);

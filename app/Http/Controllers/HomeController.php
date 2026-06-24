@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Departamento;
 use App\Models\DocumentoEntrada;
+use App\Models\DocumentoInterno;
 use App\Models\Empresa;
 use App\Models\Requisicao;
 use App\Models\ReservaEspaco;
@@ -36,9 +37,9 @@ class HomeController extends Controller
 
         // Base query para Requisições
         $requisicaoQuery = Requisicao::query();
-        if (!$isAdmin) {
+        if (! $isAdmin) {
             if ($departmentId) {
-                $requisicaoQuery->whereHas('usuario', function($q) use ($departmentId) {
+                $requisicaoQuery->whereHas('usuario', function ($q) use ($departmentId) {
                     $q->where('departamento_id', $departmentId);
                 });
             } else {
@@ -49,9 +50,9 @@ class HomeController extends Controller
 
         // Base query para Reservas
         $reservaQuery = ReservaEspaco::query();
-        if (!$isAdmin) {
+        if (! $isAdmin) {
             if ($departmentId) {
-                $reservaQuery->whereHas('usuario', function($q) use ($departmentId) {
+                $reservaQuery->whereHas('usuario', function ($q) use ($departmentId) {
                     $q->where('departamento_id', $departmentId);
                 });
             } else {
@@ -59,20 +60,30 @@ class HomeController extends Controller
             }
         }
 
-        // Base query para Documentos
+        // Base query para Documentos de Entrada
         $documentoQuery = DocumentoEntrada::query();
-        if (!$isAdmin) {
+        if (! $isAdmin) {
             if ($departmentId) {
                 // Documentos onde o departamento é o dono OU onde foi encaminhado para o departamento
-                $documentoQuery->where(function($q) use ($departmentId) {
+                $documentoQuery->where(function ($q) use ($departmentId) {
                     $q->where('departamento_id', $departmentId)
-                      ->orWhereHas('encaminhamentos', function($sq) use ($departmentId) {
-                          $sq->where('destino_departamento_id', $departmentId);
-                      });
+                        ->orWhereHas('encaminhamentos', function ($sq) use ($departmentId) {
+                            $sq->where('destino_departamento_id', $departmentId);
+                        });
                 });
             } else {
                 // Se não tem departamento, vê apenas os que criou
                 $documentoQuery->where('user_id', $user->id);
+            }
+        }
+
+        // Base query para Documentos Internos
+        $documentoInternoQuery = DocumentoInterno::query();
+        if (! $isAdmin) {
+            if ($departmentId) {
+                $documentoInternoQuery->where('departamento_id', $departmentId);
+            } else {
+                $documentoInternoQuery->where('criado_por', $user->id);
             }
         }
 
@@ -91,6 +102,11 @@ class HomeController extends Controller
                 'recebido' => (clone $documentoQuery)->where('status', 'recebido')->count(),
                 'respondido' => (clone $documentoQuery)->where('status', 'respondido')->count(),
                 'arquivado' => (clone $documentoQuery)->where('status', 'arquivado')->count(),
+            ],
+            'documentos_internos' => [
+                'total' => (clone $documentoInternoQuery)->count(),
+                'rascunho' => (clone $documentoInternoQuery)->where('status', 'rascunho')->count(), // Ajustar status conforme uso real
+                'assinado' => (clone $documentoInternoQuery)->whereNotNull('assinado_em')->count(),
             ],
             'requisicoes' => [
                 'total' => (clone $requisicaoQuery)->count(),
@@ -114,28 +130,51 @@ class HomeController extends Controller
             'departamentos' => Departamento::count(),
         ];
 
+        // Estatísticas por Departamento (apenas para Admin)
+        $deptStats = [];
+        if ($isAdmin) {
+            $deptStats = Departamento::select('id', 'sigla', 'nome')
+                ->withCount(['documentosEntrada as total_entrada', 'documentosInternos as total_internos'])
+                ->get();
+        }
+
         // Actividade recente
         $recentRequisicoes = (clone $requisicaoQuery)
             ->with(['usuario', 'empresa'])
             ->orderBy('created_at', 'desc')
-            ->limit(8)
+            ->limit(5)
+            ->get();
+
+        $recentIncomingDocs = (clone $documentoQuery)
+            ->with(['departamento', 'ultimoEncaminhamento'])
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->get();
+
+        $recentInternalDocs = (clone $documentoInternoQuery)
+            ->with(['autor', 'modelo'])
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
             ->get();
 
         $recentReservas = (clone $reservaQuery)
             ->with(['usuario'])
             ->orderBy('created_at', 'desc')
-            ->limit(8)
+            ->limit(5)
             ->get();
 
         $recentViaturas = Viatura::orderBy('created_at', 'desc')
-            ->limit(8)
+            ->limit(5)
             ->get();
 
         return view('home', compact(
             'metrics',
             'recentRequisicoes',
+            'recentIncomingDocs',
+            'recentInternalDocs',
             'recentReservas',
             'recentViaturas',
+            'deptStats',
             'user'
         ));
     }

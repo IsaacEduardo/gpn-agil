@@ -14,7 +14,7 @@ return [
     */
 
     'default' => env('FILESYSTEM_DISK', 'local'),
-    'docs_disk' => env('DOCS_STORAGE_DISK', 'public'),
+    'docs_disk' => env('DOCS_STORAGE_DISK', 'private'),
 
     /*
     |--------------------------------------------------------------------------
@@ -44,6 +44,14 @@ return [
             'root' => storage_path('app/public'),
             'url' => env('APP_URL').'/storage',
             'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        'private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private_docs'),
+            'visibility' => 'private',
             'throw' => false,
             'report' => false,
         ],

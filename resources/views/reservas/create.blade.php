@@ -80,7 +80,7 @@
 
                                 <div class="form-floating mb-3">
                                     <input type="date" class="form-control @error('data_evento') is-invalid @enderror"
-                                        id="data_evento" name="data_evento" value="{{ old('data_evento') }}"
+                                        id="data_evento" name="data_evento" value="{{ old('data_evento', request()->query('date')) }}"
                                         min="{{ date('Y-m-d') }}" required>
                                     <label for="data_evento">Data do Evento *</label>
                                     @error('data_evento')

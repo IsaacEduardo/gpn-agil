@@ -1,14 +1,20 @@
 FROM php:8.2-fpm
 
 # Install system dependencies
+# tesseract-ocr (+ por/eng) é necessário para o job ProcessarOcrAnexo (TesseractOCR->lang('por','eng')).
 RUN apt-get update && apt-get install -y \
     git unzip curl libzip-dev libonig-dev libxml2-dev \
     libjpeg-dev libpng-dev libfreetype6-dev libicu-dev \
+    tesseract-ocr tesseract-ocr-por tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 # GD and common PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) gd mbstring pdo_mysql zip xml intl opcache
+
+# Redis (phpredis) para fila/cache/sessão
+RUN pecl install redis \
+    && docker-php-ext-enable redis
 
 # Copy Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

@@ -1,11 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Enums\StatusRequisicao;
-use App\Models\Empresa;
-use App\Models\Gabinete;
 use App\Models\Requisicao;
+use App\Services\RequisicaoService;
 use App\Support\CatalogCache;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,80 +14,30 @@ use Illuminate\Support\Facades\Validator;
 
 class RequisicaoController extends Controller
 {
+    protected RequisicaoService $service;
+
+    public function __construct(RequisicaoService $service)
+    {
+        $this->service = $service;
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
-        $query = Requisicao::with('usuario');
-
-        // Escopo para chefe de departamento: ver apenas requisições do seu departamento
-        if (Auth::check()) {
-            $actor = Auth::user();
-            if ($actor->hasPermission('visto_departamento_requisicoes') && ! $actor->hasPermission('requisicoes.view_any')) {
-                $depId = $actor->departamento_id;
-                if ($depId) {
-                    $query->whereHas('usuario', function ($u) use ($depId) {
-                        $u->where('departamento_id', $depId)
-                            ->orWhereHas('departamentos', function ($qq) use ($depId) {
-                                $qq->where('departamentos.id', $depId);
-                            });
-                    });
-                }
-            }
-        }
+        // Eager load das relações usadas na listagem para evitar N+1
+        // (usuario.departamento na coluna de solicitante; oficina no badge de manutenção).
+        $query = Requisicao::with(['usuario.departamento:id,sigla,nome', 'oficina']);
 
         if (Auth::check()) {
-            $actor = Auth::user();
-            $isAdmin = $actor->role && $actor->role->name === 'admin';
-            $canViewAny = $actor->hasPermission('requisicoes.view_any');
-            if (! $isAdmin && ! $canViewAny) {
-                $actorDeps = (method_exists($actor, 'departamentos') && $actor->departamentos)
-                    ? $actor->departamentos->pluck('id')->all() : [];
-                if (! count($actorDeps) && $actor->departamento_id) {
-                    $actorDeps = [$actor->departamento_id];
-                }
-                $headedGabIds = Gabinete::where('responsavel_id', $actor->id)->pluck('id')->all();
-                if (count($headedGabIds)) {
-                    $query->whereHas('usuario', function ($u) use ($headedGabIds) {
-                        $u->whereHas('departamento', function ($q) use ($headedGabIds) {
-                            $q->whereIn('gabinete_id', $headedGabIds);
-                        })
-                            ->orWhereHas('departamentos', function ($qq) use ($headedGabIds) {
-                                $qq->whereIn('gabinete_id', $headedGabIds);
-                            });
-                    });
-                } elseif (count($actorDeps)) {
-                    $query->whereHas('usuario', function ($u) use ($actorDeps) {
-                        $u->whereIn('departamento_id', $actorDeps)
-                            ->orWhereHas('departamentos', function ($qq) use ($actorDeps) {
-                                $qq->whereIn('departamentos.id', $actorDeps);
-                            });
-                    });
-                } else {
-                    $query->where('usuario_id', $actor->id);
-                }
-            }
+            $query->visibleToUser(Auth::user());
         }
 
-        // Busca livre (código, empresa, observações)
-        if ($request->filled('q')) {
-            $q = trim($request->q);
-            $query->where(function ($sub) use ($q) {
-                $sub->where('codigo_sequencial', 'like', "%{$q}%")
-                    ->orWhere('empresa_destinataria', 'like', "%{$q}%")
-                    ->orWhere('observacoes', 'like', "%{$q}%");
-            });
-        }
-
-        // Filtros específicos
-        if ($request->filled('tipo')) {
-            $query->where('tipo', $request->tipo);
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
+        // Apply scopes
+        $query->search($request->q)
+            ->byTipo($request->tipo)
+            ->byStatus($request->status);
 
         if ($request->filled('empresa')) {
             $query->where('empresa_destinataria', 'like', '%'.$request->empresa.'%');
@@ -99,7 +50,7 @@ class RequisicaoController extends Controller
             });
         }
 
-        // Intervalo de datas por data_requisicao
+        // Intervalo de datas
         if ($request->filled('data_inicio')) {
             $query->whereDate('data_requisicao', '>=', $request->data_inicio);
         }
@@ -111,6 +62,7 @@ class RequisicaoController extends Controller
         $allowedSort = ['codigo_sequencial', 'tipo', 'data_requisicao', 'empresa_destinataria', 'status'];
         $sort = $request->get('sort', 'data_requisicao');
         $direction = $request->get('direction', 'desc');
+
         if (! in_array($sort, $allowedSort)) {
             $sort = 'data_requisicao';
         }
@@ -120,13 +72,7 @@ class RequisicaoController extends Controller
 
         $query->orderBy($sort, $direction);
 
-        // Paginação
-        $perPage = (int) $request->get('per_page', 10);
-        if ($perPage < 5 || $perPage > 100) {
-            $perPage = 10;
-        }
-
-        $requisicoes = $query->paginate($perPage)->withQueryString();
+        $requisicoes = $query->paginate((int) $request->get('per_page', 10))->withQueryString();
 
         return view('requisicoes.index', compact('requisicoes'));
     }
@@ -136,14 +82,13 @@ class RequisicaoController extends Controller
      */
     public function create(Request $request)
     {
+        $this->authorize('create', Requisicao::class);
         $tipo = $request->query('tipo', 'produto');
 
-        // Carregar viaturas para o formulário de oficina
         $viaturas = [];
         if ($tipo == 'oficina') {
             $viaturas = CatalogCache::viaturasOperacionais();
         }
-        // Carregar lista de empresas para o select
         $empresas = CatalogCache::empresasList();
 
         return view('requisicoes.create', compact('tipo', 'viaturas', 'empresas'));
@@ -154,8 +99,10 @@ class RequisicaoController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorize('create', Requisicao::class);
+
         $validator = Validator::make($request->all(), [
-            'tipo' => 'required|in:produto,oficina,servico',
+            'tipo' => 'required|in:produto,oficina,servico,passagem',
             'empresa_destinataria' => 'required|string|max:255',
             'observacoes' => 'nullable|string',
         ]);
@@ -166,59 +113,21 @@ class RequisicaoController extends Controller
                 ->withInput();
         }
 
-        // Gerar código sequencial (formato: TIPO-MES/ANO-SEQUENCIAL)
-        $tipo = strtoupper(substr($request->tipo, 0, 3));
-        $mesAno = date('m/Y');
+        try {
+            $requisicao = $this->service->createRequisicao($request->all(), Auth::user());
+            $route = $this->service->getRedirectRoute($requisicao->tipo->value ?? $requisicao->tipo);
 
-        // Mapear o tipo para o formato correto aceito pelo enum antes da busca
-        $tipoMapeado = '';
-        switch ($request->tipo) {
-            case 'produto':
-                $tipoMapeado = 'produto';
-                break;
-            case 'oficina':
-                $tipoMapeado = 'oficina';
-                break;
-            case 'servico':
-                $tipoMapeado = 'servico';
-                break;
-            default:
-                $tipoMapeado = 'produto';
-        }
-
-        // Buscar a última requisição com o tipo mapeado correto
-        $ultimaRequisicao = Requisicao::where('tipo', $tipoMapeado)
-            ->whereMonth('data_requisicao', date('m'))
-            ->whereYear('data_requisicao', date('Y'))
-            ->orderBy('id', 'desc')
-            ->first();
-
-        $sequencial = $ultimaRequisicao ? intval(substr($ultimaRequisicao->codigo_sequencial, -3)) + 1 : 1;
-        $codigoSequencial = $tipo.'-'.$mesAno.'-'.str_pad($sequencial, 3, '0', STR_PAD_LEFT);
-
-        // O tipo já foi mapeado acima
-
-        // Criar a requisição
-        $requisicao = Requisicao::create([
-            'tipo' => (string) $tipoMapeado, // Garantir que seja tratado como string
-            'codigo_sequencial' => $codigoSequencial,
-            'data_requisicao' => now(),
-            'usuario_id' => Auth::id(),
-            'status' => StatusRequisicao::PENDENTE,
-            'empresa_destinataria' => $request->empresa_destinataria,
-            'observacoes' => $request->observacoes,
-        ]);
-
-        // Redirecionar para o formulário específico do tipo de requisição
-        switch ($request->tipo) {
-            case 'produto':
-                return redirect()->route('requisicoes.produtos.create.novo');
-            case 'oficina':
-                return redirect()->route('requisicoes.oficinas.create.novo');
-            case 'servico':
-                return redirect()->route('requisicoes.servicos.create.novo');
-            default:
+            // Se a rota for a genérica show, passamos o ID
+            if (str_contains($route, 'requisicoes.show')) {
                 return redirect()->route('requisicoes.show', $requisicao->id);
+            }
+
+            // Para as rotas de criação de itens específicos (que usam sessão ou cookie para saber qual a última requisicao)
+            // Assumindo que o fluxo original mantinha o ID na sessão ou que o 'novo' pega a última do usuário
+            return redirect()->route($route);
+
+        } catch (\Exception $e) {
+            return back()->with('error', 'Erro ao criar requisição: '.$e->getMessage())->withInput();
         }
     }
 
@@ -228,26 +137,8 @@ class RequisicaoController extends Controller
     public function show(Requisicao $requisicao)
     {
         $this->authorize('view', $requisicao);
-        // Carregar relacionamentos específicos com base no tipo
-        switch ($requisicao->tipo) {
-            case 'produto':
-                $requisicao->load('produtos');
-                break;
-            case 'oficina':
-                $requisicao->load('oficina', 'oficina.viatura');
-                break;
-            case 'servico':
-                $requisicao->load('servicos');
-                break;
-            case 'passagem':
-                $requisicao->load('passagem');
-                break;
-        }
 
-        // Carregar termos de entrega
-        $requisicao->load('termos');
-        // Garantir que o solicitante e seus departamentos estejam disponíveis para verificação de escopo no Blade
-        $requisicao->loadMissing('usuario.departamentos');
+        $this->service->loadRelationships($requisicao);
 
         return view('requisicoes.show', compact('requisicao'));
     }
@@ -257,7 +148,6 @@ class RequisicaoController extends Controller
      */
     public function edit(Requisicao $requisicao)
     {
-        // Verificar se a requisição já foi aprovada
         if ($requisicao->status === StatusRequisicao::APROVADO) {
             return redirect()->route('requisicoes.show', $requisicao->id)
                 ->with('error', 'Não é possível editar uma requisição já aprovada.');
@@ -271,7 +161,7 @@ class RequisicaoController extends Controller
      */
     public function update(Request $request, Requisicao $requisicao)
     {
-        // Verificar se a requisição já foi aprovada
+        // A validação de status já é feita no service, mas mantemos aqui para UX rápida
         if ($requisicao->status === StatusRequisicao::APROVADO) {
             return redirect()->route('requisicoes.show', $requisicao->id)
                 ->with('error', 'Não é possível editar uma requisição já aprovada.');
@@ -288,13 +178,14 @@ class RequisicaoController extends Controller
                 ->withInput();
         }
 
-        $requisicao->update([
-            'empresa_destinataria' => $request->empresa_destinataria,
-            'observacoes' => $request->observacoes,
-        ]);
+        try {
+            $this->service->update($requisicao, $request->all());
 
-        return redirect()->route('requisicoes.show', $requisicao->id)
-            ->with('success', 'Requisição atualizada com sucesso!');
+            return redirect()->route('requisicoes.show', $requisicao->id)
+                ->with('success', 'Requisição atualizada com sucesso!');
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
     }
 
     /**
@@ -302,40 +193,15 @@ class RequisicaoController extends Controller
      */
     public function destroy(Requisicao $requisicao)
     {
-        // Verificar se a requisição já foi aprovada
-        if ($requisicao->status === StatusRequisicao::APROVADO) {
+        try {
+            $this->service->delete($requisicao);
+
             return redirect()->route('requisicoes.index')
-                ->with('error', 'Não é possível excluir uma requisição já aprovada.');
+                ->with('success', 'Requisição excluída com sucesso!');
+        } catch (\Exception $e) {
+            return redirect()->route('requisicoes.index')
+                ->with('error', $e->getMessage());
         }
-
-        // Excluir registros relacionados com base no tipo
-        switch ($requisicao->tipo) {
-            case 'produto':
-                $requisicao->produtos()->delete();
-                break;
-            case 'oficina':
-                $requisicao->oficina()->delete();
-                break;
-            case 'servico':
-                $requisicao->servico()->delete();
-                break;
-            case 'passagem':
-                $requisicao->passagem()->delete();
-                break;
-        }
-
-        // Excluir termos de entrega
-        foreach ($requisicao->termos as $termo) {
-            if ($termo->caminho_arquivo) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($termo->caminho_arquivo);
-            }
-            $termo->delete();
-        }
-
-        $requisicao->delete();
-
-        return redirect()->route('requisicoes.index')
-            ->with('success', 'Requisição excluída com sucesso!');
     }
 
     /**
@@ -345,23 +211,15 @@ class RequisicaoController extends Controller
     {
         $this->authorize('approve', $requisicao);
 
-        // Removida exigência de visto do departamento para aprovação final
-        // O chefe de departamento ou usuários com permissão podem aprovar diretamente
+        try {
+            $this->service->aprovar($requisicao, Auth::user());
 
-        // Verificar se a requisição já foi aprovada
-        if ($requisicao->status === StatusRequisicao::APROVADO) {
             return redirect()->route('requisicoes.show', $requisicao->id)
-                ->with('error', 'Esta requisição já foi aprovada.');
+                ->with('success', 'Requisição aprovada com sucesso!');
+        } catch (\Exception $e) {
+            return redirect()->route('requisicoes.show', $requisicao->id)
+                ->with('error', $e->getMessage());
         }
-
-        $requisicao->update([
-            'status' => StatusRequisicao::APROVADO,
-            'aprovado_por' => Auth::id(),
-            'data_aprovacao' => now(),
-        ]);
-
-        return redirect()->route('requisicoes.show', $requisicao->id)
-            ->with('success', 'Requisição aprovada com sucesso!');
     }
 
     /**
@@ -371,47 +229,39 @@ class RequisicaoController extends Controller
     {
         $this->authorize('reject', $requisicao);
 
-        // Removida exigência de visto do departamento; rejeição segue apenas status atual
-        // Verificar se a requisição já foi aprovada ou rejeitada
-        if ($requisicao->status === StatusRequisicao::APROVADO || $requisicao->status === StatusRequisicao::REJEITADO) {
-            return redirect()->route('requisicoes.show', $requisicao->id)
-                ->with('error', 'Esta requisição já foi processada.');
-        }
-
         $request->validate([
             'motivo_rejeicao' => 'required|string|max:1000',
         ]);
 
-        $requisicao->update([
-            'status' => StatusRequisicao::REJEITADO,
-            'aprovado_por' => Auth::id(),
-            'data_aprovacao' => now(),
-            'motivo_rejeicao' => $request->motivo_rejeicao,
-        ]);
+        try {
+            $this->service->rejeitar($requisicao, Auth::user(), $request->motivo_rejeicao);
 
-        return redirect()->route('requisicoes.show', $requisicao->id)
-            ->with('success', 'Requisição rejeitada com sucesso!');
+            return redirect()->route('requisicoes.show', $requisicao->id)
+                ->with('success', 'Requisição rejeitada com sucesso!');
+        } catch (\Exception $e) {
+            return redirect()->route('requisicoes.show', $requisicao->id)
+                ->with('error', $e->getMessage());
+        }
     }
 
     /**
      * Emitir visto do departamento (aprovar).
+     * Nota: A lógica de visto é específica demais, pode ser movida para o service depois,
+     * mas por enquanto manteremos aqui ou moveremos para métodos auxiliares no service se necessário.
      */
     public function vistoAprovar(Request $request, Requisicao $requisicao)
     {
         $this->authorize('vistoAprovar', $requisicao);
 
+        // TODO: Mover lógica de visto para o Service
         if ($requisicao->status !== StatusRequisicao::PENDENTE) {
             return redirect()->route('requisicoes.show', $requisicao->id)
                 ->with('error', 'Visto só pode ser emitido enquanto a requisição está pendente.');
         }
 
-        if (method_exists($requisicao, 'vistoDepartamentoAprovado') && $requisicao->vistoDepartamentoAprovado()) {
+        if ($requisicao->vistoDepartamentoAprovado()) {
             return redirect()->route('requisicoes.show', $requisicao->id)
                 ->with('error', 'O visto do departamento já foi aprovado.');
-        }
-        if (method_exists($requisicao, 'vistoDepartamentoRejeitado') && $requisicao->vistoDepartamentoRejeitado()) {
-            return redirect()->route('requisicoes.show', $requisicao->id)
-                ->with('error', 'O visto do departamento já foi rejeitado.');
         }
 
         $requisicao->update([
@@ -437,11 +287,7 @@ class RequisicaoController extends Controller
                 ->with('error', 'Visto só pode ser emitido enquanto a requisição está pendente.');
         }
 
-        if (method_exists($requisicao, 'vistoDepartamentoAprovado') && $requisicao->vistoDepartamentoAprovado()) {
-            return redirect()->route('requisicoes.show', $requisicao->id)
-                ->with('error', 'O visto do departamento já foi aprovado.');
-        }
-        if (method_exists($requisicao, 'vistoDepartamentoRejeitado') && $requisicao->vistoDepartamentoRejeitado()) {
+        if ($requisicao->vistoDepartamentoRejeitado()) {
             return redirect()->route('requisicoes.show', $requisicao->id)
                 ->with('error', 'O visto do departamento já foi rejeitado.');
         }
@@ -468,50 +314,16 @@ class RequisicaoController extends Controller
     {
         $query = Requisicao::with('usuario')->where('status', StatusRequisicao::PENDENTE);
 
-        // Aplicar a mesma lógica de filtro de escopo do index, mas focado em pendentes
         if (Auth::check()) {
-            $actor = Auth::user();
-            $isAdmin = $actor->role && $actor->role->name === 'admin';
-            $canViewAny = $actor->hasPermission('requisicoes.view_any');
-            
-            // Se não for admin e não tiver view_any, filtra pelo escopo
-            if (! $isAdmin && ! $canViewAny) {
-                $actorDeps = (method_exists($actor, 'departamentos') && $actor->departamentos)
-                    ? $actor->departamentos->pluck('id')->all() : [];
-                if (! count($actorDeps) && $actor->departamento_id) {
-                    $actorDeps = [$actor->departamento_id];
-                }
-                $headedGabIds = Gabinete::where('responsavel_id', $actor->id)->pluck('id')->all();
-                
-                if (count($headedGabIds)) {
-                    // Chefe de Gabinete vê tudo do seu gabinete
-                    $query->whereHas('usuario', function ($u) use ($headedGabIds) {
-                        $u->whereHas('departamento', function ($q) use ($headedGabIds) {
-                            $q->whereIn('gabinete_id', $headedGabIds);
-                        })
-                            ->orWhereHas('departamentos', function ($qq) use ($headedGabIds) {
-                                $qq->whereIn('gabinete_id', $headedGabIds);
-                            });
-                    });
-                } elseif (count($actorDeps)) {
-                    // Chefe de Departamento vê tudo do seu departamento
-                    // Assumindo que apenas chefes acessam essa rota para aprovar
-                     $query->whereHas('usuario', function ($u) use ($actorDeps) {
-                        $u->whereIn('departamento_id', $actorDeps)
-                            ->orWhereHas('departamentos', function ($qq) use ($actorDeps) {
-                                $qq->whereIn('departamentos.id', $actorDeps);
-                            });
-                    });
-                } else {
-                     // Usuário comum não vê nada pendente para aprovar (tecnicamente)
-                     // ou vê suas próprias se for para acompanhamento, mas aqui é "Pendentes de Aprovação"
-                     // Então retornamos vazio se não tiver papel de chefia
-                     $query->whereRaw('0 = 1');
-                }
-            }
+            // Reutiliza o escopo de visibilidade, pois quem aprova geralmente vê o que pode aprovar
+            // Mas o escopo visibleToUser é mais abrangente.
+            // Para "pendentes de aprovação", a lógica original era bem específica sobre chefes.
+            // Vamos manter o scopeVisibleToUser pois ele filtra por departamento/gabinete corretamente.
+            $query->visibleToUser(Auth::user());
         }
 
         $requisicoes = $query->orderBy('created_at', 'asc')->paginate(15);
+
         return view('requisicoes.pendentes', compact('requisicoes'));
     }
 
@@ -521,7 +333,7 @@ class RequisicaoController extends Controller
     public function aprovarEmMassa(Request $request)
     {
         $ids = $request->input('requisicoes', []);
-        
+
         if (empty($ids)) {
             return redirect()->back()->with('error', 'Nenhuma requisição selecionada.');
         }
@@ -530,18 +342,37 @@ class RequisicaoController extends Controller
         foreach ($ids as $id) {
             $requisicao = Requisicao::find($id);
             if ($requisicao && $requisicao->status === StatusRequisicao::PENDENTE) {
-                // Verificar autorização para cada item
                 if (Auth::user()->can('approve', $requisicao)) {
-                    $requisicao->update([
-                        'status' => StatusRequisicao::APROVADO,
-                        'aprovado_por' => Auth::id(),
-                        'data_aprovacao' => now(),
-                    ]);
-                    $count++;
+                    try {
+                        $this->service->aprovar($requisicao, Auth::user());
+                        $count++;
+                    } catch (\Exception $e) {
+                        // Ignora erro individual em massa ou loga
+                    }
                 }
             }
         }
 
         return redirect()->back()->with('success', "{$count} requisições aprovadas com sucesso.");
+    }
+
+    /**
+     * Assinar digitalmente a requisição.
+     */
+    public function sign(Request $request, Requisicao $requisicao)
+    {
+        $request->validate([
+            'password' => 'required|string',
+            'certificate_password' => 'nullable|string',
+        ]);
+
+        try {
+            // Usa o método encapsulado no serviço que lida com status, visto e notificações
+            $this->service->assinar($requisicao, Auth::user(), $request->password, $request->input('certificate_password'));
+
+            return back()->with('success', 'Requisição assinada digitalmente com sucesso.');
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
     }
 }

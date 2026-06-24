@@ -6,7 +6,6 @@ use App\Enums\StatusRequisicao;
 use App\Enums\TipoRequisicao;
 use App\Http\Requests\StoreRequisicaoOficinaRequest;
 use App\Models\Empresa;
-use App\Models\Gabinete;
 use App\Models\Requisicao;
 use App\Models\RequisicaoOficina;
 use App\Support\CatalogCache;
@@ -300,7 +299,7 @@ class RequisicaoOficinaController extends Controller
         $pdfUrl = $requisicaoId
             ? route('requisicoes.oficina.pdf', ['requisicao' => $requisicaoId])
             : route('requisicoes.oficina.pdf.noid');
-        $redirectUrl = route('requisicoes.index');
+        $redirectUrl = route('requisicoes.oficina.index');
 
         return view('requisicoes.print', compact('pdfUrl', 'redirectUrl'));
     }

@@ -232,6 +232,11 @@
                                     <i class="fas fa-globe me-2"></i>Histórico Externo
                                 </button>
                             </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link fw-medium" id="relations-tab" data-bs-toggle="tab" data-bs-target="#relations" type="button" role="tab" aria-controls="relations" aria-selected="false">
+                                    <i class="fas fa-link me-2"></i>Vínculos
+                                </button>
+                            </li>
                         </ul>
                     </div>
                     <div class="card-body">
@@ -243,10 +248,11 @@
                                     @php($actor = Auth::user())
                                     @php($gab = optional($doc->departamento)->gabinete)
                                     @php($actorIsRespGab = $actor && $gab && (int) optional($gab)->responsavel_id === (int) $actor->id)
+                                    @php($actorIsSuperChefe = $actor && $gab && $actor->isSuperChefeDoGabinete($gab))
                                     @php($actorIsChiefDep = $actor && $actor->role && $actor->role->name === 'chefe-departamento')
                                     @php($actorDeps = $actor && method_exists($actor, 'departamentos') && $actor->departamentos ? $actor->departamentos->pluck('id')->all() : [])
                                     @php($actorDeps = !count($actorDeps) && $actor && $actor->departamento_id ? [$actor->departamento_id] : $actorDeps)
-                                    @php($canAssignTask = $actorIsRespGab || ($actorIsChiefDep && in_array((int) optional($doc->departamento)->id, $actorDeps)))
+                                    @php($canAssignTask = $actorIsRespGab || $actorIsSuperChefe || ($actorIsChiefDep && in_array((int) optional($doc->departamento)->id, $actorDeps)))
                                     @if ($canAssignTask)
                                         <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalDesignarTarefa">
                                             <i class="fas fa-plus me-1"></i> Nova Tarefa
@@ -271,8 +277,23 @@
                                             </thead>
                                             <tbody>
                                                 @foreach ($tarefas as $t)
-                                                    <tr>
-                                                        <td>{{ $t->titulo }}</td>
+                                                    <tr class="tarefa-row" style="cursor: pointer;">
+                                                        <td>
+                                                            <a href="#" class="text-decoration-none btn-ver-tarefa-show"
+                                                                data-titulo="{{ e($t->titulo) }}"
+                                                                data-descricao="{{ e($t->descricao) }}"
+                                                                data-status="{{ $t->status }}"
+                                                                data-prazo="{{ optional($t->prazo_at)->format('d/m/Y') ?? '—' }}"
+                                                                data-solicitante="{{ optional($t->assignedBy)->name ?? '—' }}"
+                                                                data-destino="{{ $t->assignedToUser ? optional($t->assignedToUser)->name : (optional($t->assignedToDepartamento)->nome ?? '—') }}"
+                                                                data-destino-tipo="{{ $t->assignedToUser ? 'user' : ($t->assignedToDepartamento ? 'dep' : '') }}"
+                                                                data-criado="{{ $t->created_at->format('d/m/Y H:i') }}">
+                                                                <span class="fw-semibold text-dark">{{ $t->titulo }}</span>
+                                                                @if($t->descricao)
+                                                                    <div class="small text-muted text-truncate" style="max-width: 250px;">{{ $t->descricao }}</div>
+                                                                @endif
+                                                            </a>
+                                                        </td>
                                                         <td>
                                                             <div class="d-flex align-items-center">
                                                                 <div class="bg-light rounded-circle p-1 me-2" title="Solicitante">
@@ -453,6 +474,137 @@
                                     </div>
                                 @endif
                             </div>
+
+                            <!-- Relations Tab -->
+                            <div class="tab-pane fade" id="relations" role="tabpanel" aria-labelledby="relations-tab">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="fw-bold mb-0">Documentos Relacionados</h6>
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalRelacionarDocumento">
+                                        <i class="fas fa-link me-1"></i> Vincular Novo
+                                    </button>
+                                </div>
+
+                                {{-- Display Internal Documents --}}
+                                @if ($doc->documentosInternos && $doc->documentosInternos->count())
+                                    <h6 class="small text-muted text-uppercase fw-bold mb-2 ps-1">Respostas / Documentos Internos</h6>
+                                    <div class="list-group mb-4">
+                                        @foreach ($doc->documentosInternos as $interno)
+                                            <div class="list-group-item list-group-item-action p-3 border-start border-4 border-info">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <div class="d-flex gap-3 align-items-center">
+                                                        <div class="text-center" style="min-width: 80px;">
+                                                            <div class="bg-info bg-opacity-10 rounded p-2 text-info mb-1 d-inline-block">
+                                                                 <i class="fas fa-file-signature fa-lg"></i>
+                                                            </div>
+                                                            <div class="d-block">
+                                                                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill" style="font-size: 0.65rem;">
+                                                                    INTERNO
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <h6 class="mb-1 fw-bold">
+                                                                <a href="{{ route('documentos-internos.show', $interno->id) }}" class="text-decoration-none text-dark stretched-link">
+                                                                    {{ $interno->titulo }}
+                                                                </a>
+                                                            </h6>
+                                                            <p class="mb-1 text-dark small text-truncate" style="max-width: 500px;">
+                                                                Ref: {{ $interno->numero_referencia ?? 'S/Ref' }}
+                                                            </p>
+                                                            <div class="small text-muted">
+                                                                <span class="me-3"><i class="fas fa-user me-1"></i> {{ optional($interno->autor)->name }}</span>
+                                                                <span class="me-3"><i class="fas fa-calendar-alt me-1"></i> {{ $interno->created_at->format('d/m/Y') }}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="z-2 position-relative ms-2">
+                                                        <form action="{{ route('documentos-entradas.desrelacionar', [$doc, $interno->id]) }}?type=interno" method="POST" onsubmit="return confirm('Remover vínculo com este documento interno?');">
+                                                            @csrf @method('DELETE')
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger border-0" title="Desvincular">
+                                                                <i class="fas fa-unlink"></i>
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
+
+                                {{-- Display External/Entry Documents --}}
+                                @if ($relacionados && $relacionados->count())
+                                    <h6 class="small text-muted text-uppercase fw-bold mb-2 ps-1">Outras Entradas Relacionadas</h6>
+                                    <div class="list-group">
+                                        @foreach ($relacionados as $rel)
+                                            <div class="list-group-item list-group-item-action p-3">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <div class="d-flex gap-3 align-items-center">
+                                                        <div class="text-center" style="min-width: 80px;">
+                                                            <div class="bg-light rounded p-2 text-secondary mb-1 d-inline-block">
+                                                                <i class="fas fa-file-alt fa-lg"></i>
+                                                            </div>
+                                                            <div class="d-block">
+                                                                <?php
+                                                                    $tipoVinculo = $rel->pivot->tipo ?? 'relacionado';
+                                                                    $badgeClass = 'bg-secondary-subtle text-secondary border-secondary-subtle';
+                                                                    if ($tipoVinculo === 'resposta') {
+                                                                        $badgeClass = 'bg-info-subtle text-info-emphasis border-info-subtle';
+                                                                    } elseif ($tipoVinculo === 'anexo') {
+                                                                        $badgeClass = 'bg-success-subtle text-success-emphasis border-success-subtle';
+                                                                    } elseif ($tipoVinculo === 'origem') {
+                                                                        $badgeClass = 'bg-warning-subtle text-warning-emphasis border-warning-subtle';
+                                                                    }
+                                                                ?>
+                                                                <span class="badge {{ $badgeClass }} border rounded-pill text-uppercase" style="font-size: 0.65rem;">
+                                                                    {{ ucfirst($tipoVinculo) }}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <h6 class="mb-1 fw-bold">
+                                                                <a href="{{ route('documentos-entradas.show', $rel->id) }}" class="text-decoration-none text-dark stretched-link">
+                                                                    {{ $rel->numero_sequencial }}/{{ $rel->ano_referencia }}
+                                                                </a>
+                                                            </h6>
+                                                            <p class="mb-1 text-dark small text-truncate" style="max-width: 500px;">
+                                                                {{ $rel->assunto }}
+                                                            </p>
+                                                            <div class="small text-muted">
+                                                                <span class="me-3"><i class="fas fa-calendar-alt me-1"></i> {{ optional($rel->data_entrada)->format('d/m/Y') }}</span>
+                                                                <span class="me-3"><i class="fas fa-tag me-1"></i> {{ $rel->classificacao_ref_numero ?? 'S/Ref' }}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="z-2 position-relative ms-2">
+                                                        <form action="{{ route('documentos-entradas.desrelacionar', [$doc, $rel]) }}" method="POST" onsubmit="return confirm('Remover este vínculo?');">
+                                                            @csrf @method('DELETE')
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger border-0" title="Remover Vínculo">
+                                                                 <i class="fas fa-unlink"></i>
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
+
+                                @if ((!$relacionados || $relacionados->count() == 0) && (!$doc->documentosInternos || $doc->documentosInternos->count() == 0))
+                                    <div class="text-center py-5">
+                                        <div class="bg-light rounded-circle d-inline-flex p-3 mb-3">
+                                            <i class="fas fa-link fa-2x text-muted opacity-50"></i>
+                                        </div>
+                                        <p class="text-muted small mb-0">Nenhum documento vinculado.</p>
+                                        <button class="btn btn-link btn-sm text-decoration-none" data-bs-toggle="modal" data-bs-target="#modalRelacionarDocumento">
+                                            Adicionar o primeiro vínculo
+                                        </button>
+                                    </div>
+                                @endif
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -584,6 +736,11 @@
                                         </div>
                                     </div>
                                     <div class="d-flex gap-1 ms-2">
+                                        @if(in_array($an->mime_type, ['application/pdf']) || str_starts_with($an->mime_type, 'image/'))
+                                            <button type="button" class="btn btn-sm btn-light text-secondary btn-ver-ocr" data-anexo-id="{{ $an->id }}" data-nome="{{ $an->nome_original }}" title="Ver Texto Extraído (OCR)">
+                                                <i class="fas fa-file-alt text-success"></i>
+                                            </button>
+                                        @endif
                                         <a href="{{ route('documentos-entradas.anexos.download', [$doc, $an]) }}" target="_blank" class="btn btn-sm btn-light text-primary"><i class="fas fa-download"></i></a>
                                         <form action="{{ route('documentos-entradas.anexos.destroy', [$doc, $an]) }}" method="POST" onsubmit="return confirm('Remover este anexo?');">
                                             @csrf
@@ -608,384 +765,83 @@
     </div>
 
     <!-- Modals Section (Hidden) -->
-    
-    <!-- Modal Rejeitar Visto Departamento -->
-    <div class="modal fade" id="vistoRejeitarModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form action="{{ route('documentos-entradas.visto.rejeitar', $doc) }}" method="POST">
-                    @csrf
-                    @method('PATCH')
-                    <div class="modal-header">
-                        <h5 class="modal-title">Rejeitar visto</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="form-floating">
-                            <textarea class="form-control" id="visto_departamento_observacao" name="visto_departamento_observacao" style="height: 120px" placeholder="Motivo da rejeição" required></textarea>
-                            <label for="visto_departamento_observacao">Motivo/observação</label>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-danger">Rejeitar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+    @include('documentos_entradas.partials.modals')
 
-    <!-- Modal Rejeitar Visto Gabinete -->
-    <div class="modal fade" id="vistoGabineteRejeitarModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form action="{{ route('documentos-entradas.visto-gabinete.rejeitar', $doc) }}" method="POST">
-                    @csrf
-                    @method('PATCH')
-                    <div class="modal-header">
-                        <h5 class="modal-title">Rejeitar visto do gabinete</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <!-- Modal Detalhes da Tarefa (Show Page) -->
+    <div class="modal fade" id="modalDetalheTarefaShow" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <div>
+                        <h5 class="modal-title fw-bold text-dark" id="modalShowTarefaTitulo"></h5>
                     </div>
-                    <div class="modal-body">
-                        <div class="form-floating">
-                            <textarea class="form-control" id="visto_gabinete_observacao" name="visto_gabinete_observacao" style="height: 120px" placeholder="Motivo da rejeição" required></textarea>
-                            <label for="visto_gabinete_observacao">Motivo/observação</label>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-danger">Rejeitar</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Encaminhar Documento -->
-    <div class="modal fade" id="modalEncaminharDocumento" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Encaminhar documento</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
-                <div class="modal-body">
-                    <form id="form-encaminhar" action="{{ route('documentos-entradas.encaminhar', $doc) }}" method="POST" class="row g-3">
-                        @csrf
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Destino (Departamento)</label>
-                            <select name="destino_departamento_id" class="form-select" required>
-                                <option value="">Selecione...</option>
-                                @foreach ($departamentos as $dep)
-                                    <option value="{{ $dep->id }}">{{ $dep->nome }}</option>
-                                @endforeach
-                            </select>
-                            @error('destino_departamento_id')
-                                <div class="text-danger small">{{ $message }}</div>
-                            @enderror
+                <div class="modal-body pt-2">
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <span class="badge rounded-pill" id="modalShowTarefaStatus"></span>
+                        <span class="badge bg-light text-dark border" id="modalShowTarefaPrazo"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="text-muted small text-uppercase fw-semibold d-block mb-1">Descrição</label>
+                        <div class="p-3 bg-light rounded border-start border-4 border-primary" id="modalShowTarefaDescricao" style="white-space: pre-line;"></div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label class="text-muted small text-uppercase fw-semibold d-block mb-1">Solicitado por</label>
+                            <div class="fw-medium text-dark" id="modalShowTarefaSolicitante"></div>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Observação</label>
-                            <input type="text" name="observacao" class="form-control" value="{{ old('observacao') }}">
+                        <div class="col-sm-6">
+                            <label class="text-muted small text-uppercase fw-semibold d-block mb-1">Destino</label>
+                            <div class="fw-medium text-dark" id="modalShowTarefaDestino"></div>
                         </div>
-                        <div class="col-12 text-end">
-                            <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Cancelar</button>
-                            <button type="button" id="btnEncaminhar" class="btn btn-primary"><i class="fas fa-paper-plane me-1"></i> Encaminhar</button>
+                        <div class="col-sm-6">
+                            <label class="text-muted small text-uppercase fw-semibold d-block mb-1">Criado em</label>
+                            <div class="fw-medium text-dark" id="modalShowTarefaCriado"></div>
                         </div>
-                    </form>
+                    </div>
+                </div>
+                <div class="modal-footer border-top-0 pt-0">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Modal Designar Tarefa -->
-    <div class="modal fade" id="modalDesignarTarefa" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Designar tarefa</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <!-- Modal Visualizar OCR do Anexo -->
+    <div class="modal fade" id="modalVerOcrAnexo" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-success text-white border-bottom-0">
+                    <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Texto Extraído via OCR / Parser</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
-                <div class="modal-body">
-                    <form id="form-designar-tarefa" action="{{ route('documentos-entradas.tarefas.store', $doc) }}" method="POST" class="row g-3">
-                        @csrf
-                        <div class="col-md-12">
-                            <label class="form-label fw-semibold">Tipo de destino</label>
-                            <div class="p-3 bg-light rounded border d-flex gap-3 align-items-center">
-                                @php($actor = Auth::user())
-                                @php($gab = optional($doc->departamento)->gabinete)
-                                @php($actorIsRespGab = $actor && $gab && (int) optional($gab)->responsavel_id === (int) $actor->id)
-                                @if ($actorIsRespGab)
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="tipo" id="tipoUsuario" value="usuario" checked>
-                                        <label class="form-check-label" for="tipoUsuario"><i class="fas fa-user me-1"></i> Usuário Específico</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="tipo" id="tipoDepartamento" value="departamento">
-                                        <label class="form-check-label" for="tipoDepartamento"><i class="fas fa-building me-1"></i> Departamento Inteiro</label>
-                                    </div>
-                                @else
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="tipo" id="tipoUsuario" value="usuario" checked>
-                                        <label class="form-check-label" for="tipoUsuario"><i class="fas fa-user me-1"></i> Usuário do Departamento</label>
-                                    </div>
-                                @endif
-                            </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="small text-muted text-uppercase fw-semibold d-block mb-1">Arquivo Anexo</label>
+                        <div class="fw-bold text-dark fs-5" id="modalOcrAnexoNome"></div>
+                    </div>
+                    <div class="position-relative">
+                        <label class="small text-muted text-uppercase fw-semibold d-block mb-2">Conteúdo do Documento</label>
+                        <div id="modalOcrLoading" class="text-center py-5 text-muted d-none">
+                            <span class="spinner-border spinner-border-sm me-2 text-success"></span> A carregar o texto extraído...
                         </div>
-                        
-                        <div class="col-md-6" data-field="destino-usuario">
-                            <label class="form-label fw-semibold">Usuário destino <span class="text-danger">*</span></label>
-                            <select name="destino_id" class="form-select" required>
-                                <option value="">Selecione um usuário...</option>
-                                @php($listaUsuarios = $actorIsRespGab ? $gabUsuarios ?? collect() : $depUsuarios ?? collect())
-                                @foreach ($listaUsuarios as $u)
-                                    <option value="{{ $u->id }}">{{ $u->name }}</option>
-                                @endforeach
-                            </select>
-                            @error('destino_id')
-                                <div class="text-danger small">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        @if ($actorIsRespGab)
-                            <div class="col-md-6 d-none" data-field="destino-departamento">
-                                <label class="form-label fw-semibold">Departamento destino <span class="text-danger">*</span></label>
-                                <select class="form-select">
-                                    <option value="">Selecione um departamento...</option>
-                                    @foreach ($gabDepartamentos ?? collect() as $d)
-                                        <option value="{{ $d->id }}">{{ $d->nome }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                        @endif
-
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Prazo <span class="text-danger">*</span></label>
-                            <input type="date" name="prazo_at" class="form-control" value="{{ old('prazo_at') }}" min="{{ date('Y-m-d') }}" required>
-                            @error('prazo_at')
-                                <div class="text-danger small">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Título da Tarefa <span class="text-danger">*</span></label>
-                            <input type="text" name="titulo" class="form-control" placeholder="Ex: Analisar solicitação..." required>
-                            @error('titulo')
-                                <div class="text-danger small">{{ $message }}</div>
-                            @enderror
-                        </div>
-                        
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Descrição Detalhada</label>
-                            <textarea name="descricao" class="form-control" rows="4" placeholder="Descreva o que precisa ser feito..."></textarea>
-                            @error('descricao')
-                                <div class="text-danger small">{{ $message }}</div>
-                            @enderror
-                        </div>
-                        <div class="col-12 text-end pt-2 border-top">
-                            <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Cancelar</button>
-                            <button type="submit" class="btn btn-primary" id="btnSubmitTarefa">
-                                <span class="spinner-border spinner-border-sm d-none me-1" role="status" aria-hidden="true"></span>
-                                <i class="fas fa-plus me-1"></i> Designar Tarefa
+                        <div id="modalOcrContentContainer" class="p-3 bg-light rounded border border-secondary border-opacity-10 position-relative" style="max-height: 50vh; overflow-y: auto;">
+                            <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2" id="btnCopiarOcr" title="Copiar Texto">
+                                <i class="far fa-copy"></i> Copiar
                             </button>
+                            <pre id="modalOcrAnexoConteudo" style="white-space: pre-wrap; font-family: inherit; font-size: 0.9rem; margin-top: 1.5rem;" class="text-dark mb-0"></pre>
                         </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Saída Gabinete -->
-    <div class="modal fade" id="modalSaidaGabinete" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Saída para outro Gabinete</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    @if ($doc->saida_gabinete_data)
-                        <div class="alert alert-info">
-                            Documento saiu em {{ optional($doc->saida_gabinete_data)->format('d/m/Y') }} para {{ $doc->encaminhamento_orgao ?? '—' }}.
-                        </div>
-                    @else
-                        <form id="form-saida-gabinete" action="{{ route('documentos-entradas.saida-gabinete', $doc) }}" method="POST" class="row g-3">
-                            @csrf
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Gabinete de destino</label>
-                                <select name="destino_gabinete_id" class="form-select" required>
-                                    <option value="">Selecione...</option>
-                                    @foreach ($gabinetes as $gab)
-                                        @php($isSame = optional($doc->departamento)->gabinete_id === $gab->id)
-                                        <option value="{{ $gab->id }}" {{ $isSame ? 'disabled' : '' }}>
-                                            {{ $gab->nome }} @if ($gab->sigla) ({{ $gab->sigla }}) @endif 
-                                            @if ($isSame) — atual @endif
-                                        </option>
-                                    @endforeach
-                                </select>
-                                @error('destino_gabinete_id')
-                                    <div class="text-danger small">{{ $message }}</div>
-                                @enderror
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Data da saída</label>
-                                <input type="date" name="saida_gabinete_data" class="form-control" value="{{ old('saida_gabinete_data', now()->format('Y-m-d')) }}" required>
-                                @error('saida_gabinete_data')
-                                    <div class="text-danger small">{{ $message }}</div>
-                                @enderror
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Ofício Nº</label>
-                                <input type="text" name="encaminhamento_oficio_numero" class="form-control" value="{{ old('encaminhamento_oficio_numero') }}">
-                                @error('encaminhamento_oficio_numero')
-                                    <div class="text-danger small">{{ $message }}</div>
-                                @enderror
-                            </div>
-                            <div class="col-12">
-                                <div class="alert alert-warning small mb-3">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> Após dar saída, encaminhamentos internos serão bloqueados.
-                                </div>
-                                <button type="button" id="btnSaidaGabinete" class="btn btn-primary"><i class="fas fa-share-square me-1"></i> Dar Saída</button>
-                            </div>
-                        </form>
-                    @endif
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Confirmation Modals -->
-    <div class="modal fade" id="confirmVistoDepAprovarModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Confirmar visto do departamento</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-0">Deseja realmente aprovar o visto para o documento <strong>{{ $doc->numero_sequencial }}/{{ $doc->ano_referencia }}</strong>?</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-success" data-action="confirm-visto-dep">Confirmar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="confirmVistoGabAprovarModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Confirmar visto do gabinete</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-0">Deseja realmente aprovar o visto de gabinete para o documento <strong>{{ $doc->numero_sequencial }}/{{ $doc->ano_referencia }}</strong>?</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-success" data-action="confirm-visto-gab">Confirmar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="confirmReceberEncaminhamentoModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Confirmar recebimento</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-2"><strong>Origem:</strong> <span data-field="rec-origem"></span></div>
-                    <div class="mb-2"><strong>Destino:</strong> <span data-field="rec-destino"></span></div>
-                    <div class="mb-2"><strong>Encaminhado em:</strong> <span data-field="rec-data"></span></div>
-                    <div class="mt-3 text-muted small">Ao confirmar, o documento será marcado como recebido.</div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" data-action="confirm-receber">Confirmar recebimento</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="confirmEncaminharModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Confirmar encaminhamento</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-2"><strong>Para:</strong> <span data-field="destino"></span></div>
-                    <div class="mb-2"><strong>Observação:</strong> <span data-field="observacao"></span></div>
-                    <div class="mt-3 text-muted small">Ao confirmar, o documento será encaminhado para o destino selecionado.</div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" data-action="confirm">Confirmar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="confirmSaidaGabineteModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Confirmar saída</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-2"><strong>Destino:</strong> <span data-field="destino_gabinete"></span></div>
-                    <div class="mb-2"><strong>Data:</strong> <span data-field="data_saida"></span></div>
-                    <div class="mb-2"><strong>Ofício:</strong> <span data-field="oficio_numero"></span></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" data-action="confirm-saida">Confirmar saída</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modalArquivarDocumento" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form action="{{ route('documentos-entradas.arquivar', $doc->id) }}" method="POST">
-                    @csrf
-                    <div class="modal-header">
-                        <h5 class="modal-title">Arquivar Documento</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="modal-body">
-                        <p>Selecione a pasta onde deseja arquivar este documento.</p>
-                        <div class="mb-3">
-                            <label class="form-label">Pasta</label>
-                            <select name="pasta_id" class="form-select" required>
-                                <option value="">Selecione uma pasta...</option>
-                                @foreach($pastas as $pasta)
-                                    <option value="{{ $pasta->id }}">
-                                        @if($pasta->departamento)
-                                            [{{ $pasta->departamento->gabinete->sigla ?? '?' }}/{{ $pasta->departamento->sigla ?? '?' }}] 
-                                        @endif
-                                        {{ $pasta->nome }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <p class="text-muted small">
-                            <i class="fas fa-info-circle"></i> O documento será movido para a pasta selecionada e ficará disponível apenas na busca do arquivo.
-                        </p>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-primary">Arquivar</button>
-                    </div>
-                </form>
+                </div>
+                <div class="modal-footer border-top-0 pt-0">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+                </div>
             </div>
         </div>
     </div>
@@ -998,9 +854,14 @@
             const modalEl = document.getElementById('confirmEncaminharModal');
             if (form && btn && modalEl) {
                 btn.addEventListener('click', function() {
-                    const destinoSel = form.querySelector('select[name="destino_departamento_id"]');
-                    const destinoText = destinoSel && destinoSel.value ? destinoSel.options[destinoSel.selectedIndex].text : '—';
-                    const observacao = form.querySelector('input[name="observacao"]').value || '—';
+                    // Lê o combobox pesquisável: input hidden (id) + campo de texto (nome legível).
+                    const destinoHidden = form.querySelector('input[name="destino_departamento_id"]');
+                    const destinoLabel = form.querySelector('.dep-combobox-input');
+                    const destinoText = destinoHidden && destinoHidden.value
+                        ? (destinoLabel && destinoLabel.value ? destinoLabel.value : destinoHidden.value)
+                        : '—';
+                    const obsField = form.querySelector('[name="observacao"]');
+                    const observacao = (obsField && obsField.value) ? obsField.value : '—';
                     modalEl.querySelector('[data-field="destino"]').textContent = destinoText;
                     modalEl.querySelector('[data-field="observacao"]').textContent = observacao;
                     const modal = new bootstrap.Modal(modalEl);
@@ -1113,6 +974,131 @@
                     }
                 });
             }
+            // Modal Detalhes da Tarefa (clique no título)
+            document.addEventListener('click', function(e) {
+                const link = e.target.closest('.btn-ver-tarefa-show');
+                if (!link) return;
+                e.preventDefault();
+
+                const d = link.dataset;
+                document.getElementById('modalShowTarefaTitulo').textContent = d.titulo;
+
+                // Description
+                const descEl = document.getElementById('modalShowTarefaDescricao');
+                descEl.textContent = d.descricao || 'Sem descrição detalhada.';
+                if (!d.descricao) descEl.classList.add('text-muted', 'fst-italic');
+                else descEl.classList.remove('text-muted', 'fst-italic');
+
+                // Status badge
+                const statusEl = document.getElementById('modalShowTarefaStatus');
+                const statusMap = {
+                    pendente: { bg: 'bg-warning', label: 'Pendente' },
+                    concluida: { bg: 'bg-success', label: 'Concluída' },
+                    concluido: { bg: 'bg-success', label: 'Concluído' },
+                    cancelada: { bg: 'bg-danger', label: 'Cancelada' },
+                };
+                const st = statusMap[d.status] || { bg: 'bg-secondary', label: d.status };
+                statusEl.className = 'badge rounded-pill ' + st.bg;
+                statusEl.textContent = st.label;
+
+                // Prazo
+                const prazoEl = document.getElementById('modalShowTarefaPrazo');
+                prazoEl.innerHTML = '<i class="far fa-calendar-alt me-1"></i> Prazo: ' + (d.prazo || '—');
+
+                // Solicitante
+                document.getElementById('modalShowTarefaSolicitante').textContent = d.solicitante;
+
+                // Destino
+                const destinoEl = document.getElementById('modalShowTarefaDestino');
+                const iconClass = d.destinoTipo === 'user' ? 'fa-user' : (d.destinoTipo === 'dep' ? 'fa-building' : 'fa-minus');
+                destinoEl.innerHTML = '<i class="fas ' + iconClass + ' text-secondary me-1"></i> ' + d.destino;
+
+                // Criado em
+                document.getElementById('modalShowTarefaCriado').textContent = d.criado;
+
+                // Open modal
+                const modal = new bootstrap.Modal(document.getElementById('modalDetalheTarefaShow'));
+                modal.show();
+            });
+
+            // Clicar em qualquer parte da linha da tarefa (exceto controlos de ação) também abre o modal
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('.btn-ver-tarefa-show')) return; // título já é tratado acima
+                if (e.target.closest('a, button, select, input, label, form, [data-bs-toggle]')) return; // ignora ações
+                const row = e.target.closest('tr.tarefa-row');
+                if (!row) return;
+                const link = row.querySelector('.btn-ver-tarefa-show');
+                if (link) link.click();
+            });
+
+            // Modal de visualizar OCR do Anexo
+            document.querySelectorAll('.btn-ver-ocr').forEach(function(button) {
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const anexoId = this.getAttribute('data-anexo-id');
+                    const nome = this.getAttribute('data-nome');
+                    
+                    document.getElementById('modalOcrAnexoNome').textContent = nome;
+                    
+                    const contentContainer = document.getElementById('modalOcrContentContainer');
+                    const preEl = document.getElementById('modalOcrAnexoConteudo');
+                    const loadingEl = document.getElementById('modalOcrLoading');
+                    const btnCopiar = document.getElementById('btnCopiarOcr');
+                    
+                    contentContainer.classList.add('d-none');
+                    loadingEl.classList.remove('d-none');
+                    
+                    const modal = new bootstrap.Modal(document.getElementById('modalVerOcrAnexo'));
+                    modal.show();
+                    
+                    fetch(`/documentos-entradas/{{ $doc->id }}/anexos/${anexoId}/ocr`)
+                        .then(response => response.json())
+                        .then(data => {
+                            loadingEl.classList.add('d-none');
+                            contentContainer.classList.remove('d-none');
+                            
+                            if (data.texto_extraido && data.texto_extraido.trim() !== '') {
+                                preEl.textContent = data.texto_extraido;
+                                btnCopiar.classList.remove('d-none');
+                            } else {
+                                preEl.innerHTML = '<span class="text-muted italic"><i class="fas fa-info-circle me-1"></i> Não foi possível extrair nenhum texto deste anexo ou o processo de OCR ainda está a decorrer.</span>';
+                                btnCopiar.classList.add('d-none');
+                            }
+                        })
+                        .catch(err => {
+                            loadingEl.classList.add('d-none');
+                            contentContainer.classList.remove('d-none');
+                            preEl.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Erro ao carregar o texto extraído.</span>';
+                            btnCopiar.classList.add('d-none');
+                        });
+                });
+            });
+
+            // Copiar texto OCR
+            const btnCopiar = document.getElementById('btnCopiarOcr');
+            if (btnCopiar) {
+                btnCopiar.addEventListener('click', function() {
+                    const text = document.getElementById('modalOcrAnexoConteudo').textContent;
+                    navigator.clipboard.writeText(text).then(() => {
+                        const originalHTML = this.innerHTML;
+                        this.innerHTML = '<i class="fas fa-check text-success"></i> Copiado!';
+                        this.classList.remove('btn-outline-secondary');
+                        this.classList.add('btn-outline-success');
+                        setTimeout(() => {
+                            this.innerHTML = originalHTML;
+                            this.classList.remove('btn-outline-success');
+                            this.classList.add('btn-outline-secondary');
+                        }, 2000);
+                    });
+                });
+            }
         });
     </script>
+
+    @if (config('app.feature_assistente') && auth()->user()?->can('assistente.usar'))
+        @include('assistente._documento', [
+            'ctxRoute' => route('assistente.entrada', $doc),
+            'ctxTitulo' => 'este documento de entrada',
+        ])
+    @endif
 @endsection

@@ -7,37 +7,36 @@
     $data->locale('pt_BR');
     $dataFormatada = $data->translatedFormat('d \de F \de Y');
     $anoOficio = $data->year;
-    $local = $empresa->endereco ?? 'Moçâmedes';
+    $local = $empresa->endereco ?? $dadosInstituicao->cidade;
     $viaturaInfo = trim(($viatura->marca ?? '') . ' ' . ($viatura->modelo ?? ''));
     $matricula = $viatura->placa ?? '';
     $tipoServico = $oficina->tipo_servico ?? '';
     $descricaoProblema = $oficina->descricao_problema ?? '';
     $servicosSolicitados = $oficina->servicos_solicitados ?? null;
     $quilometragem = $oficina->quilometragem_atual ?? null;
-    $insigniaLocal = public_path('images/insignia.png');
-    $insigniaSrc = file_exists($insigniaLocal)
-        ? $insigniaLocal
-        : 'https://upload.wikimedia.org/wikipedia/commons/1/11/Emblem_of_Angola.svg';
-    $rodapeCandidates = [
-        'rodape_estacionario.png',
-        'rodape_estacionario.jpg',
-        'rodape_estacionario.jpeg',
-        'Estacionariodoc.jpg',
-        'Estacionariodoc.jpeg',
-        'estacionario.png',
-        'estacionario.jpg',
-        'estacionario.jpeg',
-    ];
-    $rodapePath = null;
-    foreach ($rodapeCandidates as $candidate) {
-        $p = public_path('images/' . $candidate);
-        if (file_exists($p)) {
-            $rodapePath = $p;
-            break;
+    $insigniaSrc = $dadosInstituicao->logo_absolute_path;
+    $rodapePath = $dadosInstituicao->rodape_absolute_path;
+    if (!$rodapePath) {
+        $rodapeCandidates = [
+            'rodape_estacionario.png',
+            'rodape_estacionario.jpg',
+            'rodape_estacionario.jpeg',
+            'Estacionariodoc.jpg',
+            'Estacionariodoc.jpeg',
+            'estacionario.png',
+            'estacionario.jpg',
+            'estacionario.jpeg',
+        ];
+        foreach ($rodapeCandidates as $candidate) {
+            $p = public_path('images/' . $candidate);
+            if (file_exists($p)) {
+                $rodapePath = $p;
+                break;
+            }
         }
     }
     $rodapeBase64 = null;
-    if ($rodapePath) {
+    if ($rodapePath && file_exists($rodapePath)) {
         $ext = strtolower(pathinfo($rodapePath, PATHINFO_EXTENSION));
         $mime = $ext === 'svg' ? 'image/svg+xml' : ($ext === 'jpg' || $ext === 'jpeg' ? 'image/jpeg' : 'image/' . $ext);
         $rodapeBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($rodapePath));
@@ -47,7 +46,17 @@
     $usuario = $requisicao->usuario;
     $departamento = $usuario ? $usuario->departamento : null;
     $departamentoNome = $departamento ? $departamento->nome : 'Departamento de Logística e Património';
-    $chefeNome = ($departamento && $departamento->chefe) ? $departamento->chefe->name : 'GILBERTO SIVELA DA SILVA';
+    $chefeNome = $departamento && $departamento->chefe ? $departamento->chefe->name : 'GILBERTO SIVELA DA SILVA';
+
+    $chefeGabineteNome = 'Carlos Nelson Duarte da Silva';
+    if (
+        $usuario &&
+        $usuario->departamento &&
+        $usuario->departamento->gabinete &&
+        $usuario->departamento->gabinete->responsavel
+    ) {
+        $chefeGabineteNome = $usuario->departamento->gabinete->responsavel->name;
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="pt">
@@ -222,16 +231,20 @@
         </div>
     @endif
     <div class="header">
-        <img class="insignia" src="{{ $insigniaSrc }}" alt="Insígnia da República de Angola">
-        <div class="title">REPÚBLICA DE ANGOLA</div>
-        <div class="gov">Governo Provincial do Namibe</div>
-        <div class="title">SECRETARIA GERAL</div>
-        <div class="title">DLP</div>
+        <img class="insignia" src="{{ $insigniaSrc }}" alt="Insígnia">
+        <div class="title">{{ $dadosInstituicao->cabecalho_linha1 }}</div>
+        <div class="gov">{{ $dadosInstituicao->cabecalho_linha2 }}</div>
+        @if($dadosInstituicao->cabecalho_linha3)
+            <div class="title">{{ $dadosInstituicao->cabecalho_linha3 }}</div>
+        @else
+            <div class="title">SECRETARIA GERAL</div>
+            <div class="title">DLP</div>
+        @endif
     </div>
     <div class="visto">
         <div class="titulo">VISTO</div>
         <div class="cargo">O SECRETÁRIO GERAL</div>
-        <div class="nome">Carlos Nelson Duarte da Silva</div>
+        <div class="nome">{{ $chefeGabineteNome }}</div>
     </div>
     <div class="meta">
         <div class="to">
@@ -271,17 +284,24 @@
 
     <div class="footer">
         <div>
-            <strong>{{ mb_strtoupper($departamentoNome, 'UTF-8') }} – SECRETARIA DO GOVERNO PROVINCIAL DO NAMIBE</strong>,
-            em Moçâmedes, aos {{ $dataFormatada }}.
+            <strong>{{ mb_strtoupper($departamentoNome, 'UTF-8') }} – {{ mb_strtoupper($dadosInstituicao->cabecalho_linha2, 'UTF-8') }}</strong>,
+            em {{ $dadosInstituicao->cidade }}, aos {{ $dataFormatada }}.
         </div>
     </div>
 
     <div class="signature">
-
         <div class="role">Chefe do Departamento</div>
-
-        <div class="muted"> <br> </div>
-        <div class="role"> {{ mb_strtoupper($chefeNome, 'UTF-8') }}</div>
+        @if ($requisicao->assinado_em)
+              <div style="margin-top: 10px; color: #198754;">
+                  <strong>[ASSINADO DIGITALMENTE]</strong><br>
+                  <span style="text-transform: uppercase;">{{ $requisicao->assinadoPor->name ?? $chefeNome }}</span><br>
+                  <span style="font-size: 8pt;">Em: {{ $requisicao->assinado_em->format('d/m/Y H:i') }}</span><br>
+                  <span style="font-size: 8pt; font-family: monospace;">Hash: {{ substr($requisicao->assinatura_hash, 0, 10) }}...</span>
+              </div>
+         @else
+            <div class="muted"> <br> </div>
+            <div class="role"> {{ mb_strtoupper($chefeNome, 'UTF-8') }}</div>
+        @endif
     </div>
 </body>
 

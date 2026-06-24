@@ -3,27 +3,29 @@
 
 <head>
     @php
-        $insigniaLocal = public_path('images/insignia.png');
-        $insigniaSrc = file_exists($insigniaLocal)
-            ? $insigniaLocal
-            : 'https://upload.wikimedia.org/wikipedia/commons/1/11/Emblem_of_Angola.svg';
-
+        $insigniaSrc = $dadosInstituicao->logo_absolute_path;
         $footerImg = '';
-        $rodapeCandidates = [
-            public_path('images/rodape_estacionario.png'),
-            public_path('images/rodape_estacionario.jpg'),
-            public_path('images/Estacionariodoc.jpg'),
-            public_path('images/Estacionariodoc.png'),
-            public_path('images/estacionario.png'),
-            public_path('images/estacionario.jpg'),
-        ];
-        foreach ($rodapeCandidates as $candidate) {
-            if (file_exists($candidate)) {
-                $mime = mime_content_type($candidate);
-                if (in_array($mime, ['image/png', 'image/jpeg', 'image/jpg'])) {
-                    $footerImg = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($candidate));
+        $rodapePath = $dadosInstituicao->rodape_absolute_path;
+        if (!$rodapePath) {
+            $rodapeCandidates = [
+                public_path('images/rodape_estacionario.png'),
+                public_path('images/rodape_estacionario.jpg'),
+                public_path('images/Estacionariodoc.jpg'),
+                public_path('images/Estacionariodoc.png'),
+                public_path('images/estacionario.png'),
+                public_path('images/estacionario.jpg'),
+            ];
+            foreach ($rodapeCandidates as $candidate) {
+                if (file_exists($candidate)) {
+                    $rodapePath = $candidate;
                     break;
                 }
+            }
+        }
+        if ($rodapePath && file_exists($rodapePath)) {
+            $mime = mime_content_type($rodapePath);
+            if (in_array($mime, ['image/png', 'image/jpeg', 'image/jpg'])) {
+                $footerImg = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($rodapePath));
             }
         }
 
@@ -157,10 +159,14 @@
 <body>
     <div class="header">
         <img class="insignia" src="{{ $insigniaSrc }}" alt="Insígnia">
-        <div class="republica">REPÚBLICA DE ANGOLA</div>
+        <div class="republica">{{ $dadosInstituicao->cabecalho_linha1 }}</div>
         <div class="dashed-line">------.........------</div>
-        <div class="governo">Governo Provincial do Namibe</div>
-        <div class="secretaria">SECRETARIA GERAL</div>
+        <div class="governo">{{ $dadosInstituicao->cabecalho_linha2 }}</div>
+        @if($dadosInstituicao->cabecalho_linha3)
+            <div class="secretaria">{{ $dadosInstituicao->cabecalho_linha3 }}</div>
+        @else
+            <div class="secretaria">SECRETARIA GERAL</div>
+        @endif
     </div>
 
     <div class="doc-title">CREDENCIAL</div>
@@ -184,7 +190,7 @@
     </div>
 
     <div class="date-location">
-        <strong>SECRETARIA GERAL DO GOVERNO PROVINCIAL DO NAMIBE</strong>, em Moçâmedes aos
+        <strong>{{ mb_strtoupper($dadosInstituicao->cabecalho_linha3 ?? 'SECRETARIA GERAL', 'UTF-8') }} DO {{ mb_strtoupper($dadosInstituicao->cabecalho_linha2, 'UTF-8') }}</strong>, em {{ $dadosInstituicao->cidade }} aos
         {{ now()->translatedFormat('d \d\e F \d\e Y') }}.
     </div>
 

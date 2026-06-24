@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware(['auth'])->group(function () {
-    
+
     Route::pattern('requisicao', '[0-9]+');
 
     // --- Rotas Gerais de Requisições ---
@@ -27,20 +27,20 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('requisicoes', RequisicaoController::class)->parameters([
         'requisicoes' => 'requisicao',
     ]);
-    
+
     // Ações de Aprovação/Rejeição/Visto
     Route::patch('requisicoes/{requisicao}/aprovar', [RequisicaoController::class, 'aprovar'])->name('requisicoes.aprovar');
     Route::post('requisicoes/{requisicao}/rejeitar', [RequisicaoController::class, 'rejeitar'])->name('requisicoes.rejeitar');
+    Route::post('requisicoes/{requisicao}/sign', [RequisicaoController::class, 'sign'])->name('requisicoes.sign');
     Route::patch('requisicoes/{requisicao}/visto/aprovar', [RequisicaoController::class, 'vistoAprovar'])->name('requisicoes.visto.aprovar');
     Route::patch('requisicoes/{requisicao}/visto/rejeitar', [RequisicaoController::class, 'vistoRejeitar'])->name('requisicoes.visto.rejeitar');
-
 
     // --- Requisições de Produtos ---
     Route::prefix('requisicoes/produtos')->name('requisicoes.produtos.')->group(function () {
         Route::get('/', [RequisicaoProdutoController::class, 'index'])->name('index');
         Route::get('/novo', [RequisicaoProdutoController::class, 'create'])->name('create.novo'); // Mantendo alias antigo
         Route::post('/novo', [RequisicaoProdutoController::class, 'store'])->name('store.novo');  // Mantendo alias antigo
-        
+
         Route::get('/{requisicao}/pdf', [RequisicaoProdutoController::class, 'pdf'])->name('pdf');
         Route::get('/{requisicao}/print', [RequisicaoProdutoController::class, 'print'])->name('print');
         Route::get('/{requisicao}/edit', [RequisicaoProdutoController::class, 'edit'])->name('edit');
@@ -52,14 +52,14 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/', [RequisicaoOficinaController::class, 'index'])->name('index');
         Route::get('/novo', [RequisicaoOficinaController::class, 'create'])->name('create.novo');
         Route::post('/novo', [RequisicaoOficinaController::class, 'store'])->name('store.novo');
-        
+
         // Rotas com ID opcional (legado/auxiliar) e com ID obrigatório
         Route::get('/{requisicao?}/pdf', [RequisicaoOficinaController::class, 'pdf'])->name('pdf');
         Route::get('/{requisicao?}/print', [RequisicaoOficinaController::class, 'print'])->name('print');
-        
+
         Route::get('/{requisicao}/edit', [RequisicaoOficinaController::class, 'edit'])->name('edit');
         Route::put('/{requisicao}', [RequisicaoOficinaController::class, 'update'])->name('update');
-        
+
         // Alias específicos para evitar conflitos de parâmetros opcionais
         Route::get('/pdf', [RequisicaoOficinaController::class, 'pdf'])->name('pdf.noid');
         Route::get('/print', [RequisicaoOficinaController::class, 'print'])->name('print.noid');
@@ -73,7 +73,7 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('/{requisicao?}/pdf', [RequisicaoServicoController::class, 'pdf'])->name('pdf');
         Route::get('/{requisicao?}/print', [RequisicaoServicoController::class, 'print'])->name('print');
-        
+
         Route::get('/{requisicao}/edit', [RequisicaoServicoController::class, 'edit'])->name('edit');
         Route::put('/{requisicao}', [RequisicaoServicoController::class, 'update'])->name('update');
 
@@ -89,7 +89,7 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('/{requisicao?}/pdf', [RequisicaoPassagemController::class, 'pdf'])->name('pdf');
         Route::get('/{requisicao?}/print', [RequisicaoPassagemController::class, 'print'])->name('print');
-        
+
         Route::get('/{requisicao}/edit', [RequisicaoPassagemController::class, 'edit'])->name('edit');
         Route::put('/{requisicao}', [RequisicaoPassagemController::class, 'update'])->name('update');
 

@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   mysql:
     image: mysql:8.0
@@ -16,6 +14,14 @@ services:
       - mysql-data:/var/lib/mysql
     command: ["--default-authentication-plugin=mysql_native_password"]
 
+  redis:
+    image: redis:7-alpine
+    container_name: gpn_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
   php:
     build:
       context: ./docker/php
@@ -26,6 +32,33 @@ services:
       - ./:/var/www/html
     depends_on:
       - mysql
+      - redis
+
+  queue:
+    build:
+      context: ./docker/php
+    container_name: gpn_queue
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: ["php", "artisan", "queue:work", "--tries=3", "--sleep=3", "--max-time=3600"]
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - mysql
+      - redis
+
+  scheduler:
+    build:
+      context: ./docker/php
+    container_name: gpn_scheduler
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: ["php", "artisan", "schedule:work"]
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - mysql
+      - redis
 
   nginx:
     image: nginx:1.25-alpine
@@ -41,3 +74,4 @@ services:
 
 volumes:
   mysql-data:
+  redis-data:

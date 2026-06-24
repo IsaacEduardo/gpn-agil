@@ -55,7 +55,7 @@ class RequisicaoAuthorizationTest extends TestCase
             ->assertRedirect(route('requisicoes.show', $req->id));
 
         $req->refresh();
-        $this->assertEquals('aprovada', $req->status);
+        $this->assertEquals(\App\Enums\StatusRequisicao::APROVADO, $req->status);
     }
 
     public function test_usuario_com_permissao_pode_aprovar(): void

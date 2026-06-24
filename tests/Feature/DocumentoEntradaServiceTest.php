@@ -17,14 +17,14 @@ class DocumentoEntradaServiceTest extends TestCase
     // Use RefreshDatabase to reset DB after each test
     // WARNING: This clears the database. If you want to run against a real DB without clearing, remove this trait.
     // However, for reliable testing, it is recommended to use an in-memory SQLite DB or a separate test DB.
-    use RefreshDatabase; 
+    use RefreshDatabase;
 
     protected $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new DocumentoEntradaService();
+        $this->service = app(DocumentoEntradaService::class);
         Storage::fake('public'); // Mock storage
     }
 
@@ -45,7 +45,7 @@ class DocumentoEntradaServiceTest extends TestCase
             'assunto' => 'Assunto de Teste',
             'observacoes' => 'Observações de teste',
             'departamento_id' => $departamento->id,
-            'tags' => 'urgente, teste'
+            'tags' => 'urgente, teste',
         ];
 
         $file = UploadedFile::fake()->create('documento.pdf', 100);
@@ -58,7 +58,7 @@ class DocumentoEntradaServiceTest extends TestCase
             'id' => $doc->id,
             'assunto' => 'Assunto de Teste',
             'numero_sequencial' => 1,
-            'status' => 'registrado'
+            'status' => 'registrado',
         ]);
 
         $this->assertNotNull($doc->arquivo_caminho);
@@ -70,7 +70,7 @@ class DocumentoEntradaServiceTest extends TestCase
     {
         // Arrange
         $user = User::factory()->create();
-        $gabinete = Gabinete::create(['nome' => 'Gab', 'sigla' => 'GAB']);
+        $gabinete = Gabinete::create(['nome' => 'Gab', 'sigla' => 'GAB', 'responsavel_id' => $user->id]);
         $dep1 = Departamento::create(['nome' => 'Dep 1', 'gabinete_id' => $gabinete->id]);
         $dep2 = Departamento::create(['nome' => 'Dep 2', 'gabinete_id' => $gabinete->id]);
 
@@ -81,7 +81,7 @@ class DocumentoEntradaServiceTest extends TestCase
             'assunto' => 'Documento Alpha',
             'departamento_id' => $dep1->id,
             'status' => 'registrado',
-            'user_id' => $user->id
+            'user_id' => $user->id,
         ]);
 
         DocumentoEntrada::create([
@@ -91,13 +91,13 @@ class DocumentoEntradaServiceTest extends TestCase
             'assunto' => 'Documento Beta',
             'departamento_id' => $dep2->id,
             'status' => 'registrado',
-            'user_id' => $user->id
+            'user_id' => $user->id,
         ]);
 
         // Act: Filter by subject
-        $request = new \Illuminate\Http\Request();
+        $request = new \Illuminate\Http\Request;
         $request->merge(['search' => 'Alpha']);
-        
+
         $results = $this->service->getFilteredDocuments($request, $user);
 
         // Assert
@@ -105,9 +105,9 @@ class DocumentoEntradaServiceTest extends TestCase
         $this->assertEquals('Documento Alpha', $results->first()->assunto);
 
         // Act: Filter by Department
-        $request2 = new \Illuminate\Http\Request();
+        $request2 = new \Illuminate\Http\Request;
         $request2->merge(['departamento_id' => $dep2->id]);
-        
+
         $results2 = $this->service->getFilteredDocuments($request2, $user);
 
         // Assert

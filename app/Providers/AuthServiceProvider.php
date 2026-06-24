@@ -15,6 +15,9 @@ class AuthServiceProvider extends ServiceProvider
         \App\Models\Requisicao::class => \App\Policies\RequisicaoPolicy::class,
         \App\Models\ReservaEspaco::class => \App\Policies\ReservaEspacoPolicy::class,
         \App\Models\DocumentoEntrada::class => \App\Policies\DocumentoEntradaPolicy::class,
+        \App\Models\Viatura::class => \App\Policies\ViaturaPolicy::class,
+        \App\Models\TermoEntrega::class => \App\Policies\TermoEntregaPolicy::class,
+        \App\Models\DocumentoInterno::class => \App\Policies\DocumentoInternoPolicy::class,
     ];
 
     /**

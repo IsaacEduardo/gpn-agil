@@ -41,6 +41,11 @@
 @section('scripts')
 <script>
 $(function(){
+    // Garante o envio do token CSRF em todas as requisições AJAX desta página
+    $.ajaxSetup({
+        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') }
+    });
+
     // Clique em item: marca como lida e segue link
     $(document).on('click', '.notification-item', async function (e) {
         const id = $(this).data('id');

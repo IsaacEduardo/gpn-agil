@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PLACEHOLDER do Brasão da República de Angola.
+  Emblema simplificado e respeitoso, NÃO oficial — substituir pelo ficheiro
+  vetorial oficial (mesmo nome: brasao-angola.svg) quando disponível.
+-->
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"
+     role="img" aria-label="Brasão da República de Angola (placeholder)">
+  <defs>
+    <clipPath id="disc"><circle cx="60" cy="60" r="54"/></clipPath>
+  </defs>
+
+  <!-- Anel exterior -->
+  <circle cx="60" cy="60" r="58" fill="#333333"/>
+  <circle cx="60" cy="60" r="54" fill="#F5F5F5"/>
+
+  <!-- Faixas tricolor institucionais -->
+  <g clip-path="url(#disc)">
+    <rect x="6" y="6"  width="108" height="36" fill="#000000"/>
+    <rect x="6" y="42" width="108" height="36" fill="#CE1126"/>
+    <rect x="6" y="78" width="108" height="36" fill="#F9D616"/>
+  </g>
+
+  <!-- Estrela central dourada -->
+  <path fill="#F9D616" stroke="#8a6d00" stroke-width="1.2"
+        d="M60 34 l6.8 14.6 16 .9 -12.4 10.2 4.2 15.5 -14.6 -8.7 -14.6 8.7 4.2 -15.5 -12.4 -10.2 16 -.9 Z"/>
+
+  <!-- Roda dentada estilizada (base industrial) -->
+  <circle cx="60" cy="60" r="54" fill="none" stroke="#A50E1F" stroke-width="3" stroke-dasharray="4 5"/>
+</svg>

@@ -1,0 +1,104 @@
+// Custom Styles for Ondaka UI/UX redesign
+
+// Focus Accessibility Outline (WCAG AA compliant)
+a:focus-visible,
+button:focus-visible,
+.form-control:focus-visible,
+.form-select:focus-visible,
+.btn:focus-visible,
+.row-checkbox:focus-visible {
+    outline: 3px solid rgba(206, 17, 38, 0.45) !important; // Foco vermelho institucional
+    outline-offset: 2px !important;
+    box-shadow: none !important;
+}
+
+// Micro-interações e transições premium
+.hover-lift {
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    &:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08) !important;
+    }
+}
+
+// Barra de rolagem (scrollbar) moderna e discreta
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 99px;
+    &:hover {
+        background: rgba(0, 0, 0, 0.25);
+    }
+}
+
+// Estilização do painel lateral de pré-visualização rápida (Side Drawer)
+.preview-drawer-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(26, 26, 26, 0.45); // Fundo escuro semitransparente
+    backdrop-filter: blur(4px);
+    z-index: 1040;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    &.show {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
+.preview-drawer {
+    position: fixed;
+    top: 0;
+    right: -480px;
+    width: 480px;
+    height: 100vh;
+    background: #ffffff;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
+    z-index: 1045;
+    transition: right 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    &.open {
+        right: 0;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .preview-drawer {
+        width: 100vw;
+        right: -100vw;
+    }
+}
+
+// Linha da tabela selecionada via navegação por teclado
+tr.keyboard-selected {
+    outline: 2px solid #CE1126 !important;
+    outline-offset: -2px;
+    background-color: rgba(206, 17, 38, 0.05) !important;
+}
+
+// NOTA: os estilos do menu lateral (incl. .nav-group-label) foram migrados para
+// resources/sass/_sidebar.scss, a fonte única dos design tokens do sidebar.
+
+// Transições refinadas para itens de dropdown e botões
+.dropdown-item {
+    transition: background-color 0.15s ease, color 0.15s ease;
+    &:hover {
+        background-color: #F5F5F5;
+        color: #A50E1F;
+    }
+    &.text-danger:hover {
+        background-color: #FDF3F3;
+        color: #D9534F !important;
+    }
+}

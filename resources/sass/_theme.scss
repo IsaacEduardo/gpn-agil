@@ -1,0 +1,378 @@
+// =============================================================================
+//  TEMA INSTITUCIONAL — Portal do Munícipe (Ministério das Finanças / Angola)
+//  -----------------------------------------------------------------------------
+//  · Componentes do portal (.gov-*): header, navegação horizontal, footer, hero.
+//  · Componentes da especificação (.btn--*, .form-*, .gov-table).
+//  · Overrides discretos às classes BASE do Bootstrap, para que as vistas
+//    existentes (.btn, .card, .table, .alert, .badge, .modal, .form-control)
+//    herdem a identidade institucional sem reescrita vista a vista.
+//
+//  Importado em app.scss DEPOIS do Bootstrap (usa $primary, $gray-*, etc.).
+// =============================================================================
+
+// ---- Aliases legíveis sobre os tokens do Bootstrap ----
+$portal-red:        $primary;     // #CE1126 (vermelho institucional)
+$portal-red-hover:  $link-hover-color; // #A50E1F
+$text-primary:        $gray-800;    // #333
+$text-muted:          $gray-500;    // #777
+$placeholder:         $gray-400;    // #AAA
+$border-default:      $gray-300;    // #CCC
+$border-light:        $gray-200;    // #EEE
+$bg-body:             $body-bg;     // #F5F5F5
+$bg-card:             #FFFFFF;
+$portal-maxw:        1200px;
+
+// ===========================================================================
+//  BASE / TIPOGRAFIA INSTITUCIONAL
+// ===========================================================================
+body {
+    background: $bg-body;
+    color: $text-primary;
+    font-size: .875rem;             // 14px
+    line-height: 1.5;
+}
+
+h1, .h1 { font-size: 1.5rem;  font-weight: 300; color: $text-primary; }   // 24px
+h2, .h2 { font-size: 1.125rem; font-weight: 600; color: $text-primary; }  // 18px
+h3, .h3 { font-size: 1rem;    font-weight: 600; color: $text-primary; }   // 16px
+
+label, .form-label { font-weight: 600; color: $text-primary; }
+small, .text-caption { font-size: .75rem; color: $text-muted; }
+
+// ===========================================================================
+//  LAYOUT DO PORTAL
+// ===========================================================================
+.gov-app { min-height: 100vh; display: flex; flex-direction: column; }
+
+.gov-main { flex: 1 0 auto; padding: 24px 0 48px; }
+
+.gov-container {
+    width: 100%;
+    max-width: $portal-maxw;
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+// ===========================================================================
+//  HEADER INSTITUCIONAL
+// ===========================================================================
+.gov-header {
+    background: #FFFFFF;
+    border-bottom: 1px solid #E5E5E5;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+// Faixa tricolor institucional (preto/vermelho/amarelo de Angola) — fio superior discreto
+.gov-header::before {
+    content: "";
+    display: block;
+    height: 3px;
+    background: linear-gradient(90deg,
+        $angola-black 0 33.33%,
+        $angola-red  33.33% 66.66%,
+        $angola-yellow 66.66% 100%);
+}
+
+.gov-header__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    max-width: $portal-maxw;
+    margin: 0 auto;
+    padding: 12px 24px;
+}
+
+.gov-brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    text-decoration: none;
+}
+
+.gov-brand__emblem { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+
+.gov-brand__text { display: flex; flex-direction: column; line-height: 1.2; }
+
+.gov-brand__republic {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: $text-muted;
+}
+
+.gov-brand__ministry {
+    font-size: 18px;
+    font-weight: 700;
+    color: $text-primary;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+// Área de utilizador / ações / pesquisa no topo direito
+.gov-header__actions { display: flex; align-items: center; gap: 12px; }
+
+.gov-search {
+    position: relative;
+    width: 280px;
+    .gov-search__input {
+        width: 100%;
+        padding: 8px 14px 8px 38px;
+        font-size: 14px;
+        color: $text-primary;
+        background: #FFFFFF;
+        border: 1px solid $border-default;
+        border-radius: 4px;
+        transition: border-color .2s, box-shadow .2s;
+        &:focus { outline: none; border-color: $portal-red; box-shadow: 0 0 0 3px rgba($portal-red, .15); }
+    }
+    .gov-search__icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: $text-muted; pointer-events: none; }
+}
+
+.gov-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: $text-primary;
+    text-decoration: none;
+    transition: background-color .2s;
+    &:hover { background: $gray-100; }
+}
+
+.gov-user__avatar {
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: $portal-red;
+    color: #FFFFFF; font-weight: 600; font-size: .9rem;
+    flex-shrink: 0;
+}
+
+.gov-user__name { font-size: 14px; font-weight: 600; line-height: 1.1; }
+.gov-user__role { font-size: 12px; color: $text-muted; }
+
+// ===========================================================================
+//  NAVEGAÇÃO HORIZONTAL
+// ===========================================================================
+.gov-nav { border-top: 1px solid $border-light; background: #FFFFFF; }
+
+.gov-nav__list {
+    display: flex;
+    flex-wrap: wrap;
+    list-style: none;
+    max-width: $portal-maxw;
+    margin: 0 auto;
+    padding: 0 12px;
+}
+
+.gov-nav__item { position: relative; }
+
+.gov-nav__link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 18px;
+    color: $text-primary;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    border-bottom: 3px solid transparent;
+    background: transparent;
+    transition: color .2s, border-color .2s, background-color .2s;
+    cursor: pointer;
+    white-space: nowrap;
+
+    i { font-size: .95rem; color: $text-muted; transition: color .2s; }
+    .gov-nav__caret { font-size: .7rem; opacity: .6; }
+}
+
+.gov-nav__link:hover,
+.gov-nav__link.gov-nav__link--active {
+    color: $portal-red;
+    border-bottom-color: $portal-red;
+    i { color: $portal-red; }
+}
+
+.gov-nav__link:focus-visible { outline: 2px solid rgba($portal-red, .55); outline-offset: -2px; }
+
+// Dropdown de navegação (Bootstrap dropdown reaproveitado)
+.gov-nav .dropdown-menu {
+    border: 1px solid $border-light;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .10);
+    padding: 6px;
+    margin-top: 0;
+    min-width: 230px;
+}
+.gov-nav .dropdown-item {
+    border-radius: 4px;
+    padding: 9px 12px;
+    font-size: 14px;
+    color: $text-primary;
+    &:hover, &:focus { background: $gray-100; color: $portal-red-hover; }
+    &.active, &:active { background: rgba($portal-red, .12); color: $portal-red-hover; }
+}
+
+// ===========================================================================
+//  BOTÕES (.btn--*) + override institucional do .btn do Bootstrap
+// ===========================================================================
+.btn {
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    font-weight: 600;
+}
+
+.btn,
+.btn--primary, .btn--secondary, .btn--danger, .btn--link, .btn--disabled {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn--primary {
+    background: $portal-red; color: #FFFFFF; border: 1px solid $portal-red;
+    &:hover, &:focus {
+        background: $portal-red-hover; border-color: $portal-red-hover; color: #FFFFFF;
+        transform: translateY(-1px); box-shadow: 0 4px 12px rgba($portal-red, .3);
+    }
+}
+.btn--secondary {
+    background: #EEEEEE; color: $text-primary; border: 1px solid #E0E0E0;
+    &:hover, &:focus { background: #E0E0E0; color: $text-primary; }
+}
+.btn--danger {
+    background: $danger; color: #FFFFFF; border: 1px solid $danger;
+    &:hover, &:focus { background: darken($danger, 7%); border-color: darken($danger, 7%); color: #FFFFFF; }
+}
+.btn--link {
+    background: transparent; color: $portal-red; border: none; padding-left: 0; padding-right: 0;
+    &:hover, &:focus { color: $portal-red-hover; text-decoration: underline; }
+}
+.btn--disabled,
+.btn--disabled:hover,
+.btn:disabled {
+    background: #EEEEEE; color: $placeholder; border-color: #EEEEEE;
+    cursor: not-allowed; transform: none; box-shadow: none;
+}
+
+// ===========================================================================
+//  FORMULÁRIOS (.form-* da spec) + harmonização do .form-control do Bootstrap
+// ===========================================================================
+.form-group { margin-bottom: 24px; }
+
+.form-input, .form-select, .form-textarea,
+.form-control, .form-select {
+    color: $text-primary;
+    background: #FFFFFF;
+    border: 1px solid $border-default;
+    border-radius: 4px;
+    transition: border-color .2s, box-shadow .2s;
+}
+.form-input, .form-textarea { width: 100%; padding: 12px 16px; font-size: 14px; }
+
+.form-input:focus, .form-select:focus, .form-textarea:focus,
+.form-control:focus, .form-select:focus {
+    outline: none;
+    border-color: $portal-red;
+    box-shadow: 0 0 0 3px rgba($portal-red, .15);
+}
+
+.form-input::placeholder, .form-control::placeholder {
+    color: $placeholder; text-transform: uppercase; font-size: 12px; letter-spacing: .5px;
+}
+
+.form-input--error, .is-invalid { border-color: $danger; background: #FFF5F5; }
+.form-input--success, .is-valid { border-color: $portal-red; }
+
+.form-error-message, .invalid-feedback { font-size: 12px; color: $danger; margin-top: 4px; }
+
+// ===========================================================================
+//  CARDS (harmoniza .card do Bootstrap + helpers da spec)
+// ===========================================================================
+.card { background: $bg-card; border: 1px solid $border-light; border-radius: 6px; }
+.card--hover { transition: transform .2s, box-shadow .2s; &:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0, 0, 0, .12); } }
+.card__title { font-size: 18px; font-weight: 600; color: $text-primary; margin-bottom: 12px; }
+.card__text  { font-size: 14px; color: $text-muted; line-height: 1.5; }
+
+// ===========================================================================
+//  TABELAS (.gov-table) + harmonização da .table do Bootstrap
+// ===========================================================================
+.gov-table {
+    width: 100%; border-collapse: collapse; background: #FFFFFF; border-radius: 6px; overflow: hidden;
+    thead th {
+        padding: 16px; font-size: 14px; font-weight: 600; color: $text-primary; text-align: left;
+        background: $bg-body; border-bottom: 2px solid #DDDDDD; text-transform: uppercase; letter-spacing: .5px;
+    }
+    tbody td { padding: 16px; font-size: 14px; color: $text-primary; border-bottom: 1px solid $border-light; }
+    tbody tr:hover { background: #FAFAFA; }
+    tbody tr:last-child td { border-bottom: none; }
+}
+.table > :not(caption) > * > * { color: $text-primary; }
+.table thead th { text-transform: uppercase; letter-spacing: .4px; font-size: .8rem; color: $text-muted; }
+
+// ===========================================================================
+//  HERO / DESTAQUES (uso pontual do amarelo institucional)
+// ===========================================================================
+.gov-hero {
+    background: linear-gradient(135deg, #333333 0%, #555555 100%);
+    color: #FFFFFF;
+    border-radius: 8px;
+    padding: 40px 32px;
+    position: relative;
+    overflow: hidden;
+    h1, h2, .h1, .h2 { color: #FFFFFF; }
+    .gov-hero__accent { color: $angola-yellow; }   // amarelo só como realce de texto
+}
+
+.tag-prioritario {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    background: rgba($angola-yellow, .18); color: #8a6d00;
+    border: 1px solid rgba($angola-yellow, .5);
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+}
+
+// Badge de urgência governamental (vermelho de Angola)
+.badge-urgente {
+    background: $angola-red; color: #FFFFFF;
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; letter-spacing: .3px;
+}
+
+// ===========================================================================
+//  RODAPÉ INSTITUCIONAL
+// ===========================================================================
+.gov-footer {
+    flex-shrink: 0;
+    background: #FFFFFF;
+    border-top: 1px solid $border-light;
+    color: $text-muted;
+    font-size: 13px;
+    padding: 24px 0;
+    .gov-footer__inner { max-width: $portal-maxw; margin: 0 auto; padding: 0 24px; text-align: center; }
+}
+
+// ===========================================================================
+//  RESPONSIVIDADE
+// ===========================================================================
+@media (max-width: 991.98px) {
+    .gov-search { display: none; }
+    .gov-nav__list { flex-wrap: wrap; }   // quebra em linhas (dropdowns não são recortados)
+    .gov-nav__link { padding: 12px 14px; }
+}
+
+@media (max-width: 575.98px) {
+    .gov-brand__emblem { width: 40px; height: 40px; }
+    .gov-brand__ministry { font-size: 15px; }
+    .gov-user__name, .gov-user__role { display: none; }
+    .gov-header__top { padding: 10px 16px; }
+    .gov-container { padding: 0 16px; }
+}

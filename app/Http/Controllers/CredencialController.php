@@ -6,6 +6,7 @@ use App\Models\TermoEntrega;
 use App\Models\Viatura;
 use App\Support\CatalogCache;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use PDF;
@@ -17,6 +18,10 @@ class CredencialController extends Controller
      */
     public function index(Request $request)
     {
+        if (! Auth::user()->can('credenciais.listar') && ! Auth::user()->isAdmin()) {
+            abort(403, 'Acesso não autorizado.');
+        }
+
         $query = TermoEntrega::where('tipo', 'credencial');
 
         if ($request->filled('beneficiario')) {
@@ -74,9 +79,9 @@ class CredencialController extends Controller
             $data = [
                 'termo' => $termoBase,
                 'viatura' => $viatura, // Passando viatura singular para a view
-                'viaturas' => collect([$viatura]) // Mantendo compatibilidade caso a view espere collection
+                'viaturas' => collect([$viatura]), // Mantendo compatibilidade caso a view espere collection
             ];
-            
+
             $pdf = PDF::loadView('termos.credencial', $data);
             $nomeArquivo = 'credencial_'.now()->format('Ymd_His').'.pdf';
             $caminho = 'termos/'.$nomeArquivo; // Mantendo no mesmo diretório de termos por simplicidade
@@ -106,6 +111,8 @@ class CredencialController extends Controller
     {
         $credencial = TermoEntrega::where('tipo', 'credencial')->findOrFail($id);
 
+        $this->authorize('view', $credencial);
+
         // Verificar se o arquivo existe
         if (! Storage::disk('public')->exists($credencial->caminho_arquivo)) {
             abort(404);
@@ -125,6 +132,7 @@ class CredencialController extends Controller
     public function destroy($id)
     {
         $credencial = TermoEntrega::where('tipo', 'credencial')->findOrFail($id);
+        $this->authorize('delete', $credencial);
 
         // Excluir o arquivo físico
         if (Storage::disk('public')->exists($credencial->caminho_arquivo)) {

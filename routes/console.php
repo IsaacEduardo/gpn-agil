@@ -1,10 +1,12 @@
 <?php
 
+use App\Jobs\CheckRetentionPolicy;
 use App\Models\Departamento;
 use App\Models\DocumentoEntrada;
 use App\Models\Gabinete;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -348,3 +350,9 @@ Artisan::command('docs:migrate-storage {--apply} {--from-disk=} {--to-disk=} {--
 
     return 0;
 })->purpose('Migrar arquivos entre discos (ex.: public → local) mantendo a hierarquia');
+
+// Agendamento da Política de Retenção
+Schedule::job(new CheckRetentionPolicy)->dailyAt('02:00');
+
+// Agendamento da Verificação de SLA de Documentos
+Schedule::command('docs:check-sla')->dailyAt('08:00');

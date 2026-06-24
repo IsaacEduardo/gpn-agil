@@ -130,6 +130,9 @@ return [
     | Habilite recursos opcionais do sistema.
     */
     'feature_visto_departamento' => env('FEATURE_VISTO_DEPARTAMENTO', false),
+    // Habilita o Assistente de IA (chatbot sobre documentos, com controlo de acesso por perfil).
+    'feature_assistente' => env('FEATURE_ASSISTENTE', false),
+    'deploy_key' => env('APP_DEPLOY_KEY'),
 
     /*
     |--------------------------------------------------------------------------
@@ -177,6 +180,7 @@ return [
         App\Providers\EventServiceProvider::class,
         App\Providers\RouteServiceProvider::class,
         App\Providers\BroadcastServiceProvider::class,
+        App\Chatbot\Providers\ChatbotServiceProvider::class,
     ],
 
     /*

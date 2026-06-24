@@ -10,14 +10,13 @@ class ReservaEspacoPolicy
     public function viewAny(User $user): bool
     {
         return ($user->role && ($user->role->name === 'admin' || $user->role->name === 'user'))
-            || $user->hasPermission('reservas.view_any')
-            || $user->hasPermission('reservas.view');
+            || $user->can('reservas.listar');
     }
 
     public function create(User $user): bool
     {
         return ($user->role && ($user->role->name === 'admin' || $user->role->name === 'user'))
-            || $user->hasPermission('reservas.create');
+            || $user->can('reservas.criar');
     }
 
     public function reviewDepartamentoAny(User $user): bool
@@ -31,7 +30,7 @@ class ReservaEspacoPolicy
         if ($user->role && ($user->role->name === 'admin')) {
             return true;
         }
-        if ($user->hasPermission('aprovar_reservas')) {
+        if ($user->can('reservas.aprovar')) {
             return true;
         }
 

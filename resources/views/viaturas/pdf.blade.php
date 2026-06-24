@@ -119,7 +119,7 @@
     </table>
 
     <div class="footer">
-        <p>© {{ date('Y') }} GPN-AGIL - Gestão de Viaturas</p>
+        <p>© {{ date('Y') }} Ondaka - Gestão de Viaturas</p>
     </div>
 </body>
 </html>

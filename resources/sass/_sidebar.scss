@@ -1,0 +1,446 @@
+// =============================================================================
+//  SIDEBAR — Menu lateral (Ondaka)
+//  -----------------------------------------------------------------------------
+//  Hierarquia de cor:
+//    · Preto / cinza  → base nobre (superfície + texto)
+//    · Vermelho ($primary) → estado ativo / atividade (destaque)
+//    · Amarelo ($warning)  → alerta discreto (apenas badges de pendência)
+//
+//  Importado em app.scss DEPOIS do Bootstrap (usa $primary, $warning, $white).
+//  As LARGURAS são partilhadas com a área de conteúdo (.main-wrapper) através
+//  das custom properties --sidebar-width / --sidebar-collapsed-width definidas
+//  em resources/views/layouts/app.blade.php (:root). Mantê-las lá garante que
+//  o menu e a margem do conteúdo nunca dessincronizam.
+// =============================================================================
+
+// ----------------------------------------------------------------------------
+//  DESIGN TOKENS (específicos do menu — sobrepõem/estendem o Bootstrap)
+// ----------------------------------------------------------------------------
+
+// Superfícies
+$sidebar-bg:             #171717;               // quase-preto (base nobre)
+$sidebar-bg-footer:      rgba(#000, .22);       // rodapé ligeiramente mais escuro
+$sidebar-border:         rgba($white, .06);     // borda direita subtil
+$sidebar-shadow:         4px 0 24px rgba(#000, .18);
+
+// Texto
+$sidebar-text:           rgba($white, .72);     // item primário
+$sidebar-text-hover:     $white;
+$sidebar-text-muted:     rgba($white, .58);     // subitens
+$sidebar-label:          rgba($white, .40);     // rótulos de grupo
+
+// Estados
+$sidebar-hover-bg:       rgba($white, .07);
+$sidebar-active-bg:      rgba($primary, .14);   // vermelho translúcido
+$sidebar-active-bar:     $primary;              // barra lateral de atividade
+$sidebar-divider:        rgba($white, .08);
+$sidebar-focus-ring:     rgba($white, .85);     // foco visível sobre fundo escuro
+
+// Tipografia / espaçamento dos itens
+$sidebar-item-font:      .9rem;
+$sidebar-item-weight:    500;
+$sidebar-item-line:      1.3;
+$sidebar-item-radius:    .55rem;
+$sidebar-item-pad-y:     .7rem;
+$sidebar-item-pad-x:     .85rem;
+$sidebar-item-gap:       2px;                   // espaço vertical entre itens
+$sidebar-icon-size:      1.05rem;
+$sidebar-icon-box:       1.5rem;                // largura reservada ao ícone
+$sidebar-icon-gap:       .75rem;
+
+// Alinhamento dos subitens (= pad-x + icon-box + icon-gap)
+$sidebar-subitem-indent: $sidebar-item-pad-x + $sidebar-icon-box + $sidebar-icon-gap;
+
+// Transições
+$sidebar-transition:     180ms cubic-bezier(.4, 0, .2, 1);
+
+// Badges (contadores)
+$sidebar-badge-bg:       rgba($white, .14);     // contador neutro
+$sidebar-badge-bg-fg:    $white;
+$sidebar-badge-alert-bg: rgba($warning, .18);   // alerta amarelo DISCRETO
+$sidebar-badge-alert-fg: #fcd34d;
+
+// Breakpoint mobile (alinhado ao `lg` do Bootstrap)
+$sidebar-mobile-bp:      991.98px;
+
+
+// ----------------------------------------------------------------------------
+//  SHELL — Estrutura fixa do menu (desktop)
+// ----------------------------------------------------------------------------
+.sidebar {
+    width: var(--sidebar-width, 260px);
+    height: 100vh;
+    position: fixed;
+    inset: 0 auto 0 0;                  // top:0 right:auto bottom:0 left:0
+    z-index: 1040;
+    display: flex;
+    flex-direction: column;
+    background: $sidebar-bg;
+    border-right: 1px solid $sidebar-border;
+    box-shadow: $sidebar-shadow;
+    transition: width $sidebar-transition;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    height: 72px;
+    padding: 0 1.35rem;
+    flex-shrink: 0;
+}
+
+.brand-link {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    color: $white;
+    text-decoration: none;
+}
+
+.brand-logo {
+    height: 32px;
+    width: auto;
+    filter: drop-shadow(0 0 8px rgba($primary, .45));
+}
+
+.brand-text {
+    font-family: var(--font-heading, 'Plus Jakarta Sans', sans-serif);
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: -.025em;
+    background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+// Área rolável que aloja a navegação
+.sidebar-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: .9rem .75rem;
+    scrollbar-width: thin;
+    scrollbar-color: rgba($white, .12) transparent;
+
+    &::-webkit-scrollbar { width: 6px; }
+    &::-webkit-scrollbar-thumb {
+        background: rgba($white, .12);
+        border-radius: 99px;
+    }
+}
+
+
+// ----------------------------------------------------------------------------
+//  NAVEGAÇÃO — escopo `.sidebar-nav` (partilhado entre desktop e offcanvas)
+// ----------------------------------------------------------------------------
+
+// Rótulo de grupo (ex.: "Gestão Documental")
+.sidebar-nav .nav-group-label {
+    margin: 1.35rem .85rem .4rem;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: $sidebar-label;
+    pointer-events: none;
+    user-select: none;
+}
+
+// Item de navegação
+.sidebar-nav .nav-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: $sidebar-icon-gap;
+    margin-bottom: $sidebar-item-gap;
+    padding: $sidebar-item-pad-y $sidebar-item-pad-x;
+    border-radius: $sidebar-item-radius;
+    color: $sidebar-text;
+    font-size: $sidebar-item-font;
+    font-weight: $sidebar-item-weight;
+    line-height: $sidebar-item-line;
+    text-decoration: none;
+    transition: color $sidebar-transition, background-color $sidebar-transition;
+
+    // ícone
+    .nav-icon {
+        flex-shrink: 0;
+        width: $sidebar-icon-box;
+        margin: 0;
+        font-size: $sidebar-icon-size;
+        text-align: center;
+        color: inherit;
+        opacity: .9;
+        transition: color $sidebar-transition, opacity $sidebar-transition;
+    }
+
+    // o rótulo ocupa o espaço restante (empurra seta/badge para a direita)
+    > span { flex: 1 1 auto; min-width: 0; }
+
+    // seta dos grupos colapsáveis
+    .nav-arrow {
+        flex-shrink: 0;
+        margin-left: auto;
+        font-size: .72rem;
+        opacity: .5;
+        transition: transform $sidebar-transition, opacity $sidebar-transition;
+    }
+}
+
+// Hover — realce subtil, sem deslocar o layout
+.sidebar-nav .nav-link:hover {
+    color: $sidebar-text-hover;
+    background-color: $sidebar-hover-bg;
+
+    .nav-icon { opacity: 1; }
+}
+
+// Foco visível (acessibilidade) — anel claro legível sobre fundo escuro,
+// sobrepõe o outline vermelho global (_custom.scss) que teria baixo contraste.
+.sidebar-nav .nav-link:focus-visible {
+    outline: 2px solid $sidebar-focus-ring;
+    outline-offset: -2px;
+}
+
+// Seta rodada quando o grupo está expandido
+.sidebar-nav .nav-link[aria-expanded="true"] .nav-arrow {
+    transform: rotate(180deg);
+    opacity: 1;
+}
+
+// Estado ATIVO — barra vermelha + fundo translúcido + ícone em destaque
+.sidebar-nav > .nav-link.active,
+.sidebar-nav .nav-item-wrapper > .nav-link.active {
+    color: $sidebar-text-hover;
+    background-color: $sidebar-active-bg;
+
+    &::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 3px;
+        height: 58%;
+        border-radius: 0 3px 3px 0;
+        background: $sidebar-active-bar;
+    }
+
+    .nav-icon {
+        color: $primary;
+        opacity: 1;
+        filter: drop-shadow(0 0 6px rgba($primary, .45));
+    }
+}
+
+
+// ----------------------------------------------------------------------------
+//  SUBMENUS (Bootstrap collapse)
+// ----------------------------------------------------------------------------
+.sidebar-nav .submenu {
+    position: relative;
+    padding-left: .5rem;
+
+    // guia vertical da árvore
+    &::before {
+        content: "";
+        position: absolute;
+        top: .25rem;
+        bottom: .35rem;
+        left: calc(#{$sidebar-item-pad-x} + #{$sidebar-icon-box} / 2);
+        width: 1px;
+        background: rgba($white, .10);
+    }
+
+    .nav-link {
+        padding-left: $sidebar-subitem-indent;
+        font-size: .85rem;
+        font-weight: 500;
+        color: $sidebar-text-muted;
+        background: transparent;
+
+        // conector horizontal
+        &::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: calc(#{$sidebar-item-pad-x} + #{$sidebar-icon-box} / 2);
+            width: 9px;
+            height: 1px;
+            background: rgba($white, .10);
+            transition: background-color $sidebar-transition;
+        }
+
+        &:hover {
+            color: $sidebar-text-hover;
+            background: $sidebar-hover-bg;
+        }
+
+        &.active {
+            color: $primary;
+            font-weight: 600;
+            background: transparent;
+
+            &::before {
+                background: $primary;
+                width: 11px;
+            }
+        }
+    }
+}
+
+
+// ----------------------------------------------------------------------------
+//  BADGES / CONTADORES
+// ----------------------------------------------------------------------------
+.badge-nav {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: .12rem .45rem;
+    border-radius: 99px;
+    font-size: .68rem;
+    font-weight: 700;
+    line-height: 1.3;
+    background: $sidebar-badge-bg;
+    color: $sidebar-badge-bg-fg;
+
+    // Variante de ALERTA — amarelo discreto (pendências)
+    &.badge-warning {
+        background: $sidebar-badge-alert-bg;
+        color: $sidebar-badge-alert-fg;
+        border: 1px solid rgba($warning, .30);
+    }
+}
+
+// Dentro de um subitem o badge segue o texto, não cola à direita
+.sidebar-nav .submenu .nav-link .badge-nav { margin-left: .4rem; }
+
+
+// ----------------------------------------------------------------------------
+//  RODAPÉ — cartão do utilizador
+// ----------------------------------------------------------------------------
+.sidebar-footer {
+    flex-shrink: 0;
+    padding: .85rem;
+    background: $sidebar-bg-footer;
+    border-top: 1px solid $sidebar-border;
+    backdrop-filter: blur(10px);
+}
+
+.user-card {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .5rem;
+    border-radius: $sidebar-item-radius;
+    color: $white;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color $sidebar-transition;
+
+    &:hover { background: $sidebar-hover-bg; }
+
+    &:focus-visible {
+        outline: 2px solid $sidebar-focus-ring;
+        outline-offset: -2px;
+    }
+}
+
+.user-avatar {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: linear-gradient(135deg, $primary, #f87171);
+    border: 2px solid rgba($white, .12);
+    color: $white;
+    font-size: .9rem;
+    font-weight: 600;
+}
+
+// Divisor entre secções
+.sidebar-divider {
+    margin: .65rem .85rem;
+    border-top: 1px solid $sidebar-divider;
+    opacity: 1;
+}
+
+
+// ----------------------------------------------------------------------------
+//  MODO COLAPSADO (desktop) — apenas ícones + flyout no hover
+// ----------------------------------------------------------------------------
+body.sidebar-collapsed {
+
+    .sidebar { width: var(--sidebar-collapsed-width, 76px); }
+
+    .sidebar-header { justify-content: center; padding: 0; }
+
+    .brand-text,
+    .nav-group-label,
+    .nav-arrow,
+    .badge-nav,
+    .sidebar-footer .user-info,
+    .sidebar-footer .fa-chevron-up { display: none !important; }
+
+    .sidebar-divider { margin: .5rem .6rem; }
+
+    .submenu { display: none; }
+
+    .sidebar-nav .nav-link {
+        justify-content: center;
+        padding: $sidebar-item-pad-y;
+
+        .nav-icon { font-size: 1.2rem; }
+
+        // o rótulo é ocultado; a identificação faz-se pelo atributo title (tooltip
+        // nativo do browser) — escapa ao overflow do .sidebar-content, ao contrário
+        // de um flyout CSS, que seria recortado.
+        > span { display: none; }
+
+        // ponto de alerta quando o item tem badge oculto (progressive enhancement)
+        &:has(.badge-nav)::after {
+            content: "";
+            position: absolute;
+            top: .5rem;
+            right: .5rem;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: $warning;
+            box-shadow: 0 0 0 2px $sidebar-bg;
+        }
+    }
+}
+
+
+// ----------------------------------------------------------------------------
+//  MOBILE — offcanvas reutiliza o MESMO menu (.sidebar-nav)
+// ----------------------------------------------------------------------------
+.sidebar-offcanvas {
+    width: min(86vw, var(--sidebar-width, 260px)) !important;
+    background: $sidebar-bg;
+    color: $sidebar-text;
+    border-right: 1px solid $sidebar-border;
+
+    .offcanvas-header {
+        height: 72px;
+        padding: 0 1.35rem;
+        border-bottom: 1px solid $sidebar-border;
+    }
+
+    .offcanvas-body { padding: .9rem .75rem; display: flex; flex-direction: column; }
+
+    .sidebar-footer {
+        margin: .5rem -.75rem -.9rem;   // encosta o rodapé às bordas do offcanvas
+    }
+}
+
+// O menu desktop fixo só aparece a partir do breakpoint `lg`; abaixo disso o
+// offcanvas assume o controlo (markup já usa d-none d-lg-flex).
+@media (max-width: $sidebar-mobile-bp) {
+    .sidebar:not(.sidebar-offcanvas) { display: none; }
+}

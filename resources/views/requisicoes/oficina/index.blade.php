@@ -135,6 +135,12 @@
                                                     class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Ver Detalhes">
                                                     <i class="fas fa-eye"></i>
                                                 </a>
+                                                @if ($requisicao->status === \App\Enums\StatusRequisicao::PENDENTE)
+                                                    <a href="{{ route('requisicoes.oficina.edit', $requisicao->id) }}"
+                                                        class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Editar">
+                                                        <i class="fas fa-edit"></i>
+                                                    </a>
+                                                @endif
                                                 <a href="{{ route('requisicoes.oficina.pdf', $requisicao->id) }}" target="_blank"
                                                     class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Gerar PDF">
                                                     <i class="fas fa-file-pdf"></i>

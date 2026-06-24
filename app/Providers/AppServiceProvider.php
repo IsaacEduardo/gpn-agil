@@ -2,15 +2,19 @@
 
 namespace App\Providers;
 
+use App\Models\DadosInstituicao;
 use App\Models\DocumentoEntrada;
 use App\Models\Empresa;
 use App\Models\Gabinete;
 use App\Models\Requisicao;
 use App\Models\ReservaEspaco;
+use App\Models\User;
 use App\Models\Viatura;
 use App\Observers\RequisicaoObserver;
 use App\Support\CatalogCache;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -21,7 +25,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Provedor de IA do Assistente (isolado por interface para permitir troca por on-premise/fake).
+        $this->app->singleton(\App\Services\Ai\LlmClient::class, function () {
+            $config = config('services.anthropic', []);
+            if (($config['driver'] ?? 'anthropic') === 'fake') {
+                return new \App\Services\Ai\FakeLlmClient;
+            }
+
+            return new \App\Services\Ai\AnthropicLlmClient($config);
+        });
     }
 
     /**
@@ -29,11 +41,66 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Compartilhar dados da instituição com todas as views
+        try {
+            $dados = Schema::hasTable('dados_instituicao')
+                ? (DadosInstituicao::first() ?? new DadosInstituicao)
+                : new DadosInstituicao;
+        } catch (\Exception $e) {
+            $dados = new DadosInstituicao;
+        }
+
+        // Fallbacks padrão para Namibe / Angola
+        if (empty($dados->nome_oficial)) {
+            $dados->nome_oficial = 'Governo Provincial do Namibe';
+        }
+        if (empty($dados->sigla)) {
+            $dados->sigla = 'GPN';
+        }
+        if (empty($dados->cidade)) {
+            $dados->cidade = 'Moçâmedes';
+        }
+        if (empty($dados->cabecalho_linha1)) {
+            $dados->cabecalho_linha1 = 'REPÚBLICA DE ANGOLA';
+        }
+        if (empty($dados->cabecalho_linha2)) {
+            $dados->cabecalho_linha2 = 'GOVERNO PROVINCIAL DO NAMIBE';
+        }
+
+        View::share('dadosInstituicao', $dados);
+
         // Registrar Observers
         Requisicao::observe(RequisicaoObserver::class);
 
+        // Limpar caches de permissões do utilizador
+        User::saved(function ($user) {
+            Cache::forget("user_{$user->id}_departments");
+            Cache::forget("user_{$user->id}_responsible_gabinetes");
+            Cache::forget("menu_counts_user_{$user->id}");
+        });
+        User::deleted(function ($user) {
+            Cache::forget("user_{$user->id}_departments");
+            Cache::forget("user_{$user->id}_responsible_gabinetes");
+            Cache::forget("menu_counts_user_{$user->id}");
+        });
+
+        Gabinete::saved(function ($gabinete) {
+            if ($gabinete->responsavel_id) {
+                Cache::forget("user_{$gabinete->responsavel_id}_responsible_gabinetes");
+            }
+            if ($gabinete->isDirty('responsavel_id') && $gabinete->getOriginal('responsavel_id')) {
+                Cache::forget('user_'.$gabinete->getOriginal('responsavel_id').'_responsible_gabinetes');
+            }
+        });
+        Gabinete::deleted(function ($gabinete) {
+            if ($gabinete->responsavel_id) {
+                Cache::forget("user_{$gabinete->responsavel_id}_responsible_gabinetes");
+            }
+        });
+
         // Invalidar caches de catálogos quando modelos forem alterados
         Viatura::saved(function () {
+
             CatalogCache::forgetViaturas();
         });
         Viatura::deleted(function () {
@@ -57,74 +124,81 @@ class AppServiceProvider extends ServiceProvider
 
             if (Auth::check()) {
                 $user = Auth::user();
-                $counts['can_review_requisicoes'] = (bool) ($user->role && $user->hasPermission('visto_departamento_requisicoes'));
-                $counts['can_review_reservas'] = (bool) ($user->role && $user->hasPermission('visto_departamento_reservas'));
 
-                $deptIds = $user->departamentos()->pluck('departamentos.id')->all();
-                if (empty($deptIds) && $user->departamento_id) {
-                    $deptIds = [$user->departamento_id];
-                }
-                if (! empty($deptIds)) {
-                    $counts['pend_requisicoes'] = Requisicao::query()
-                        ->where('status', Requisicao::STATUS_PENDENTE)
-                        ->where(function ($q) {
-                            $q->whereNull('visto_departamento_status')
-                                ->orWhere('visto_departamento_status', 'pendente');
-                        })
-                        ->whereHas('usuario.departamentos', function ($q) use ($deptIds) {
-                            $q->whereIn('departamentos.id', $deptIds);
-                        })
-                        ->count();
+                // Cache curto por utilizador: evita ~8 queries de contagem a cada renderização
+                // do layout. Auto-expira em 30s, suficiente para badges de navegação.
+                $counts = Cache::remember("menu_counts_user_{$user->id}", 30, function () use ($user, $counts) {
+                    $counts['can_review_requisicoes'] = (bool) ($user->role && $user->hasPermission('visto_departamento_requisicoes'));
+                    $counts['can_review_reservas'] = (bool) ($user->role && $user->hasPermission('visto_departamento_reservas'));
 
-                    $counts['pend_reservas'] = ReservaEspaco::query()
-                        ->where('status', ReservaEspaco::STATUS_PENDENTE)
-                        ->where(function ($q) {
-                            $q->whereNull('visto_departamento_status')
-                                ->orWhere('visto_departamento_status', 'pendente');
-                        })
-                        ->whereHas('usuario.departamentos', function ($q) use ($deptIds) {
-                            $q->whereIn('departamentos.id', $deptIds);
-                        })
-                        ->count();
-
-                    $counts['pend_documentos_por_receber'] = DocumentoEntrada::query()
-                        ->whereExists(function ($sub) use ($deptIds) {
-                            $sub->selectRaw(1)
-                                ->from('documento_encaminhamentos as de')
-                                ->whereColumn('de.documento_entrada_id', 'documentos_entradas.id')
-                                ->whereNull('de.recebido_em')
-                                ->whereIn('de.destino_departamento_id', $deptIds);
-                        })
-                        ->count();
-
-                    $counts['pend_documentos_visto_departamento'] = DocumentoEntrada::query()
-                        ->whereNull('visto_departamento_status')
-                        ->where('status', 'recebido')
-                        ->whereIn('departamento_id', $deptIds)
-                        ->count();
-
-                    $counts['aprov_documentos_visto_departamento'] = DocumentoEntrada::query()
-                        ->where('visto_departamento_status', 'aprovado')
-                        ->whereIn('departamento_id', $deptIds)
-                        ->count();
-
-                    $counts['rej_documentos_visto_departamento'] = DocumentoEntrada::query()
-                        ->where('visto_departamento_status', 'rejeitado')
-                        ->whereIn('departamento_id', $deptIds)
-                        ->count();
-
-                    $gabIds = Gabinete::where('responsavel_id', $user->id)->pluck('id')->all();
-                    if (! empty($gabIds)) {
-                        $counts['pend_documentos_visto_gabinete'] = DocumentoEntrada::query()
-                            ->whereNull('visto_gabinete_status')
-                            ->whereHas('departamento', function ($q) use ($gabIds) {
-                                $q->whereIn('gabinete_id', $gabIds);
+                    $deptIds = $user->departamentos()->pluck('departamentos.id')->all();
+                    if (empty($deptIds) && $user->departamento_id) {
+                        $deptIds = [$user->departamento_id];
+                    }
+                    if (! empty($deptIds)) {
+                        $counts['pend_requisicoes'] = Requisicao::query()
+                            ->where('status', Requisicao::STATUS_PENDENTE)
+                            ->where(function ($q) {
+                                $q->whereNull('visto_departamento_status')
+                                    ->orWhere('visto_departamento_status', 'pendente');
+                            })
+                            ->whereHas('usuario.departamentos', function ($q) use ($deptIds) {
+                                $q->whereIn('departamentos.id', $deptIds);
                             })
                             ->count();
-                    } else {
-                        $counts['pend_documentos_visto_gabinete'] = 0;
+
+                        $counts['pend_reservas'] = ReservaEspaco::query()
+                            ->where('status', ReservaEspaco::STATUS_PENDENTE)
+                            ->where(function ($q) {
+                                $q->whereNull('visto_departamento_status')
+                                    ->orWhere('visto_departamento_status', 'pendente');
+                            })
+                            ->whereHas('usuario.departamentos', function ($q) use ($deptIds) {
+                                $q->whereIn('departamentos.id', $deptIds);
+                            })
+                            ->count();
+
+                        $counts['pend_documentos_por_receber'] = DocumentoEntrada::query()
+                            ->whereExists(function ($sub) use ($deptIds) {
+                                $sub->selectRaw(1)
+                                    ->from('documento_encaminhamentos as de')
+                                    ->whereColumn('de.documento_entrada_id', 'documentos_entradas.id')
+                                    ->whereNull('de.recebido_em')
+                                    ->whereIn('de.destino_departamento_id', $deptIds);
+                            })
+                            ->count();
+
+                        $counts['pend_documentos_visto_departamento'] = DocumentoEntrada::query()
+                            ->whereNull('visto_departamento_status')
+                            ->where('status', 'recebido')
+                            ->whereIn('departamento_id', $deptIds)
+                            ->count();
+
+                        $counts['aprov_documentos_visto_departamento'] = DocumentoEntrada::query()
+                            ->where('visto_departamento_status', 'aprovado')
+                            ->whereIn('departamento_id', $deptIds)
+                            ->count();
+
+                        $counts['rej_documentos_visto_departamento'] = DocumentoEntrada::query()
+                            ->where('visto_departamento_status', 'rejeitado')
+                            ->whereIn('departamento_id', $deptIds)
+                            ->count();
+
+                        $gabIds = Gabinete::where('responsavel_id', $user->id)->pluck('id')->all();
+                        if (! empty($gabIds)) {
+                            $counts['pend_documentos_visto_gabinete'] = DocumentoEntrada::query()
+                                ->whereNull('visto_gabinete_status')
+                                ->whereHas('departamento', function ($q) use ($gabIds) {
+                                    $q->whereIn('gabinete_id', $gabIds);
+                                })
+                                ->count();
+                        } else {
+                            $counts['pend_documentos_visto_gabinete'] = 0;
+                        }
                     }
-                }
+
+                    return $counts;
+                });
             }
 
             $view->with('menuCounts', $counts);

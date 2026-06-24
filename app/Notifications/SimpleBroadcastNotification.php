@@ -3,13 +3,12 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Notification;
 
-class SimpleBroadcastNotification extends Notification implements ShouldQueue
+class SimpleBroadcastNotification extends Notification
 {
-    use Queueable;
+    // use Queueable; // Removido para envio síncrono
 
     protected string $title;
 

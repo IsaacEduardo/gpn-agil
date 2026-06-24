@@ -60,6 +60,9 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // Conexões persistentes (workaround para WSAEACCES/reserva de portas no Windows).
+                // Desligado por padrão; o array_filter remove a opção quando false.
+                PDO::ATTR_PERSISTENT => env('DB_PERSISTENT', false),
             ]) : [],
         ],
 

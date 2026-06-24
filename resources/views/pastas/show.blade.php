@@ -28,24 +28,27 @@
             <h5 class="mb-0">Documentos Arquivados</h5>
         </div>
         <div class="card-body">
-            @if($pasta->documentos->isEmpty())
+            @if($pasta->documentos->isEmpty() && $pasta->documentosInternos->isEmpty())
                 <p class="text-center text-muted my-5">Nenhum documento arquivado nesta pasta.</p>
             @else
                 <div class="table-responsive">
                     <table class="table table-hover">
                         <thead>
                             <tr>
+                                <th>Tipo</th>
                                 <th>#</th>
-                                <th>Assunto</th>
-                                <th>Procedência</th>
-                                <th>Data Documento</th>
+                                <th>Assunto / Título</th>
+                                <th>Origem / Destinatário</th>
+                                <th>Data</th>
                                 <th>Arquivado Em</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody>
+                            {{-- Documentos de Entrada --}}
                             @foreach($pasta->documentos as $documento)
                                 <tr>
+                                    <td><span class="badge bg-primary">Entrada</span></td>
                                     <td>{{ $documento->numero_sequencial }}</td>
                                     <td>{{ $documento->assunto }}</td>
                                     <td>{{ $documento->procedencia }}</td>
@@ -61,6 +64,24 @@
                                                 <i class="fas fa-box-open"></i>
                                             </button>
                                         </form>
+                                    </td>
+                                </tr>
+                            @endforeach
+
+                            {{-- Documentos Internos --}}
+                            @foreach($pasta->documentosInternos as $docInterno)
+                                <tr>
+                                    <td><span class="badge bg-info">Interno</span></td>
+                                    <td>{{ $docInterno->numero_referencia }}</td>
+                                    <td>{{ $docInterno->titulo }}</td>
+                                    <td>{{ $docInterno->destinatario_nome ?? $docInterno->destinatario_orgao ?? '—' }}</td>
+                                    <td>{{ $docInterno->created_at->format('d/m/Y') }}</td>
+                                    <td>{{ $docInterno->arquivado_em ? $docInterno->arquivado_em->format('d/m/Y H:i') : '-' }}</td>
+                                    <td>
+                                        <a href="{{ route('documentos-internos.show', $docInterno->id) }}" class="btn btn-sm btn-info text-white" title="Visualizar">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        {{-- TODO: Adicionar rota de desarquivar para internos se necessário --}}
                                     </td>
                                 </tr>
                             @endforeach

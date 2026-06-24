@@ -1,8 +1,15 @@
-// Fonts
-@import url('https://fonts.bunny.net/css?family=Nunito');
-
-// Variables
+// Variables (Sobreposições do Bootstrap — paleta institucional)
 @import 'variables';
 
-// Bootstrap
+// Bootstrap Core SASS
 @import 'bootstrap/scss/bootstrap';
+
+// Custom Rules (Estilos da Aplicação)
+@import 'custom';
+
+// Tema institucional — Portal do Munícipe (Ministério das Finanças / Angola)
+@import 'theme';
+
+// NOTA: _sidebar.scss foi descontinuado na migração para o layout de portal
+// (header + navegação horizontal). O ficheiro permanece no repositório para
+// rollback rápido, mas já não é importado.

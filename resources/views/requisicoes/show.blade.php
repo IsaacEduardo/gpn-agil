@@ -5,7 +5,7 @@
         @php
             $tipo = $requisicao->tipo;
             $tipoValue = $tipo instanceof \App\Enums\TipoRequisicao ? $tipo->value : $tipo;
-            
+
             $status = $requisicao->status;
             $statusValue = $status instanceof \App\Enums\StatusRequisicao ? $status->value : $status;
         @endphp
@@ -34,7 +34,11 @@
                             <i class="fas fa-file-pdf"></i> PDF
                         </a>
                     @endif
-                    @if ($statusValue != 'aprovada' && $statusValue != 'aprovado')
+                    @if (
+                        $statusValue != 'aprovada' &&
+                            $statusValue != 'aprovado' &&
+                            $statusValue != 'assinada' &&
+                            $statusValue != 'assinado')
                         @if ($tipoValue == 'produto')
                             <a href="{{ route('requisicoes.produtos.edit', $requisicao->id) }}"
                                 class="btn btn-sm btn-primary">
@@ -103,13 +107,15 @@
                             <tr>
                                 <th width="30%">Status Atual:</th>
                                 <td>
-                                    @if($status instanceof \App\Enums\StatusRequisicao)
+                                    @if ($status instanceof \App\Enums\StatusRequisicao)
                                         <span class="badge bg-{{ $status->color() }}">{{ $status->label() }}</span>
                                     @else
                                         @if ($statusValue == 'pendente')
                                             <span class="badge bg-warning">Pendente</span>
                                         @elseif($statusValue == 'aprovada' || $statusValue == 'aprovado')
                                             <span class="badge bg-success">Aprovada</span>
+                                        @elseif($statusValue == 'assinada' || $statusValue == 'assinado')
+                                            <span class="badge bg-primary">Assinada</span>
                                         @elseif($statusValue == 'rejeitada' || $statusValue == 'rejeitado')
                                             <span class="badge bg-danger">Rejeitada</span>
                                         @elseif($statusValue == 'em_andamento')
@@ -130,10 +136,23 @@
                                 <th>Observações:</th>
                                 <td>{{ $requisicao->observacoes ?? 'Nenhuma observação' }}</td>
                             </tr>
-                            @if($requisicao->status == 'rejeitada' && $requisicao->motivo_rejeicao)
+                            @if ($requisicao->status == 'rejeitada' && $requisicao->motivo_rejeicao)
                                 <tr>
                                     <th class="text-danger">Motivo da Rejeição:</th>
                                     <td class="text-danger">{{ $requisicao->motivo_rejeicao }}</td>
+                                </tr>
+                            @endif
+                            @if ($requisicao->assinado_em)
+                                <tr>
+                                    <td colspan="2" class="p-0 pt-2">
+                                        <div class="alert alert-success mb-0 py-2">
+                                            <i class="fas fa-certificate"></i> <strong>Assinado Digitalmente</strong><br>
+                                            <small>
+                                                Por: {{ $requisicao->assinadoPor->name ?? 'N/A' }}<br>
+                                                Em: {{ $requisicao->assinado_em->format('d/m/Y H:i') }}
+                                            </small>
+                                        </div>
+                                    </td>
                                 </tr>
                             @endif
                         </table>
@@ -383,7 +402,17 @@
                                                 <i class="fas fa-check"></i> Aprovar
                                             </button>
                                         </form>
-                                        <button type="button" class="btn btn-danger ms-2" data-bs-toggle="modal" data-bs-target="#rejeitarModal">
+
+                                        @inject('signatureService', 'App\Services\SignatureService')
+                                        @if (!$requisicao->assinado_em && $signatureService->canSign($requisicao, auth()->user()))
+                                            <button type="button" class="btn btn-dark ms-2" data-bs-toggle="modal"
+                                                data-bs-target="#signModal">
+                                                <i class="fas fa-file-signature"></i> Assinar Digitalmente
+                                            </button>
+                                        @endif
+
+                                        <button type="button" class="btn btn-danger ms-2" data-bs-toggle="modal"
+                                            data-bs-target="#rejeitarModal">
                                             <i class="fas fa-times"></i> Rejeitar
                                         </button>
                                     @endif
@@ -405,33 +434,68 @@
                             </div>
                         </div>
                     </div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- Modal de Rejeição -->
-    <div class="modal fade" id="rejeitarModal" tabindex="-1" aria-labelledby="rejeitarModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form action="{{ route('requisicoes.rejeitar', $requisicao->id) }}" method="POST">
-                    @csrf
-                    <div class="modal-header bg-danger text-white">
-                        <h5 class="modal-title" id="rejeitarModalLabel">Rejeitar Requisição</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p>Por favor, informe o motivo da rejeição:</p>
-                        <div class="mb-3">
-                            <label for="motivo_rejeicao" class="form-label">Motivo</label>
-                            <textarea class="form-control" id="motivo_rejeicao" name="motivo_rejeicao" rows="4" required placeholder="Descreva o motivo da rejeição..."></textarea>
+        <!-- Modal de Rejeição -->
+        <div class="modal fade" id="rejeitarModal" tabindex="-1" aria-labelledby="rejeitarModalLabel"
+            aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form action="{{ route('requisicoes.rejeitar', $requisicao->id) }}" method="POST">
+                        @csrf
+                        <div class="modal-header bg-danger text-white">
+                            <h5 class="modal-title" id="rejeitarModalLabel">Rejeitar Requisição</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                                aria-label="Close"></button>
                         </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-danger">Confirmar Rejeição</button>
-                    </div>
-                </form>
+                        <div class="modal-body">
+                            <p>Por favor, informe o motivo da rejeição:</p>
+                            <div class="mb-3">
+                                <label for="motivo_rejeicao" class="form-label">Motivo</label>
+                                <textarea class="form-control" id="motivo_rejeicao" name="motivo_rejeicao" rows="4" required
+                                    placeholder="Descreva o motivo da rejeição..."></textarea>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-danger">Confirmar Rejeição</button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
-    </div>
-@endsection
+
+        <!-- Modal de Assinatura -->
+        <div class="modal fade" id="signModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form action="{{ route('requisicoes.sign', $requisicao->id) }}" method="POST">
+                        @csrf
+                        <div class="modal-header bg-dark text-white">
+                            <h5 class="modal-title"><i class="fas fa-file-signature me-2"></i>Assinar Digitalmente</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Ao assinar digitalmente, você aprova esta requisição e garante sua autenticidade.</p>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Confirme sua senha</label>
+                                <input type="password" name="password" class="form-control" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Senha do certificado digital</label>
+                                <input type="password" name="certificate_password" class="form-control"
+                                    autocomplete="off" placeholder="Preencha apenas se o seu certificado tiver senha">
+                                <small class="text-muted">Não é armazenada — solicitada apenas no momento de assinar.</small>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-dark">Assinar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    @endsection

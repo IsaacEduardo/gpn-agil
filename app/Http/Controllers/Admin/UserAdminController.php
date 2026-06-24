@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 class UserAdminController extends Controller
 {
@@ -17,17 +18,20 @@ class UserAdminController extends Controller
         $this->middleware('auth');
     }
 
-    protected function ensureAdmin()
+    protected function ensurePermission()
     {
         $user = Auth::user();
-        if (! $user || ! $user->role || $user->role->name !== 'admin') {
-            abort(403, 'Acesso restrito ao administrador.');
+        $isChefeGabinete = $user && $user->role && $user->role->name === 'chefe-gabinete';
+        $isAdmin = $user && $user->role && $user->role->name === 'admin';
+
+        if (! $isAdmin && ! $isChefeGabinete) {
+            abort(403, 'Acesso restrito.');
         }
     }
 
     public function index(Request $request)
     {
-        $this->ensureAdmin();
+        $this->ensurePermission();
 
         $query = User::select(['id', 'name', 'email', 'role_id', 'departamento_id'])
             ->with([
@@ -38,6 +42,25 @@ class UserAdminController extends Controller
                 'departamentos.gabinete:id,nome',
             ])
             ->orderBy('name');
+
+        // Filtro de escopo para Chefe de Gabinete
+        $currentUser = Auth::user();
+        if ($currentUser && $currentUser->role && $currentUser->role->name === 'chefe-gabinete') {
+            $gabineteChefiado = Gabinete::where('responsavel_id', $currentUser->id)->first();
+            if ($gabineteChefiado) {
+                // Usuários que pertencem a departamentos do gabinete
+                $query->where(function ($q) use ($gabineteChefiado) {
+                    $q->whereHas('departamento', function ($q2) use ($gabineteChefiado) {
+                        $q2->where('gabinete_id', $gabineteChefiado->id);
+                    })->orWhereHas('departamentos', function ($q3) use ($gabineteChefiado) {
+                        $q3->where('gabinete_id', $gabineteChefiado->id);
+                    });
+                });
+            } else {
+                // Se não chefia nenhum gabinete, não vê usuários
+                $query->where('id', -1);
+            }
+        }
 
         if ($request->filled('q')) {
             $q = $request->input('q');
@@ -115,17 +138,30 @@ class UserAdminController extends Controller
 
     public function create()
     {
-        $this->ensureAdmin();
+        $this->ensurePermission();
 
         $roles = Role::select('id', 'name')->orderBy('name')->get();
-        $departamentos = Departamento::select('id', 'nome')->orderBy('nome')->get();
+        $departamentosQuery = Departamento::select('id', 'nome')->orderBy('nome');
+
+        // Se for Chefe de Gabinete, só vê departamentos do seu gabinete
+        $currentUser = Auth::user();
+        if ($currentUser && $currentUser->role && $currentUser->role->name === 'chefe-gabinete') {
+            $gabineteChefiado = Gabinete::where('responsavel_id', $currentUser->id)->first();
+            if ($gabineteChefiado) {
+                $departamentosQuery->where('gabinete_id', $gabineteChefiado->id);
+            } else {
+                $departamentosQuery->where('id', -1);
+            }
+        }
+
+        $departamentos = $departamentosQuery->get();
 
         return view('admin.users.create', compact('roles', 'departamentos'));
     }
 
     public function store(Request $request)
     {
-        $this->ensureAdmin();
+        $this->ensurePermission();
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -143,6 +179,37 @@ class UserAdminController extends Controller
             return back()->withErrors(['departamento_id' => 'Selecione o departamento para o chefe.'])->withInput();
         }
 
+        // Validação de escopo para Chefe de Gabinete na criação
+        $currentUser = Auth::user();
+        if ($currentUser && $currentUser->role && $currentUser->role->name === 'chefe-gabinete') {
+            $gabineteChefiado = Gabinete::where('responsavel_id', $currentUser->id)->first();
+
+            // Verificar departamento principal
+            if (! empty($data['departamento_id'])) {
+                $dep = Departamento::find($data['departamento_id']);
+                if (! $gabineteChefiado || ! $dep || $dep->gabinete_id !== $gabineteChefiado->id) {
+                    abort(403, 'Você só pode adicionar usuários aos departamentos do seu gabinete.');
+                }
+            }
+
+            // Verificar departamentos múltiplos
+            $depsExtras = $request->input('departamentos', []);
+            if (! empty($depsExtras)) {
+                $countInvalid = Departamento::whereIn('id', $depsExtras)
+                    ->where('gabinete_id', '!=', $gabineteChefiado ? $gabineteChefiado->id : -1)
+                    ->count();
+                if ($countInvalid > 0) {
+                    abort(403, 'Você selecionou departamentos que não pertencem ao seu gabinete.');
+                }
+            }
+
+            // Não permitir atribuir papel de admin ou chefe de gabinete
+            $role = Role::find($data['role_id']);
+            if ($role && in_array($role->name, ['admin', 'chefe-gabinete'])) {
+                abort(403, 'Você não tem permissão para atribuir este papel.');
+            }
+        }
+
         $user = new User;
         $user->name = $data['name'];
         $user->email = $data['email'];
@@ -150,11 +217,35 @@ class UserAdminController extends Controller
         $user->role_id = $data['role_id'];
         $user->departamento_id = $data['departamento_id'] ?? null;
         $user->save();
+
+        // Sincronizar Role do Spatie
+        $role = Role::find($data['role_id']);
+        if ($role) {
+            // Remove roles anteriores para evitar acúmulo de lixo
+            $user->syncRoles([$role->name]);
+
+            // SE for um usuário comum ('user') e tiver departamento, atribui TAMBÉM a role do departamento
+            if ($role->name === 'user' && ! empty($user->departamento_id)) {
+                $dep = Departamento::find($user->departamento_id);
+                if ($dep) {
+                    // Tenta achar a role do departamento (pelo nome)
+                    $depRole = Role::where('name', $dep->nome)->where('guard_name', 'web')->first();
+                    if ($depRole) {
+                        $user->assignRole($depRole);
+                    }
+                }
+            }
+        }
+
         // Sincronizar departamentos múltiplos via pivot
         $user->departamentos()->sync($request->input('departamentos', []));
         if (! empty($user->departamento_id)) {
             $user->departamentos()->syncWithoutDetaching([$user->departamento_id]);
         }
+
+        // Limpar cache de permissões do utilizador
+        Cache::forget("user_{$user->id}_departments");
+        Cache::forget("user_{$user->id}_responsible_gabinetes");
 
         // Garantir unicidade do chefe no departamento ao criar
         if ($chefeRoleId && (int) $user->role_id === (int) $chefeRoleId && ! empty($user->departamento_id)) {
@@ -173,23 +264,58 @@ class UserAdminController extends Controller
 
     public function edit(User $user)
     {
-        $this->ensureAdmin();
+        $this->ensurePermission();
+
+        $user->load('departamentos');
+
+        // Verificar se chefe de gabinete tem acesso a este usuário
+        $currentUser = Auth::user();
+        if ($currentUser && $currentUser->role && $currentUser->role->name === 'chefe-gabinete') {
+            $gabineteChefiado = Gabinete::where('responsavel_id', $currentUser->id)->first();
+            $acessoPermitido = false;
+
+            if ($gabineteChefiado) {
+                // Verifica se usuário pertence a algum departamento do gabinete
+                $pertenceGabinete = false;
+
+                if ($user->departamento && $user->departamento->gabinete_id === $gabineteChefiado->id) {
+                    $pertenceGabinete = true;
+                } else {
+                    $temDepExtra = $user->departamentos()
+                        ->where('gabinete_id', $gabineteChefiado->id)
+                        ->exists();
+                    if ($temDepExtra) {
+                        $pertenceGabinete = true;
+                    }
+                }
+
+                if ($pertenceGabinete) {
+                    $acessoPermitido = true;
+                }
+            }
+
+            if (! $acessoPermitido) {
+                abort(403, 'Você não tem permissão para editar este usuário.');
+            }
+        }
 
         $roles = Role::select('id', 'name')->orderBy('name')->get();
-        $departamentos = Departamento::select('id', 'nome')->orderBy('nome')->get();
 
-        // Gabinetes elegíveis: qualquer gabinete que contenha pelo menos um departamento do usuário
-        $user->load('departamentos:id,nome');
-        $depIds = collect([$user->departamento_id])
-            ->merge($user->departamentos->pluck('id'))
-            ->filter()
-            ->unique()
-            ->values();
+        $departamentosQuery = Departamento::select('id', 'nome')->orderBy('nome');
 
+        // Filtrar departamentos na edição também
+        if ($currentUser && $currentUser->role && $currentUser->role->name === 'chefe-gabinete') {
+            $gabineteChefiado = Gabinete::where('responsavel_id', $currentUser->id)->first();
+            if ($gabineteChefiado) {
+                $departamentosQuery->where('gabinete_id', $gabineteChefiado->id);
+            } else {
+                $departamentosQuery->where('id', -1);
+            }
+        }
+        $departamentos = $departamentosQuery->get();
+
+        // Buscar todos os gabinetes disponíveis (sem restrições de departamento)
         $gabinetesElegiveis = Gabinete::select('id', 'nome')
-            ->whereHas('departamentos', function ($q) use ($depIds) {
-                $q->whereIn('departamentos.id', $depIds);
-            })
             ->orderBy('nome')
             ->get();
 
@@ -202,7 +328,53 @@ class UserAdminController extends Controller
 
     public function update(Request $request, User $user)
     {
-        $this->ensureAdmin();
+        $this->ensurePermission();
+
+        // Verificar permissão de edição (repetir lógica do edit)
+        $currentUser = Auth::user();
+        if ($currentUser && $currentUser->role && $currentUser->role->name === 'chefe-gabinete') {
+            $gabineteChefiado = Gabinete::where('responsavel_id', $currentUser->id)->first();
+
+            // 1. Verificar se pode editar este usuário
+            $acessoPermitido = false;
+            if ($gabineteChefiado) {
+                if (($user->departamento && $user->departamento->gabinete_id === $gabineteChefiado->id) ||
+                    $user->departamentos()->where('gabinete_id', $gabineteChefiado->id)->exists()
+                ) {
+                    $acessoPermitido = true;
+                }
+            }
+            if (! $acessoPermitido) {
+                abort(403, 'Você não tem permissão para editar este usuário.');
+            }
+
+            // 2. Verificar departamentos destino
+            if ($request->filled('departamento_id')) {
+                $dep = Departamento::find($request->input('departamento_id'));
+                if (! $dep || $dep->gabinete_id !== $gabineteChefiado->id) {
+                    abort(403, 'Você só pode mover usuários para departamentos do seu gabinete.');
+                }
+            }
+
+            $depsExtras = $request->input('departamentos', []);
+            if (! empty($depsExtras)) {
+                $countInvalid = Departamento::whereIn('id', $depsExtras)
+                    ->where('gabinete_id', '!=', $gabineteChefiado->id)
+                    ->count();
+                if ($countInvalid > 0) {
+                    abort(403, 'Departamentos extras inválidos selecionados.');
+                }
+            }
+
+            // 3. Verificar papel proibido
+            $roleId = $request->input('role_id');
+            if ($roleId) {
+                $role = Role::find($roleId);
+                if ($role && in_array($role->name, ['admin', 'chefe-gabinete']) && (int) $user->role_id !== (int) $role->id) {
+                    abort(403, 'Você não tem permissão para promover usuários a este papel.');
+                }
+            }
+        }
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -229,6 +401,26 @@ class UserAdminController extends Controller
         $user->role_id = $data['role_id'];
         $user->departamento_id = $data['departamento_id'] ?? null;
         $user->save();
+
+        // Sincronizar Role do Spatie
+        $role = Role::find($data['role_id']);
+        if ($role) {
+            // Remove roles anteriores para evitar acúmulo de lixo
+            $user->syncRoles([$role->name]);
+
+            // SE for um usuário comum ('user') e tiver departamento, atribui TAMBÉM a role do departamento
+            if ($role->name === 'user' && ! empty($user->departamento_id)) {
+                $dep = Departamento::find($user->departamento_id);
+                if ($dep) {
+                    // Tenta achar a role do departamento (pelo nome)
+                    $depRole = Role::where('name', $dep->nome)->where('guard_name', 'web')->first();
+                    if ($depRole) {
+                        $user->assignRole($depRole);
+                    }
+                }
+            }
+        }
+
         // Sincronizar departamentos múltiplos via pivot
         $user->departamentos()->sync($request->input('departamentos', []));
         if (! empty($user->departamento_id)) {
@@ -257,24 +449,6 @@ class UserAdminController extends Controller
                 return back()->withErrors(['gabinete_chefiado_id' => 'Selecione o Gabinete chefiado.'])->withInput();
             }
 
-            // Recalcular departamentos do usuário já atualizados
-            $user->load('departamentos');
-            $depIds = collect([$user->departamento_id])
-                ->merge($user->departamentos->pluck('id'))
-                ->filter()
-                ->unique()
-                ->values();
-
-            $elegivelNoGabinete = Gabinete::where('id', $gabId)
-                ->whereHas('departamentos', function ($q) use ($depIds) {
-                    $q->whereIn('departamentos.id', $depIds);
-                })
-                ->exists();
-
-            if (! $elegivelNoGabinete) {
-                return back()->withErrors(['gabinete_chefiado_id' => 'O usuário precisa participar de algum departamento deste Gabinete.'])->withInput();
-            }
-
             $gabinete = Gabinete::findOrFail($gabId);
             $prevResponsavelId = $gabinete->responsavel_id;
             $gabinete->responsavel_id = $user->id;
@@ -297,6 +471,43 @@ class UserAdminController extends Controller
             Gabinete::where('responsavel_id', $user->id)->update(['responsavel_id' => null]);
         }
 
+        // Limpar cache de permissões do utilizador
+        Cache::forget("user_{$user->id}_departments");
+        Cache::forget("user_{$user->id}_responsible_gabinetes");
+
         return redirect()->route('admin.users.index')->with('success', 'Usuário atualizado com sucesso.');
+    }
+
+    public function destroy(User $user)
+    {
+        $this->ensurePermission();
+
+        // Verificar permissão para Chefe de Gabinete
+        $currentUser = Auth::user();
+        if ($currentUser && $currentUser->role && $currentUser->role->name === 'chefe-gabinete') {
+            $gabineteChefiado = Gabinete::where('responsavel_id', $currentUser->id)->first();
+            $acessoPermitido = false;
+
+            if ($gabineteChefiado) {
+                if (($user->departamento && $user->departamento->gabinete_id === $gabineteChefiado->id) ||
+                    $user->departamentos()->where('gabinete_id', $gabineteChefiado->id)->exists()
+                ) {
+                    $acessoPermitido = true;
+                }
+            }
+
+            if (! $acessoPermitido) {
+                abort(403, 'Você não tem permissão para excluir este usuário.');
+            }
+
+            // Não permitir excluir admins ou outros chefes de gabinete
+            if ($user->role && in_array($user->role->name, ['admin', 'chefe-gabinete'])) {
+                abort(403, 'Você não pode excluir usuários com este nível de acesso.');
+            }
+        }
+
+        $user->delete();
+
+        return redirect()->route('admin.users.index')->with('success', 'Usuário excluído com sucesso.');
     }
 }

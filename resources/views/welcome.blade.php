@@ -1,295 +1,249 @@
-<!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>GPN-AGIL - Sistema de Gestão de Logística e Patrimônio</title>
-        <!-- Bootstrap CSS -->
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <!-- Font Awesome -->
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-        <!-- Custom CSS -->
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-        <style>
-            :root {
-                --primary-color: #0f172a; /* Slate 900 */
-                --secondary-color: #334155; /* Slate 700 */
-                --accent-color: #2563eb; /* Blue 600 */
-                --light-color: #f8fafc; /* Slate 50 */
-                --dark-color: #0f172a; /* Slate 900 */
-                --text-muted: #64748b;
-            }
-            
-            body {
-                font-family: 'Inter', system-ui, -apple-system, sans-serif;
-                background-color: var(--light-color);
-                color: #1e293b;
-                line-height: 1.6;
-            }
-            
-            .navbar {
-                background-color: rgba(255, 255, 255, 0.95) !important;
-                backdrop-filter: blur(10px);
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-                padding-top: 1rem;
-                padding-bottom: 1rem;
-            }
+@extends('layouts.guest')
 
-            .navbar-brand {
-                font-weight: 700;
-                color: var(--primary-color) !important;
-                font-size: 1.5rem;
-                letter-spacing: -0.5px;
-            }
-            
-            .nav-link {
-                color: var(--secondary-color) !important;
-                font-weight: 500;
-                margin-left: 1rem;
-            }
+@section('title', 'Portal Institucional')
 
-            .nav-link:hover {
-                color: var(--accent-color) !important;
-            }
-            
-            .hero-section {
-                background: var(--primary-color);
-                color: white;
-                padding: 8rem 0 6rem;
-                position: relative;
-                overflow: hidden;
-            }
+@section('styles')
+    <style>
+        /* Top bar institucional */
+        .portal-topbar {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-soft);
+            padding: 0.85rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1030;
+        }
 
-            .hero-section::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: radial-gradient(circle at top right, #1e293b, transparent 60%);
-                opacity: 0.5;
-            }
-            
-            .hero-title {
-                font-size: 3.5rem;
-                font-weight: 800;
-                letter-spacing: -1px;
-                margin-bottom: 1.5rem;
-                line-height: 1.1;
-            }
-            
-            .hero-subtitle {
-                font-size: 1.25rem;
-                margin-bottom: 2.5rem;
-                color: #cbd5e1;
-                font-weight: 300;
-                max-width: 600px;
-            }
-            
-            .feature-card {
-                border: none;
-                border-radius: 16px;
-                background: white;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-                transition: all 0.3s ease;
-                height: 100%;
-                padding: 2rem;
-            }
-            
-            .feature-card:hover {
-                transform: translateY(-5px);
-                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
-            }
-            
-            .feature-icon {
-                width: 48px;
-                height: 48px;
-                background: #eff6ff;
-                color: var(--accent-color);
-                border-radius: 12px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 1.5rem;
-                margin-bottom: 1.5rem;
-            }
-            
-            .feature-title {
-                font-weight: 700;
-                font-size: 1.25rem;
-                margin-bottom: 0.75rem;
-                color: var(--primary-color);
-            }
+        .portal-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+            text-decoration: none;
+        }
 
-            .feature-text {
-                color: var(--text-muted);
-            }
-            
-            .footer {
-                background-color: white;
-                color: var(--secondary-color);
-                padding: 4rem 0 2rem;
-                border-top: 1px solid #e2e8f0;
-            }
-            
-            .btn-primary {
-                background-color: var(--accent-color);
-                border-color: var(--accent-color);
-                padding: 0.75rem 2rem;
-                font-weight: 600;
-                border-radius: 8px;
-                transition: all 0.2s;
-            }
+        .portal-brand img { height: 44px; width: auto; }
 
-            .btn-primary:hover {
-                background-color: #1d4ed8;
-                border-color: #1d4ed8;
-                transform: translateY(-1px);
-            }
-            
-            .btn-outline-light {
-                border: 1px solid rgba(255,255,255,0.2);
-                padding: 0.75rem 2rem;
-                font-weight: 600;
-                border-radius: 8px;
-            }
+        .portal-brand .pb-name {
+            font-family: var(--font-heading);
+            font-weight: 800;
+            color: #1e293b;
+            font-size: 1.05rem;
+            line-height: 1.1;
+        }
 
-            .btn-outline-light:hover {
-                background: rgba(255,255,255,0.1);
-                color: white;
-                border-color: white;
-            }
-        </style>
-    </head>
-    <body>
-        <!-- Navbar -->
-        <nav class="navbar navbar-expand-lg fixed-top">
-            <div class="container">
-                <a class="navbar-brand d-flex align-items-center gap-2" href="#">
-                    <img src="{{ asset('images/insignia.png') }}" alt="GPN-AGIL" height="32" class="d-inline-block align-text-top">
-                    GPN-AGIL
-                </a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav ms-auto">
-                        @if (Route::has('login'))
-                            @auth
-                                <li class="nav-item">
-                                    <a href="{{ url('/home') }}" class="nav-link">Dashboard</a>
-                                </li>
-                            @else
-                                <li class="nav-item">
-                                    <a href="{{ route('login') }}" class="nav-link">Login</a>
-                                </li>
-                                @if (Route::has('register'))
-                                    <li class="nav-item">
-                                        <a href="{{ route('register') }}" class="nav-link">Registrar</a>
-                                    </li>
-                                @endif
-                            @endauth
-                        @endif
-                    </ul>
+        .portal-brand .pb-sub {
+            color: var(--text-muted);
+            font-size: 0.78rem;
+        }
+
+        /* Hero claro e sóbrio */
+        .portal-hero {
+            position: relative;
+            overflow: hidden;
+            background:
+                radial-gradient(900px 420px at 85% -10%, rgba(37, 99, 235, 0.08) 0%, transparent 60%),
+                linear-gradient(180deg, #ffffff 0%, var(--bg-body) 100%);
+            padding: 5.5rem 0 4.5rem;
+        }
+
+        .hero-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(37, 99, 235, 0.08);
+            border: 1px solid rgba(37, 99, 235, 0.18);
+            color: var(--primary-accent);
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            padding: 0.4rem 1rem;
+            border-radius: 999px;
+        }
+
+        .hero-title {
+            font-weight: 800;
+            font-size: clamp(2rem, 5vw, 3.25rem);
+            color: #0f172a;
+            line-height: 1.12;
+            margin: 1.25rem 0;
+        }
+
+        .hero-title .accent { color: var(--primary-accent); }
+
+        .hero-subtitle {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            max-width: 640px;
+            margin: 0 auto 2.25rem;
+        }
+
+        /* Cartões de módulos */
+        .modules-section { padding: 1rem 0 5rem; }
+
+        .module-card {
+            background: #ffffff;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            padding: 2rem 1.75rem;
+            height: 100%;
+            transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+        }
+
+        .module-card:hover {
+            transform: translateY(-6px);
+            box-shadow: var(--shadow-card);
+            border-color: rgba(37, 99, 235, 0.25);
+        }
+
+        .module-icon {
+            width: 54px;
+            height: 54px;
+            border-radius: var(--radius-md);
+            background: var(--primary-soft);
+            color: var(--primary-accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.45rem;
+            margin-bottom: 1.25rem;
+            transition: background-color .25s ease, color .25s ease;
+        }
+
+        .module-card:hover .module-icon {
+            background: var(--primary-accent);
+            color: #fff;
+        }
+
+        .module-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #1e293b;
+            margin-bottom: 0.5rem;
+        }
+
+        .module-text {
+            color: var(--text-muted);
+            font-size: 0.92rem;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .section-heading { color: #0f172a; font-weight: 800; }
+    </style>
+@endsection
+
+@section('content')
+    <!-- Top bar institucional -->
+    <header class="portal-topbar">
+        <div class="container d-flex align-items-center justify-content-between">
+            <a href="{{ url('/') }}" class="portal-brand">
+                <img src="{{ $dadosInstituicao->logo_url }}" alt="Insígnia institucional">
+                <span>
+                    <span class="pb-name d-block">{{ $dadosInstituicao->sigla ?? 'GPN' }}</span>
+                    <span class="pb-sub">{{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial do Namibe' }}</span>
+                </span>
+            </a>
+            <div>
+                @auth
+                    <a href="{{ route('home') }}" class="btn btn-institucional">
+                        <i class="fas fa-gauge-high me-2"></i>Ir para o Painel
+                    </a>
+                @else
+                    <a href="{{ route('login') }}" class="btn btn-institucional">
+                        <i class="fas fa-right-to-bracket me-2"></i>Aceder ao Sistema
+                    </a>
+                @endauth
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero -->
+    <section class="portal-hero text-center">
+        <div class="container position-relative">
+            <div class="row justify-content-center">
+                <div class="col-lg-9">
+                    <span class="hero-pill">
+                        <i class="fas fa-shield-halved"></i>
+                        {{ $dadosInstituicao->cabecalho_linha1 ?? 'República de Angola' }}
+                    </span>
+                    <h1 class="hero-title">
+                        Sistema de Gestão <span class="accent">Administrativa e Documental</span>
+                    </h1>
+                    <p class="hero-subtitle">
+                        Plataforma institucional do {{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial do Namibe' }}
+                        para a gestão de documentos, requisições, frota e serviços — de forma segura, rastreável e eficiente.
+                    </p>
+                    <div class="d-flex justify-content-center flex-wrap gap-3">
+                        @auth
+                            <a href="{{ route('home') }}" class="btn btn-institucional">
+                                <i class="fas fa-gauge-high me-2"></i>Aceder ao Painel
+                            </a>
+                        @else
+                            <a href="{{ route('login') }}" class="btn btn-institucional">
+                                <i class="fas fa-right-to-bracket me-2"></i>Aceder ao Sistema
+                            </a>
+                        @endauth
+                    </div>
                 </div>
             </div>
-        </nav>
+        </div>
+    </section>
 
-        <!-- Hero Section -->
-        <section class="hero-section">
-            <div class="container text-center">
-                <h1 class="hero-title">GPN-AGIL</h1>
-                <p class="hero-subtitle">Sistema de Gestão de Logística e Patrimônio</p>
-                <div class="d-flex justify-content-center gap-3">
-                    @auth
-                        <a href="{{ route('home') }}" class="btn btn-outline-light">Dashboard</a>
-                    @else
-                        <a href="{{ route('login') }}" class="btn btn-outline-light me-2">Login</a>
-                        <a href="{{ route('register') }}" class="btn btn-light">Registrar</a>
-                    @endauth
-                </div>
+    <!-- Módulos do sistema -->
+    <section class="modules-section">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="section-heading h3 mb-2">Módulos do Sistema</h2>
+                <p class="text-muted mb-0">Recursos integrados para uma gestão pública moderna</p>
             </div>
-        </section>
 
-        <!-- Features Section -->
-        <section class="container my-5">
-            <h2 class="text-center mb-5">Funcionalidades Principais</h2>
             <div class="row g-4">
-                <div class="col-md-4">
-                    <div class="card feature-card p-4">
-                        <div class="text-center">
-                            <i class="fas fa-car feature-icon"></i>
-                            <h3 class="h4 mb-3">Gestão de Viaturas</h3>
-                            <p class="text-muted">Cadastro completo de viaturas com status operacional, histórico de manutenção e documentação.</p>
-                        </div>
+                <div class="col-md-6 col-lg-4">
+                    <div class="module-card">
+                        <div class="module-icon"><i class="fas fa-file-signature"></i></div>
+                        <h3 class="module-title">Gestão Documental</h3>
+                        <p class="module-text">Registo, protocolo, encaminhamento e arquivo de documentos de entrada e internos, com rastreio de despachos e prazos.</p>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card feature-card p-4">
-                        <div class="text-center">
-                            <i class="fas fa-file-alt feature-icon"></i>
-                            <h3 class="h4 mb-3">Requisições Personalizadas</h3>
-                            <p class="text-muted">Templates específicos para Produtos, Oficina e Serviços Gerais com campos customizados.</p>
-                        </div>
+                <div class="col-md-6 col-lg-4">
+                    <div class="module-card">
+                        <div class="module-icon"><i class="fas fa-clipboard-check"></i></div>
+                        <h3 class="module-title">Requisições</h3>
+                        <p class="module-text">Fluxo de aprovação para produtos, oficina, serviços e passagens, com vistos de departamento e assinatura.</p>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card feature-card p-4">
-                        <div class="text-center">
-                            <i class="fas fa-file-pdf feature-icon"></i>
-                            <h3 class="h4 mb-3">Termos de Entrega</h3>
-                            <p class="text-muted">Geração automática de termos de entrega e devolução em formato PDF.</p>
-                        </div>
+                <div class="col-md-6 col-lg-4">
+                    <div class="module-card">
+                        <div class="module-icon"><i class="fas fa-truck-fast"></i></div>
+                        <h3 class="module-title">Frota e Viaturas</h3>
+                        <p class="module-text">Controlo do estado operacional, histórico de manutenção e documentação de toda a frota institucional.</p>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card feature-card p-4">
-                        <div class="text-center">
-                            <i class="fas fa-lock feature-icon"></i>
-                            <h3 class="h4 mb-3">Segurança Avançada</h3>
-                            <p class="text-muted">Autenticação segura e controle de acesso granular para proteger dados sensíveis.</p>
-                        </div>
+                <div class="col-md-6 col-lg-4">
+                    <div class="module-card">
+                        <div class="module-icon"><i class="fas fa-calendar-check"></i></div>
+                        <h3 class="module-title">Reservas de Espaços</h3>
+                        <p class="module-text">Agendamento de espaços com calendário, verificação de disponibilidade e aprovação por departamento.</p>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card feature-card p-4">
-                        <div class="text-center">
-                            <i class="fas fa-chart-line feature-icon"></i>
-                            <h3 class="h4 mb-3">Relatórios e Estatísticas</h3>
-                            <p class="text-muted">Visualização de dados em tempo real para tomada de decisões estratégicas.</p>
-                        </div>
+                <div class="col-md-6 col-lg-4">
+                    <div class="module-card">
+                        <div class="module-icon"><i class="fas fa-shield-halved"></i></div>
+                        <h3 class="module-title">Segurança e Acesso</h3>
+                        <p class="module-text">Controlo de acesso por funções (RBAC), delegação de poderes e trilha de auditoria detalhada.</p>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card feature-card p-4">
-                        <div class="text-center">
-                            <i class="fas fa-comments feature-icon"></i>
-                            <h3 class="h4 mb-3">Feedback e Melhorias</h3>
-                            <p class="text-muted">Sistema de coleta de feedback dos usuários para melhoria contínua da plataforma.</p>
-                        </div>
+                <div class="col-md-6 col-lg-4">
+                    <div class="module-card">
+                        <div class="module-icon"><i class="fas fa-headset"></i></div>
+                        <h3 class="module-title">Suporte</h3>
+                        <p class="module-text">Canal direto de feedback e apoio para garantir a continuidade do serviço às equipas.</p>
                     </div>
                 </div>
             </div>
-        </section>
-
-        <!-- Footer -->
-        <footer class="footer">
-            <div class="container">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h4>GPN-AGIL</h4>
-                        <p>Sistema de Gestão de Logística e Patrimônio desenvolvido para otimizar as operações do departamento.</p>
-                    </div>
-                    <div class="col-md-6 text-md-end">
-                        <p>&copy; {{ date('Y') }} GPN-AGIL. Todos os direitos reservados.</p>
-                        <p>Versão 1.0</p>
-                    </div>
-                </div>
-            </div>
-        </footer>
-
-        <!-- Bootstrap JS -->
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    </body>
-</html>
+        </div>
+    </section>
+@endsection

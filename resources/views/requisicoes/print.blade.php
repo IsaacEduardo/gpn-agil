@@ -11,8 +11,7 @@
             </div>
             <div class="card-body">
                 <p>
-                    O PDF foi gerado. A janela de impressão deve abrir automaticamente.
-                    Caso não abra, utilize os botões abaixo.
+                    O PDF foi gerado. Utilize os botões abaixo para visualizar ou imprimir o documento.
                 </p>
                 <div class="mb-3">
                     <a id="openPdfBtn" href="{{ $pdfUrl }}" target="_blank" class="btn btn-outline-primary me-2">
@@ -64,12 +63,12 @@
             }
 
             // Tenta imprimir automaticamente quando o iframe carregar
-            if (frame) {
-                frame.addEventListener('load', function() {
-                    // Pequeno atraso para garantir que o visualizador carregou
-                    setTimeout(tryPrint, 400);
-                });
-            }
+            // if (frame) {
+            //     frame.addEventListener('load', function() {
+            //         // Pequeno atraso para garantir que o visualizador carregou
+            //         // setTimeout(tryPrint, 400);
+            //     });
+            // }
 
             // Botão manual para imprimir
             printBtn && printBtn.addEventListener('click', tryPrint);
@@ -94,10 +93,10 @@
             } catch (_) {}
 
             // Tenta automaticamente mesmo sem evento de load (alguns navegadores)
-            setTimeout(tryPrint, 1200);
-            setTimeout(function() {
-                if (!redirected) scheduleRedirect();
-            }, 6000);
+            // setTimeout(tryPrint, 1200);
+            // setTimeout(function() {
+            //    if (!redirected) scheduleRedirect();
+            // }, 6000);
         })();
     </script>
 @endpush

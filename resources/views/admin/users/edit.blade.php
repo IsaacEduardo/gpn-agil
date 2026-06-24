@@ -64,9 +64,7 @@
                             @endforeach
                         @endisset
                     </select>
-                    @if(isset($gabinetesElegiveis) && $gabinetesElegiveis->count() === 0)
-                        <small class="text-muted">Nenhum gabinete elegível. Vincule o usuário a departamentos do gabinete.</small>
-                    @endif
+
                     @error('gabinete_chefiado_id')
                         <div class="invalid-feedback d-block">{{ $message }}</div>
                     @enderror

@@ -5,24 +5,24 @@ namespace App\Policies;
 use App\Models\Gabinete;
 use App\Models\Requisicao;
 use App\Models\User;
+use Illuminate\Auth\Access\Response;
 
 class RequisicaoPolicy
 {
     public function viewAny(User $user): bool
     {
-        return ($user->role && ($user->role->name === 'admin'))
-            || $user->hasPermission('requisicoes.view_any')
-            || $user->hasPermission('requisicoes.view')
-            // Chefe de departamento com permissão de visto deve poder acessar a lista
-            || $user->hasPermission('visto_departamento_requisicoes');
+        return $user->isAdmin()
+            || $user->can('requisicoes.listar')
+            || $user->can('requisicoes.listar_todas')
+            || $user->can('requisicoes.aprovar');
     }
 
     public function view(User $user, Requisicao $requisicao): bool
     {
-        if ($user->role && ($user->role->name === 'admin')) {
+        if ($user->isAdmin()) {
             return true;
         }
-        if ($user->hasPermission('requisicoes.view_any')) {
+        if ($user->can('requisicoes.listar_todas')) {
             return true;
         }
         $requisicao->loadMissing('usuario.departamentos', 'usuario.departamento');
@@ -61,24 +61,64 @@ class RequisicaoPolicy
         return false;
     }
 
-    public function create(User $user): bool
+    public function create(User $user): Response
     {
-        return ($user->role && ($user->role->name === 'admin'))
-            || $user->hasPermission('requisicoes.create');
+        // Admin can do everything
+        if ($user->isAdmin()) {
+            return Response::allow();
+        }
+
+        // Restrict Chefe de Departamento
+        if ($user->role && $user->role->name === 'chefe-departamento') {
+            return Response::deny('Ação não permitida: Chefes de Departamento não devem criar requisições.');
+        }
+
+        // Restrict Chefe de Gabinete (Responsible for any Cabinet)
+        $permissionService = app(\App\Services\DocumentoPermissionService::class);
+        $responsibleGabinetes = $permissionService->getUserResponsibleGabinetes($user);
+
+        if (! empty($responsibleGabinetes)) {
+            return Response::deny('Ação não permitida: Chefes de Gabinete não devem criar requisições.');
+        }
+
+        // Allow standard users (or check specific permission if needed)
+        // Historically it checked 'requisicoes.create', keeping that or defaulting to true for 'user' role
+        if ($user->hasPermission('requisicoes.create')) {
+            return Response::allow();
+        }
+
+        // Default allow for basic users if they don't have explicit permission system blocking them
+        // Assuming 'user' role should be able to create.
+        return Response::allow();
     }
 
     public function reviewDepartamentoAny(User $user): bool
     {
-        return ($user->role && ($user->role->name === 'admin'))
+        return $user->isAdmin()
             || $user->hasPermission('visto_departamento_requisicoes');
     }
 
     public function approve(User $user, Requisicao $requisicao): bool
     {
-        if ($user->role && ($user->role->name === 'admin')) {
+        // 1. Permission Check
+        if ($user->can('requisicoes.aprovar')) {
+            // Logic to ensure they are approving for their department is handled below or assumed true for "Global Approvers"
+            // However, for strict departmental control, we should mix permission with logic.
+            // But 'requisicoes.aprovar' usually implies power.
+            // Let's allow if they have the permission, BUT if they are a Chefe, we double check department scope if we want to be strict.
+            // For now, let's treat the permission as a capability.
+            // To be safe and respect legacy logic:
+            if ($user->role && $user->role->name === 'chefe-departamento') {
+                // Fallthrough to department check below
+            } else {
+                return true;
+            }
+        }
+
+        if ($user->isAdmin()) {
             return true;
         }
-        if ($user->hasPermission('aprovar_requisicoes')) {
+        if ($user->can('requisicoes.aprovar')) {
             return true;
         }
         if ($user->role && $user->role->name === 'chefe-departamento') {

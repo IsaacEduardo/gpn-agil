@@ -15,6 +15,7 @@ class ViaturaController extends Controller
      */
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Viatura::class);
         $query = Viatura::query();
 
         // Filtro de busca por texto
@@ -71,6 +72,8 @@ class ViaturaController extends Controller
      */
     public function create()
     {
+        $this->authorize('create', Viatura::class);
+
         return view('viaturas.create');
     }
 
@@ -79,6 +82,7 @@ class ViaturaController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorize('create', Viatura::class);
         // Gerar identificação automática se for "AUTO"
         if ($request->input('identificacao') === 'AUTO') {
             $request->merge(['identificacao' => 'V-'.time()]);
@@ -159,6 +163,7 @@ class ViaturaController extends Controller
      */
     public function show(Viatura $viatura)
     {
+        $this->authorize('view', $viatura);
         $viatura->load(['fotos:id,viatura_id,caminho_arquivo,tipo']);
 
         return view('viaturas.show', compact('viatura'));
@@ -169,6 +174,8 @@ class ViaturaController extends Controller
      */
     public function edit(Viatura $viatura)
     {
+        $this->authorize('update', $viatura);
+
         return view('viaturas.edit', compact('viatura'));
     }
 
@@ -177,6 +184,7 @@ class ViaturaController extends Controller
      */
     public function update(Request $request, Viatura $viatura)
     {
+        $this->authorize('update', $viatura);
         // Padronizar matrícula para maiúsculas
         if ($request->filled('placa')) {
             $request->merge(['placa' => strtoupper($request->input('placa'))]);
@@ -268,6 +276,7 @@ class ViaturaController extends Controller
      */
     public function destroy(Viatura $viatura)
     {
+        $this->authorize('delete', $viatura);
         // Verificar se existem requisições de oficina associadas
         if ($viatura->requisicoes_oficina()->count() > 0) {
             return redirect()->route('viaturas.index')
@@ -276,8 +285,8 @@ class ViaturaController extends Controller
 
         // Excluir fotos associadas
         foreach ($viatura->fotos as $foto) {
-            if (Storage::exists($foto->caminho_arquivo)) {
-                Storage::delete($foto->caminho_arquivo);
+            if (Storage::disk('public')->exists($foto->caminho_arquivo)) {
+                Storage::disk('public')->delete($foto->caminho_arquivo);
             }
             $foto->delete();
         }

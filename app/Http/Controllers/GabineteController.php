@@ -7,7 +7,6 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\Rule;
 
 class GabineteController extends Controller
 {
@@ -27,7 +26,7 @@ class GabineteController extends Controller
     public function index()
     {
         $this->ensureAdmin();
-        $gabinetes = Gabinete::with('responsavel')->orderBy('nome')->paginate(15);
+        $gabinetes = Gabinete::with(['responsavel', 'superChefe'])->orderBy('nome')->paginate(15);
 
         return view('gabinetes.index', compact('gabinetes'));
     }
@@ -38,8 +37,9 @@ class GabineteController extends Controller
         $userRole = Role::where('name', 'user')->first();
         $chefeDepRole = Role::where('name', 'chefe-departamento')->first();
         $chefeGabRole = Role::firstOrCreate(['name' => 'chefe-gabinete']);
+        $superChefeRole = Role::firstOrCreate(['name' => 'super-chefe-gabinete']);
         $query = User::with('role')->orderBy('name');
-        $roleIds = collect([$userRole?->id, $chefeDepRole?->id, $chefeGabRole?->id])->filter()->values();
+        $roleIds = collect([$userRole?->id, $chefeDepRole?->id, $chefeGabRole?->id, $superChefeRole?->id])->filter()->values();
         if ($roleIds->isNotEmpty()) {
             $query->whereIn('role_id', $roleIds);
         }
@@ -55,6 +55,7 @@ class GabineteController extends Controller
             'nome' => ['required', 'string', 'max:255', 'unique:gabinetes,nome'],
             'sigla' => ['nullable', 'string', 'max:10'],
             'responsavel_id' => ['nullable', 'exists:users,id'],
+            'super_chefe_id' => ['nullable', 'exists:users,id'],
         ]);
 
         $gabinete = Gabinete::create($data);
@@ -65,6 +66,17 @@ class GabineteController extends Controller
             $responsavel = User::find($data['responsavel_id']);
             if ($responsavel && (! $responsavel->role || $responsavel->role->name !== 'admin')) {
                 $responsavel->update(['role_id' => $chefeGabRole->id]);
+                $responsavel->syncRoles([$chefeGabRole->name]);
+            }
+        }
+
+        // Promover super chefe, se informado
+        if (! empty($data['super_chefe_id'])) {
+            $superChefeRole = Role::firstOrCreate(['name' => 'super-chefe-gabinete']);
+            $superChefe = User::find($data['super_chefe_id']);
+            if ($superChefe && (! $superChefe->role || $superChefe->role->name !== 'admin')) {
+                $superChefe->update(['role_id' => $superChefeRole->id]);
+                $superChefe->syncRoles([$superChefeRole->name]);
             }
         }
 
@@ -78,19 +90,14 @@ class GabineteController extends Controller
         $userRole = Role::where('name', 'user')->first();
         $chefeDepRole = Role::where('name', 'chefe-departamento')->first();
         $chefeGabRole = Role::firstOrCreate(['name' => 'chefe-gabinete']);
-        $roleIds = collect([$userRole?->id, $chefeDepRole?->id, $chefeGabRole?->id])->filter()->values();
+        $superChefeRole = Role::firstOrCreate(['name' => 'super-chefe-gabinete']);
+        $roleIds = collect([$userRole?->id, $chefeDepRole?->id, $chefeGabRole?->id, $superChefeRole?->id])->filter()->values();
 
-        // Usuários elegíveis: pertencem a departamentos deste gabinete (via FK direta ou pivot)
+        // Usuários elegíveis: qualquer usuário com papel apropriado
         $usuarios = User::with('role')
             ->whereIn('role_id', $roleIds)
-            ->where(function ($q) use ($gabinete) {
-                $q->whereHas('departamento', function ($q2) use ($gabinete) {
-                    $q2->where('gabinete_id', $gabinete->id);
-                })->orWhereHas('departamentos', function ($q3) use ($gabinete) {
-                    $q3->where('gabinete_id', $gabinete->id);
-                });
-            })
             ->orWhere('id', $gabinete->responsavel_id) // manter atual na lista
+            ->orWhere('id', $gabinete->super_chefe_id) // manter super chefe atual na lista
             ->orderBy('name')
             ->get();
 
@@ -104,32 +111,19 @@ class GabineteController extends Controller
         $userRole = Role::where('name', 'user')->first();
         $chefeDepRole = Role::where('name', 'chefe-departamento')->first();
         $chefeGabRole = Role::firstOrCreate(['name' => 'chefe-gabinete']);
-        $roleIds = collect([$userRole?->id, $chefeDepRole?->id, $chefeGabRole?->id])->filter()->values();
-
-        $usuariosElegiveis = User::whereIn('role_id', $roleIds)
-            ->where(function ($q) use ($gabinete) {
-                $q->whereHas('departamento', function ($q2) use ($gabinete) {
-                    $q2->where('gabinete_id', $gabinete->id);
-                })->orWhereHas('departamentos', function ($q3) use ($gabinete) {
-                    $q3->where('gabinete_id', $gabinete->id);
-                });
-            })
-            ->pluck('id')
-            ->toArray();
+        $superChefeRole = Role::firstOrCreate(['name' => 'super-chefe-gabinete']);
+        $roleIds = collect([$userRole?->id, $chefeDepRole?->id, $chefeGabRole?->id, $superChefeRole?->id])->filter()->values();
 
         $hasDepartamentos = $gabinete->departamentos()->exists();
         $prevResponsavelId = $gabinete->responsavel_id;
+        $prevSuperChefeId = $gabinete->super_chefe_id;
 
         $rules = [
             'nome' => ['required', 'string', 'max:255', "unique:gabinetes,nome,{$gabinete->id}"],
             'sigla' => ['nullable', 'string', 'max:10'],
+            'responsavel_id' => ['nullable', 'exists:users,id'],
+            'super_chefe_id' => ['nullable', 'exists:users,id'],
         ];
-
-        if ($hasDepartamentos) {
-            $rules['responsavel_id'] = ['required', 'exists:users,id', Rule::in($usuariosElegiveis)];
-        } else {
-            $rules['responsavel_id'] = ['nullable', 'exists:users,id'];
-        }
 
         $data = $request->validate($rules);
 
@@ -141,14 +135,19 @@ class GabineteController extends Controller
             $responsavel = User::find($newResponsavelId);
             if ($responsavel && (! $responsavel->role || $responsavel->role->name !== 'admin')) {
                 $responsavel->update(['role_id' => $chefeGabRole->id]);
+                $responsavel->syncRoles([$chefeGabRole->name]);
             }
         }
         if ($prevResponsavelId && $prevResponsavelId !== $newResponsavelId) {
             $prev = User::find($prevResponsavelId);
             if ($prev && $prev->role && $prev->role->name === 'chefe-gabinete') {
-                $userRoleModel = Role::where('name', 'user')->first();
-                if ($userRoleModel) {
-                    $prev->update(['role_id' => $userRoleModel->id]);
+                $isStillChief = Gabinete::where('responsavel_id', $prev->id)->exists();
+                if (! $isStillChief) {
+                    $userRoleModel = Role::where('name', 'user')->first();
+                    if ($userRoleModel) {
+                        $prev->update(['role_id' => $userRoleModel->id]);
+                        $prev->syncRoles([$userRoleModel->name]);
+                    }
                 }
             }
         }
@@ -158,6 +157,40 @@ class GabineteController extends Controller
                 $userRoleModel = Role::where('name', 'user')->first();
                 if ($userRoleModel) {
                     $prev->update(['role_id' => $userRoleModel->id]);
+                    $prev->syncRoles([$userRoleModel->name]);
+                }
+            }
+        }
+
+        // Gerenciar promoção/demissão de super chefe de gabinete
+        $newSuperChefeId = $gabinete->super_chefe_id;
+        if ($newSuperChefeId) {
+            $superChefe = User::find($newSuperChefeId);
+            if ($superChefe && (! $superChefe->role || $superChefe->role->name !== 'admin')) {
+                $superChefe->update(['role_id' => $superChefeRole->id]);
+                $superChefe->syncRoles([$superChefeRole->name]);
+            }
+        }
+        if ($prevSuperChefeId && $prevSuperChefeId !== $newSuperChefeId) {
+            $prev = User::find($prevSuperChefeId);
+            if ($prev && $prev->role && $prev->role->name === 'super-chefe-gabinete') {
+                $isStillSuper = Gabinete::where('super_chefe_id', $prev->id)->exists();
+                if (! $isStillSuper) {
+                    $userRoleModel = Role::where('name', 'user')->first();
+                    if ($userRoleModel) {
+                        $prev->update(['role_id' => $userRoleModel->id]);
+                        $prev->syncRoles([$userRoleModel->name]);
+                    }
+                }
+            }
+        }
+        if (! $newSuperChefeId && $prevSuperChefeId) {
+            $prev = User::find($prevSuperChefeId);
+            if ($prev && $prev->role && $prev->role->name === 'super-chefe-gabinete') {
+                $userRoleModel = Role::where('name', 'user')->first();
+                if ($userRoleModel) {
+                    $prev->update(['role_id' => $userRoleModel->id]);
+                    $prev->syncRoles([$userRoleModel->name]);
                 }
             }
         }

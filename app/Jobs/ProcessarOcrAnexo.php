@@ -38,17 +38,10 @@ class ProcessarOcrAnexo implements ShouldQueue
             return;
         }
 
-        // Only process images or PDFs (if converted to images, but Tesseract handles images best)
-        // For PDF, we might need a separate PDF parser or convert PDF to Image first.
-        // Tesseract wrapper might support PDF if Tesseract binary supports it, but usually it needs image input.
-        // For simplicity in this iteration, we focus on Images or rely on Tesseract to handle PDF if configured.
-        // Actually, Tesseract natively supports images. For PDF, we often need 'pdftotext' or convert pages to images.
-        // However, let's try to run Tesseract on the file.
-
-        // Check if file exists
         $disk = config('filesystems.docs_disk', 'public');
         if (! Storage::disk($disk)->exists($anexo->caminho_arquivo)) {
             Log::warning("OCR: Arquivo não encontrado para Anexo ID {$this->anexoId}");
+
             return;
         }
 
@@ -57,54 +50,24 @@ class ProcessarOcrAnexo implements ShouldQueue
 
         try {
             $text = '';
-            
-            // Basic support for Images
-            if (str_starts_with($mime, 'image/')) {
-                // Tenta encontrar o executável se não estiver no PATH
-                // Ajuste este caminho conforme a instalação do usuário se necessário
-                $tesseract = new TesseractOCR($fullPath);
-                
-                // Fallback comum no Windows se não estiver no PATH
-                if (file_exists('C:\\Program Files\\Tesseract-OCR\\tesseract.exe')) {
-                    $tesseract->executable('C:\\Program Files\\Tesseract-OCR\\tesseract.exe');
-                } elseif (file_exists('C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe')) {
-                    $tesseract->executable('C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe');
-                }
 
-                 $text = $tesseract
-                    ->lang('por', 'eng') // Portuguese and English
-                    ->run();
+            if (str_starts_with($mime, 'image/')) {
+                $text = $this->performOcr($fullPath);
             } elseif ($mime === 'application/pdf') {
                 try {
-                    // 1. Tentar extrair texto nativo (PDF Pesquisável)
-                    $parser = new Parser();
+                    // 1. Try native text extraction (Searchable PDF)
+                    $parser = new Parser;
                     $pdf = $parser->parseFile($fullPath);
                     $text = $pdf->getText();
-                    
-                    // Limpar caracteres estranhos
                     $text = trim($text);
                 } catch (\Throwable $e) {
-                    Log::warning("PDF Parser falhou para Anexo ID {$this->anexoId}: " . $e->getMessage());
+                    Log::warning("PDF Parser falhou para Anexo ID {$this->anexoId}: ".$e->getMessage());
                 }
 
-                // 2. Se não encontrou texto, pode ser um PDF escaneado (Imagem)
-                // Tenta usar Tesseract no arquivo PDF (pode requerer Ghostscript instalado no servidor)
+                // 2. If no text, try OCR (Scanned PDF)
                 if (empty($text)) {
                     Log::info("PDF sem texto detectado (possível imagem). Tentando OCR via Tesseract para Anexo ID {$this->anexoId}...");
-                    try {
-                        $tesseract = new TesseractOCR($fullPath);
-                        
-                        // Configura executável se necessário
-                        if (file_exists('C:\\Program Files\\Tesseract-OCR\\tesseract.exe')) {
-                            $tesseract->executable('C:\\Program Files\\Tesseract-OCR\\tesseract.exe');
-                        } elseif (file_exists('C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe')) {
-                            $tesseract->executable('C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe');
-                        }
-
-                        $text = $tesseract->lang('por', 'eng')->run();
-                    } catch (\Throwable $e) {
-                        Log::warning("OCR em PDF falhou (provável falta de Ghostscript/ImageMagick): " . $e->getMessage());
-                    }
+                    $text = $this->performOcr($fullPath);
                 }
             }
 
@@ -114,7 +77,41 @@ class ProcessarOcrAnexo implements ShouldQueue
             }
 
         } catch (\Throwable $e) {
-            Log::error("OCR Falhou para Anexo ID {$this->anexoId}: " . $e->getMessage());
+            Log::error("OCR Falhou para Anexo ID {$this->anexoId}: ".$e->getMessage());
+        }
+    }
+
+    protected function performOcr(string $path): string
+    {
+        try {
+            $tesseract = new TesseractOCR($path);
+
+            // 1. Configured Path
+            $configPath = config('services.ocr.path');
+            if ($configPath && file_exists($configPath)) {
+                $tesseract->executable($configPath);
+            }
+            // 2. Common Windows Paths (Fallback)
+            elseif (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+                $commonPaths = [
+                    'C:\\Program Files\\Tesseract-OCR\\tesseract.exe',
+                    'C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe',
+                    getenv('LOCALAPPDATA').'\\Tesseract-OCR\\tesseract.exe',
+                ];
+
+                foreach ($commonPaths as $p) {
+                    if (file_exists($p)) {
+                        $tesseract->executable($p);
+                        break;
+                    }
+                }
+            }
+            // 3. Linux/Mac usually is in PATH, so no executable() call needed unless specific.
+
+            return $tesseract->lang('por', 'eng')->run();
+        } catch (\Throwable $e) {
+            // Re-throw to be caught by handle
+            throw $e;
         }
     }
 }

@@ -35,9 +35,9 @@ class ReservaEspacoController extends Controller
             $query->whereBetween('data_evento', [$request->data_inicio, $request->data_fim]);
         }
 
-        // Escopo por papel/permissão: não-admin sem 'reservas.view_any' vê apenas próprias reservas
+        // Escopo por papel/permissão: não-admin sem 'reservas.listar_todas' vê apenas próprias reservas
         $actor = Auth::user();
-        if (! (($actor->role && $actor->role->name === 'admin') || $actor->hasPermission('reservas.view_any'))) {
+        if (! (($actor->role && $actor->role->name === 'admin') || $actor->hasPermission('reservas.listar_todas'))) {
             $query->where('usuario_id', $actor->id);
         }
 
@@ -146,8 +146,8 @@ class ReservaEspacoController extends Controller
                 ->with('error', 'Esta reserva não pode ser editada.');
         }
 
-        // Verificar se o usuário pode editar (apenas o criador ou admin)
-        if ($reserva->usuario_id !== Auth::id() && ! Auth::user()->hasPermission('gerenciar_reservas')) {
+        // Verificar se o usuário pode editar (apenas o criador ou admin/permissão)
+        if ($reserva->usuario_id !== Auth::id() && ! Auth::user()->hasPermission('reservas.editar')) {
             return redirect()->route('reservas.show', $reserva->id)
                 ->with('error', 'Você não tem permissão para editar esta reserva.');
         }
@@ -223,7 +223,7 @@ class ReservaEspacoController extends Controller
     public function destroy(ReservaEspaco $reserva)
     {
         // Verificar permissões
-        if ($reserva->usuario_id !== Auth::id() && ! Auth::user()->hasPermission('gerenciar_reservas')) {
+        if ($reserva->usuario_id !== Auth::id() && ! Auth::user()->hasPermission('reservas.eliminar')) {
             return redirect()->route('reservas.index')
                 ->with('error', 'Você não tem permissão para excluir esta reserva.');
         }
@@ -298,7 +298,7 @@ class ReservaEspacoController extends Controller
         }
 
         // Verificar permissões
-        if ($reserva->usuario_id !== Auth::id() && ! Auth::user()->hasPermission('gerenciar_reservas')) {
+        if ($reserva->usuario_id !== Auth::id() && ! Auth::user()->hasPermission('reservas.cancelar')) {
             return redirect()->route('reservas.show', $reserva->id)
                 ->with('error', 'Você não tem permissão para cancelar esta reserva.');
         }
@@ -348,9 +348,9 @@ class ReservaEspacoController extends Controller
 
             $query = ReservaEspaco::query();
 
-            // Escopo por papel/permissão: não-admin sem 'reservas.view_any' vê apenas próprias reservas
+            // Escopo por papel/permissão: não-admin sem 'reservas.listar_todas' vê apenas próprias reservas
             $actor = Auth::user();
-            if (! (($actor->role && $actor->role->name === 'admin') || $actor->hasPermission('reservas.view_any'))) {
+            if (! (($actor->role && $actor->role->name === 'admin') || $actor->hasPermission('reservas.listar_todas'))) {
                 $query->where('usuario_id', $actor->id);
             }
 

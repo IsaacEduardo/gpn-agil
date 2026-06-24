@@ -5,11 +5,11 @@
 @endphp
 
 <div class="dropdown" id="notificationsDropdown">
-    <button class="btn btn-link text-decoration-none position-relative" id="notificationsDropdownToggle"
-            type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notificações">
+    <button class="btn btn-link text-decoration-none position-relative" id="notificationsDropdownToggle" type="button"
+        data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notificações">
         <i class="fas fa-bell fa-lg"></i>
         <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-              id="notificationsBadge" style="font-size: .7rem;">
+            id="notificationsBadge" style="font-size: .7rem;">
             {{ $unreadCount }}
         </span>
     </button>
@@ -30,9 +30,11 @@
                     $url = $data['url'] ?? null;
                     $isUnread = is_null($n->read_at);
                 @endphp
-                <a href="{{ $url ?: '#' }}" class="list-group-item list-group-item-action d-flex gap-2 align-items-start notification-item {{ $isUnread ? 'fw-semibold' : '' }}"
-                   data-id="{{ $n->id }}" data-url="{{ $url }}">
-                    <i class="fas fa-circle mt-1" style="font-size: .5rem; color: {{ $isUnread ? '#0d6efd' : 'transparent' }};"></i>
+                <a href="{{ $url ?: '#' }}"
+                    class="list-group-item list-group-item-action d-flex gap-2 align-items-start notification-item {{ $isUnread ? 'fw-semibold' : '' }}"
+                    data-id="{{ $n->id }}" data-url="{{ $url }}">
+                    <i class="fas fa-circle mt-1"
+                        style="font-size: .5rem; color: {{ $isUnread ? '#0d6efd' : 'transparent' }};"></i>
                     <div class="flex-grow-1">
                         <div class="small text-muted">{{ $n->created_at->diffForHumans() }}</div>
                         <div class="text-wrap">{!! $title !!}</div>
@@ -50,3 +52,117 @@
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const badge = document.getElementById('notificationsBadge');
+        const list = document.getElementById('notificationsList');
+        const POLL_INTERVAL = 30000; // 30 seconds
+
+        function fetchNotifications() {
+            fetch('{{ route('notifications.index') }}')
+                .then(response => response.json())
+                .then(data => {
+                    updateBadge(data.unread_count);
+                    updateList(data.notifications);
+                })
+                .catch(error => console.error('Error fetching notifications:', error));
+        }
+
+        function updateBadge(count) {
+            if (count > 0) {
+                badge.textContent = count;
+                badge.classList.remove('d-none');
+            } else {
+                badge.textContent = '0';
+                // Optional: badge.classList.add('d-none'); to hide if 0
+            }
+        }
+
+        function updateList(notifications) {
+            if (notifications.length === 0) {
+                list.innerHTML = '<div class="p-3 text-center text-muted">Sem notificações.</div>';
+                return;
+            }
+
+            let html = '';
+            notifications.forEach(n => {
+                const isUnread = !n.read_at;
+                const data = n.data || {};
+                const title = data.title || data.message || 'Nova notificação';
+                const url = data.url || '#';
+                const time = n.created_at_human ||
+                'agora mesmo'; // Backend should provide human readable time or we compute
+
+                html += `
+                <a href="${url}" class="list-group-item list-group-item-action d-flex gap-2 align-items-start notification-item ${isUnread ? 'fw-semibold' : ''}"
+                   data-id="${n.id}">
+                    <i class="fas fa-circle mt-1" style="font-size: .5rem; color: ${isUnread ? '#0d6efd' : 'transparent'};"></i>
+                    <div class="flex-grow-1">
+                        <div class="small text-muted">${time}</div>
+                        <div class="text-wrap">${title}</div>
+                    </div>
+                </a>`;
+            });
+            list.innerHTML = html;
+        }
+
+        // Initial poll after 30s, relying on server-side render for first load
+        setInterval(fetchNotifications, POLL_INTERVAL);
+
+        // Click Handler for "Mark as Read" behavior
+        list.addEventListener('click', function(e) {
+            const item = e.target.closest('.notification-item');
+            if (!item) return;
+
+            // Se for um link e tiver URL, vamos interceptar
+            const url = item.getAttribute('href');
+            const id = item.dataset.id;
+
+            if (id && url && url !== '#') {
+                e.preventDefault(); // Stop immediate navigation
+
+                // Call backend to mark as read
+                fetch(`/notifications/read/${id}`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    })
+                    .then(() => {
+                        // Navigate after marking as read
+                        window.location.href = url;
+                    })
+                    .catch(err => {
+                        console.error('Error marking read:', err);
+                        // Navigate anyway even if error
+                        window.location.href = url;
+                    });
+            }
+        });
+
+        // Handler for "Mark All as Read"
+        const markAllBtn = document.getElementById('markAllReadBtn');
+        if (markAllBtn) {
+            markAllBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                fetch('{{ route('notifications.read_all') }}', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.ok) {
+                            updateBadge(0);
+                            fetchNotifications(); // Refresh list to show all read
+                        }
+                    });
+            });
+        }
+    });
+</script>

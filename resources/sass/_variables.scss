@@ -1,7 +1,92 @@
-// Body
-$body-bg: #f8fafc;
+// =============================================================================
+//  TOKENS INSTITUCIONAIS — Portal do Munícipe (Ministério das Finanças / Angola)
+//  Sobreposições do Bootstrap. Trocar valores aqui re-tematiza todo o sistema.
+// =============================================================================
 
-// Typography
-$font-family-sans-serif: 'Nunito', sans-serif;
-$font-size-base: 0.9rem;
-$line-height-base: 1.6;
+// Body Background & Text
+$body-bg: #F5F5F5;        // --bg-body
+$body-color: #333333;     // --text-primary
+
+// Core Palette (institucional)
+$primary: #CE1126;        // Vermelho institucional de Angola — botões primários, links, foco
+$success: #198754;        // Verde de sucesso (distinto do primário)
+$danger:  #D9534F;        // Erro / validação
+$warning: #F0AD4E;        // Aviso / atenção
+$info:    #5BC0DE;        // Informativo
+$dark:    #333333;        // Texto formal / cabeçalhos
+$secondary: #777777;      // Texto secundário, ícones, bordas leves
+$light:   #F5F5F5;        // Fundos de destaque
+
+// Cores institucionais de Angola (uso pontual — ver _theme.scss)
+$angola-red:    #CE1126;  // Alertas críticos governamentais
+$angola-yellow: #F9D616;  // Destaques hero / serviço prioritário
+$angola-black:  #000000;  // Texto formal de documentos oficiais
+
+// Gray Scale
+$gray-100: #F5F5F5;
+$gray-200: #EEEEEE;
+$gray-300: #CCCCCC;       // --border-default
+$gray-400: #AAAAAA;       // placeholder
+$gray-500: #777777;       // --text-muted
+$gray-600: #555555;
+$gray-700: #444444;
+$gray-800: #333333;       // --text-primary
+$gray-900: #1A1A1A;
+
+// Typography Settings (stack institucional do sistema operativo)
+$font-family-sans-serif: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+$headings-font-family: $font-family-sans-serif;
+$font-size-base: 0.875rem;   // 14px — texto de corpo
+$line-height-base: 1.5;
+
+// Typography Colors
+$headings-color: #333333;
+$headings-font-weight: 600;
+$link-color: #CE1126;
+$link-hover-color: #A50E1F;
+$link-decoration: none;
+
+// Global Theme Customizations
+$enable-shadows: true;
+$enable-transitions: true;
+
+// Spacing System
+$spacer: 1rem;
+
+// Borders & Arredondamentos (estilo governamental sóbrio)
+$border-color: #CCCCCC;       // --border-default
+$border-radius: 0.25rem;      // 4px
+$border-radius-sm: 0.25rem;
+$border-radius-lg: 0.375rem;  // 6px (cards)
+
+// Buttons (institucional: cantos discretos, UPPERCASE aplicado no tema)
+$btn-border-radius: 0.25rem;
+$btn-font-weight: 600;
+$btn-padding-y: 0.75rem;      // 12px
+$btn-padding-x: 1.5rem;       // 24px
+
+// Forms / Inputs
+$input-bg: #FFFFFF;
+$input-border-color: #CCCCCC;
+$input-focus-border-color: #CE1126;
+$input-focus-box-shadow: 0 0 0 3px rgba(206, 17, 38, 0.15);
+$input-color: #333333;
+$input-placeholder-color: #AAAAAA;
+$input-border-radius: 0.25rem;
+
+// Cards
+$card-border-radius: 0.375rem;   // 6px
+$card-border-color: #EEEEEE;
+$card-inner-border-radius: 0.375rem;
+$card-cap-bg: #FFFFFF;
+$card-bg: #FFFFFF;               // --bg-card
+
+// Tables
+$table-cell-padding-y: 1rem;     // 16px
+$table-cell-padding-x: 1rem;
+$table-bg: #FFFFFF;
+$table-striped-bg: #FAFAFA;
+$table-hover-bg: #FAFAFA;
+$table-border-color: #EEEEEE;
+
+// Alerts / focus rings derivados de $primary herdam o verde automaticamente.

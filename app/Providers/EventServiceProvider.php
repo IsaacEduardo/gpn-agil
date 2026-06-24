@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Events\DocumentoArquivado;
+use App\Listeners\LogDocumentoArquivado;
+use App\Events\TaskAssigned;
+use App\Listeners\SendTaskAssignedNotification;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
@@ -17,6 +21,12 @@ class EventServiceProvider extends ServiceProvider
     protected $listen = [
         Registered::class => [
             SendEmailVerificationNotification::class,
+        ],
+        DocumentoArquivado::class => [
+            LogDocumentoArquivado::class,
+        ],
+        TaskAssigned::class => [
+            SendTaskAssignedNotification::class,
         ],
     ];
 

@@ -15,11 +15,18 @@ class Gabinete extends Model
         'nome',
         'sigla',
         'responsavel_id',
+        'super_chefe_id',
+        'sla_despacho_dias',
     ];
 
     public function responsavel()
     {
         return $this->belongsTo(User::class, 'responsavel_id');
+    }
+
+    public function superChefe()
+    {
+        return $this->belongsTo(User::class, 'super_chefe_id');
     }
 
     public function departamentos()

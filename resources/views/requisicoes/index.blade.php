@@ -18,9 +18,20 @@
         <div class="card shadow-sm border-0">
             <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 text-primary fw-bold"><i class="fas fa-file-alt me-2"></i>Requisições</h5>
-                <a href="{{ route('requisicoes.create') }}" class="btn btn-primary">
-                    <i class="fas fa-plus me-1"></i> Nova Requisição
-                </a>
+                @can('create', App\Models\Requisicao::class)
+                    <div class="dropdown">
+                        <button class="btn btn-primary shadow-sm dropdown-toggle" type="button" id="novaRequisicaoDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-plus me-2"></i>Nova Requisição
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end border-0 shadow" aria-labelledby="novaRequisicaoDropdown">
+                            <li><a class="dropdown-item py-2" href="{{ route('requisicoes.create', ['tipo' => 'produto']) }}"><i class="fas fa-box me-2 text-primary"></i>Material/Produto</a></li>
+                            <li><a class="dropdown-item py-2" href="{{ route('requisicoes.create', ['tipo' => 'servico']) }}"><i class="fas fa-tools me-2 text-success"></i>Serviço</a></li>
+                            <li><a class="dropdown-item py-2" href="{{ route('requisicoes.create', ['tipo' => 'passagem']) }}"><i class="fas fa-plane me-2 text-info"></i>Passagem Aérea</a></li>
+                            <li><a class="dropdown-item py-2" href="{{ route('requisicoes.create', ['tipo' => 'transporte']) }}"><i class="fas fa-car me-2 text-warning"></i>Transporte</a></li>
+                            <li><a class="dropdown-item py-2" href="{{ route('requisicoes.create', ['tipo' => 'oficina']) }}"><i class="fas fa-wrench me-2 text-secondary"></i>Oficina</a></li>
+                        </ul>
+                    </div>
+                @endcan
             </div>
 
             <div class="card-body p-4">

@@ -21,4 +21,9 @@ class DocumentoEspecie extends Model
         'ativo' => 'boolean',
         'ordem' => 'integer',
     ];
+
+    public function retentionSchedule()
+    {
+        return $this->hasOne(RetentionSchedule::class, 'documento_especie_id');
+    }
 }

@@ -30,6 +30,9 @@ class Requisicao extends Model
         'visto_departamento_por',
         'visto_departamento_data',
         'visto_departamento_observacao',
+        'assinado_em',
+        'assinado_por_user_id',
+        'assinatura_hash',
     ];
 
     protected $casts = [
@@ -37,6 +40,7 @@ class Requisicao extends Model
         'status' => StatusRequisicao::class,
         'data_requisicao' => 'date',
         'visto_departamento_data' => 'datetime',
+        'assinado_em' => 'datetime',
     ];
 
     // Constants for tipo values
@@ -98,6 +102,11 @@ class Requisicao extends Model
         return $this->belongsTo(User::class, 'visto_departamento_por');
     }
 
+    public function assinadoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assinado_por_user_id');
+    }
+
     // Helper methods
     public function isProduto()
     {
@@ -143,22 +152,19 @@ class Requisicao extends Model
     /**
      * Scope a query to only include requisicoes accessible by the user.
      */
-    public function scopeAccessibleBy(Builder $query, User $user): void
+    public function scopeVisibleToUser(Builder $query, User $user): void
     {
         // Se for admin ou tiver permissão de ver tudo, retorna sem filtros
-        $isAdmin = $user->role && $user->role->name === 'admin';
-        $canViewAny = $user->hasPermission('requisicoes.view_any');
-
-        if ($isAdmin || $canViewAny) {
+        if ($user->isAdmin() || $user->hasPermission('requisicoes.listar_todas')) {
             return;
         }
 
         // Obtém departamentos do usuário
         $actorDeps = (method_exists($user, 'departamentos') && $user->departamentos)
-            ? $user->departamentos->pluck('id')->all() 
+            ? $user->departamentos->pluck('id')->all()
             : [];
-        
-        if (! count($actorDeps) && $user->departamento_id) {
+
+        if (empty($actorDeps) && $user->departamento_id) {
             $actorDeps = [$user->departamento_id];
         }
 
@@ -170,20 +176,70 @@ class Requisicao extends Model
                 $u->whereHas('departamento', function ($q) use ($headedGabIds) {
                     $q->whereIn('gabinete_id', $headedGabIds);
                 })
-                ->orWhereHas('departamentos', function ($qq) use ($headedGabIds) {
-                    $qq->whereIn('gabinete_id', $headedGabIds);
-                });
-            });
-        } elseif (count($actorDeps)) {
-            $query->whereHas('usuario', function ($u) use ($actorDeps) {
-                $u->whereIn('departamento_id', $actorDeps)
-                    ->orWhereHas('departamentos', function ($qq) use ($actorDeps) {
-                        $qq->whereIn('id', $actorDeps);
+                    ->orWhereHas('departamentos', function ($qq) use ($headedGabIds) {
+                        $qq->whereIn('gabinete_id', $headedGabIds);
                     });
             });
+        } elseif (count($actorDeps)) {
+            // Se tiver permissão de visto de departamento, vê as do departamento
+            if ($user->hasPermission('visto_departamento_requisicoes')) {
+                $query->whereHas('usuario', function ($u) use ($actorDeps) {
+                    $u->whereIn('departamento_id', $actorDeps)
+                        ->orWhereHas('departamentos', function ($qq) use ($actorDeps) {
+                            $qq->whereIn('id', $actorDeps);
+                        });
+                });
+            } else {
+                // Caso contrário, vê apenas as suas
+                $query->where('usuario_id', $user->id);
+            }
         } else {
             // Se não for chefe nem tiver departamento, vê apenas as suas
             $query->where('usuario_id', $user->id);
+        }
+    }
+
+    /**
+     * Alias for visibleToUser to prevent errors if accessibleBy is used
+     */
+    public function scopeAccessibleBy(Builder $query, User $user): void
+    {
+        $this->scopeVisibleToUser($query, $user);
+    }
+
+    /**
+     * Scope for searching
+     */
+    public function scopeSearch(Builder $query, ?string $term): void
+    {
+        if (empty($term)) {
+            return;
+        }
+        $q = trim($term);
+        $query->where(function ($sub) use ($q) {
+            $sub->where('codigo_sequencial', 'like', "%{$q}%")
+                ->orWhere('empresa_destinataria', 'like', "%{$q}%")
+                ->orWhere('observacoes', 'like', "%{$q}%");
+        });
+    }
+
+    /**
+     * Scope for filtering by status
+     */
+    public function scopeByStatus(Builder $query, ?string $status): void
+    {
+        if (! empty($status)) {
+            $query->where('status', $status);
+        }
+    }
+
+    /**
+     * Scope for filtering by type
+     */
+    public function scopeByTipo(Builder $query, ?string $tipo): void
+    {
+        if (! empty($tipo)) {
+            $query->where('tipo', $tipo);
         }
     }
 }

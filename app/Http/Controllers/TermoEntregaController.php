@@ -19,6 +19,8 @@ class TermoEntregaController extends Controller
      */
     public function index(Request $request)
     {
+        $this->authorize('viewAny', TermoEntrega::class);
+
         $query = TermoEntrega::query();
 
         // Filtros para o novo modelo independente
@@ -26,7 +28,7 @@ class TermoEntregaController extends Controller
             $query->where('tipo', $request->string('tipo'));
         }
         if ($request->filled('beneficiario')) {
-            $query->where('beneficiario_nome', 'like', '%' . $request->string('beneficiario') . '%');
+            $query->where('beneficiario_nome', 'like', '%'.$request->string('beneficiario').'%');
         }
         if ($request->filled('viatura_id')) {
             $query->where('viatura_id', (int) $request->input('viatura_id'));
@@ -42,6 +44,8 @@ class TermoEntregaController extends Controller
      */
     public function create()
     {
+        $this->authorize('create', TermoEntrega::class);
+
         $viaturas = CatalogCache::viaturasList();
 
         return view('termos.create', compact('viaturas'));
@@ -52,6 +56,8 @@ class TermoEntregaController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorize('create', TermoEntrega::class);
+
         $baseRules = [
             'tipo' => 'required|in:definitiva,devolutivo,viatura',
             'beneficiario_nome' => 'required|string|max:255',
@@ -107,8 +113,8 @@ class TermoEntregaController extends Controller
         // Gerar PDF e salvar termo dentro de transação para consistência
         $novoTermo = DB::transaction(function () use ($view, $data, $validated) {
             $pdf = PDF::loadView($view, $data);
-            $nomeArquivo = 'termo_' . $validated['tipo'] . '_' . now()->format('Ymd_His') . '.pdf';
-            $caminho = 'termos/' . $nomeArquivo;
+            $nomeArquivo = 'termo_'.$validated['tipo'].'_'.now()->format('Ymd_His').'.pdf';
+            $caminho = 'termos/'.$nomeArquivo;
             Storage::disk('public')->put($caminho, $pdf->output());
 
             $viaturaIdParaRegistro = $validated['tipo'] === 'viatura' ? ($validated['viatura_ids'][0] ?? null) : null;
@@ -136,6 +142,8 @@ class TermoEntregaController extends Controller
      */
     public function gerar($requisicao_id, $tipo)
     {
+        $this->authorize('create', TermoEntrega::class);
+
         $requisicao = Requisicao::with(['usuario', 'aprovador'])->findOrFail($requisicao_id);
 
         // Verificar se a requisição foi aprovada
@@ -167,11 +175,11 @@ class TermoEntregaController extends Controller
         $viewName = $tipo === 'devolutivo' ? 'devolucao' : 'padrao';
 
         // Gerar o PDF
-        $pdf = PDF::loadView('termos.' . $viewName, compact('requisicao'));
+        $pdf = PDF::loadView('termos.'.$viewName, compact('requisicao'));
 
         // Salvar o PDF
-        $nomeArquivo = 'termo_' . $tipo . '_' . $requisicao->codigo_sequencial . '.pdf';
-        $caminho = 'termos/' . $nomeArquivo;
+        $nomeArquivo = 'termo_'.$tipo.'_'.$requisicao->codigo_sequencial.'.pdf';
+        $caminho = 'termos/'.$nomeArquivo;
         Storage::disk('public')->put($caminho, $pdf->output());
 
         // Registrar o termo no banco de dados
@@ -190,6 +198,8 @@ class TermoEntregaController extends Controller
      */
     public function show(TermoEntrega $termo)
     {
+        $this->authorize('view', $termo);
+
         // Verificar se o arquivo existe
         if (! Storage::disk('public')->exists($termo->caminho_arquivo)) {
             abort(404);
@@ -208,6 +218,8 @@ class TermoEntregaController extends Controller
      */
     public function pdf(TermoEntrega $termo)
     {
+        $this->authorize('view', $termo);
+
         // Verificar se o arquivo existe
         if (! Storage::disk('public')->exists($termo->caminho_arquivo)) {
             abort(404);
@@ -223,6 +235,8 @@ class TermoEntregaController extends Controller
      */
     public function destroy(TermoEntrega $termo)
     {
+        $this->authorize('delete', $termo);
+
         $requisicao_id = $termo->requisicao_id;
 
         // Excluir o arquivo físico

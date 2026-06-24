@@ -17,6 +17,8 @@ class NotificationController extends Controller
                 'id' => $n->id,
                 'read_at' => $n->read_at,
                 'created_at' => $n->created_at->toIso8601String(),
+                'created_at_human' => $n->created_at->diffForHumans(),
+                'data' => $data, // Include raw data for frontend
                 'title' => $data['title'] ?? ($data['message'] ?? 'Nova notificação'),
                 'acao' => $data['acao'] ?? null,
                 'url' => $data['url'] ?? null,

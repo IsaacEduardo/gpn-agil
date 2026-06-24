@@ -37,6 +37,18 @@
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                 </div>
+                <div class="mb-3">
+                    <label for="super_chefe_id" class="form-label">Super Chefe de Gabinete <span class="text-muted">(opcional)</span></label>
+                    <select name="super_chefe_id" id="super_chefe_id" class="form-select @error('super_chefe_id') is-invalid @enderror">
+                        <option value="">— Selecione (opcional) —</option>
+                        @foreach($usuarios as $usuario)
+                            <option value="{{ $usuario->id }}" {{ old('super_chefe_id') == $usuario->id ? 'selected' : '' }}>{{ $usuario->name }}</option>
+                        @endforeach
+                    </select>
+                    @error('super_chefe_id')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary">Salvar</button>
                 </div>

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class DocumentoEntrada extends Model
 {
-    use HasFactory, SoftDeletes;
+    use \App\Traits\Auditable, HasFactory, SoftDeletes;
 
     protected $table = 'documentos_entradas';
 
@@ -131,5 +131,64 @@ class DocumentoEntrada extends Model
     public function tags()
     {
         return $this->belongsToMany(Tag::class, 'documento_entrada_tag');
+    }
+
+    public function documentosRelacionados()
+    {
+        return $this->belongsToMany(DocumentoEntrada::class, 'documento_relacoes', 'documento_id', 'relacionado_id')
+            ->withPivot('tipo')
+            ->withTimestamps();
+    }
+
+    public function documentosRelacionadosInverso()
+    {
+        return $this->belongsToMany(DocumentoEntrada::class, 'documento_relacoes', 'relacionado_id', 'documento_id')
+            ->withPivot('tipo')
+            ->withTimestamps();
+    }
+
+    public function documentosInternos()
+    {
+        return $this->hasMany(DocumentoInterno::class, 'documento_entrada_id');
+    }
+
+    public function metadata()
+    {
+        return $this->morphMany(FileMetadata::class, 'metadatable');
+    }
+
+    public function getTodosRelacionadosAttribute()
+    {
+        return $this->documentosRelacionados->merge($this->documentosRelacionadosInverso);
+    }
+
+    public function getSlaStatusAttribute()
+    {
+        if ($this->arquivado || in_array($this->status, ['arquivado', 'cancelado', 'finalizado'])) {
+            return 'normal';
+        }
+
+        $dataBase = $this->data_entrada ?? $this->created_at;
+        if (! $dataBase) {
+            return 'normal';
+        }
+
+        $dias = $dataBase->diffInDays(now());
+
+        if ($dias >= 5) {
+            return 'critical';
+        }
+        if ($dias >= 2) {
+            return 'warning';
+        }
+
+        return 'normal';
+    }
+
+    public function getDiasDecorridosAttribute()
+    {
+        $dataBase = $this->data_entrada ?? $this->created_at;
+
+        return $dataBase ? (int) $dataBase->diffInDays(now()) : 0;
     }
 }

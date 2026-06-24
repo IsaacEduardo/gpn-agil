@@ -14,6 +14,10 @@ class Empresa extends Model
     protected $fillable = [
         'nome',
         'contacto',
+        'nif',
+        'telefone_principal',
+        'email_institucional',
         'endereco',
+        'logo_path',
     ];
 }

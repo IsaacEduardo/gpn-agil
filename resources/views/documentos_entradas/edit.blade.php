@@ -71,7 +71,7 @@
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <label class="form-label">Procedência</label>
                             <input type="text" name="procedencia" value="{{ old('procedencia', $doc->procedencia) }}"
                                 class="form-control @error('procedencia') is-invalid @enderror" />
@@ -79,7 +79,7 @@
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <label class="form-label">Assunto</label>
                             <input type="text" name="assunto" value="{{ old('assunto', $doc->assunto) }}"
                                 class="form-control @error('assunto') is-invalid @enderror" required />
@@ -87,7 +87,17 @@
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-12">
+                            <label class="form-label">Tags (Palavras-chave)</label>
+                            <input type="text" name="tags" value="{{ old('tags', $tags ?? '') }}"
+                                placeholder="Ex: urgente, financeiro, 2025 (separadas por vírgula)"
+                                class="form-control @error('tags') is-invalid @enderror" />
+                            <div class="form-text">Separe as palavras-chave por vírgula.</div>
+                            @error('tags')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <div class="col-md-12">
                             <label class="form-label">Encaminhamento (Órgão / Ofício Nº)</label>
                             <div class="input-group">
                                 <input type="text" name="encaminhamento_orgao"

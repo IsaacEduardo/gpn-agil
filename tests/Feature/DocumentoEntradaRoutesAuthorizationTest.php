@@ -28,10 +28,10 @@ class DocumentoEntradaRoutesAuthorizationTest extends TestCase
         return compact('admin', 'user', 'chefe');
     }
 
-    private function makeDoc(User $owner, Departamento $dep): DocumentoEntrada
+    private function makeDoc(User $owner, Departamento $dep, int $seq = 1): DocumentoEntrada
     {
         return DocumentoEntrada::create([
-            'numero_sequencial' => 1,
+            'numero_sequencial' => $seq,
             'ano_referencia' => (int) date('Y'),
             'data_entrada' => now(),
             'assunto' => 'Teste',
@@ -235,7 +235,7 @@ class DocumentoEntradaRoutesAuthorizationTest extends TestCase
         sort($notifiedIds);
         $this->assertSame($expectedIds, $notifiedIds);
 
-        $doc2 = $this->makeDoc($owner, $depA);
+        $doc2 = $this->makeDoc($owner, $depA, 2);
         $this->actingAs($member)
             ->post(route('documentos-entradas.saida-gabinete', $doc2), [
                 'destino_gabinete_id' => $gabB->id,

@@ -1,5 +1,8 @@
-import 'bootstrap';
-import { Tooltip } from 'bootstrap';
+import * as bootstrap from 'bootstrap';
+// Expõe o Bootstrap globalmente para o código que usa `new bootstrap.Modal(...)`
+// nas vistas (a importação ESM, por si só, não cria window.bootstrap).
+window.bootstrap = bootstrap;
+const { Tooltip } = bootstrap;
 
 /**
  * We'll load the axios HTTP library which allows us to easily issue requests

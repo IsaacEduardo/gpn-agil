@@ -10,7 +10,7 @@ class DocumentoEspeciesSeeder extends Seeder
     public function run(): void
     {
         $nomes = [
-            'Ofício', 'Carta', 'Memorando', 'Circular', 'Despacho', 'Email', 'Relatório', 'Nota', 'Requerimento', 'Outro',
+            'Ofício', 'Carta', 'Memorando', 'Circular', 'Despacho', 'Email', 'Relatório', 'Nota', 'Requerimento', 'Acta', 'Outro',
         ];
 
         foreach ($nomes as $i => $nome) {
