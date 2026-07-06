@@ -70,11 +70,11 @@ class DocumentoEntradaController extends Controller
             return response()->json([]);
         }
 
-        // Ideally, we should apply some permission filtering here as well,
-        // similar to getFilteredDocuments, to ensure users only see documents they are allowed to access.
-        // For this phase 1, we will implement basic search but be mindful of sensitive data.
+        $actor = Auth::user();
 
+        // A pesquisa respeita o mesmo scoping de visibilidade das listagens
         $query = DocumentoEntrada::query();
+        $this->documentoService->applyVisibilityScope($query, $actor);
 
         $query->where(function ($q) use ($search) {
             $q->where('assunto', 'like', "%{$search}%")
@@ -115,8 +115,8 @@ class DocumentoEntradaController extends Controller
                 ];
             });
 
-        // Search also in Documentos Internos
-        $queryInternos = \App\Models\DocumentoInterno::query();
+        // Search also in Documentos Internos (scoped à visibilidade do utilizador)
+        $queryInternos = \App\Models\DocumentoInterno::query()->accessibleBy($actor);
         $queryInternos->where(function ($q) use ($search) {
             $q->where('titulo', 'like', "%{$search}%")
                 ->orWhere('numero_referencia', 'like', "%{$search}%")
@@ -433,7 +433,9 @@ class DocumentoEntradaController extends Controller
     {
         $validated = $request->validate([
             'tipo' => ['required', 'in:usuario,departamento'],
-            'destino_id' => ['required', 'integer'],
+            'destino_id' => ['required_if:tipo,departamento', 'nullable', 'integer'],
+            'destino_ids' => ['required_if:tipo,usuario', 'nullable', 'array'],
+            'destino_ids.*' => ['integer', 'exists:users,id'],
             'titulo' => ['required', 'string', 'max:255'],
             'descricao' => ['nullable', 'string'],
             'prazo_at' => ['nullable', 'date'],
@@ -445,60 +447,70 @@ class DocumentoEntradaController extends Controller
         }
 
         $tipo = $validated['tipo'];
-        $destinoId = (int) $validated['destino_id'];
-        $data = [
-            'titulo' => $validated['titulo'],
-            'descricao' => $validated['descricao'] ?? null,
-            'prazo_at' => $validated['prazo_at'] ?? null,
-        ];
-
         $docGabId = optional($documento->departamento)->gabinete_id;
         $isSuperChefe = $actor->isSuperChefeDoGabinete($docGabId);
 
-        if ($isSuperChefe) {
-            if ($tipo !== 'usuario') {
+        if ($tipo === 'usuario') {
+            $destinoIds = $request->destino_ids ?? [];
+            if (empty($destinoIds)) {
+                return back()->withErrors(['destino_ids' => 'Selecione pelo menos um usuário de destino.']);
+            }
+
+            $usuariosValidos = [];
+            foreach ($destinoIds as $userId) {
+                $user = User::find($userId);
+                if (! $user) {
+                    return back()->withErrors(['destino_ids' => 'Usuário não encontrado.']);
+                }
+
+                if ($isSuperChefe) {
+                    $gabinete = $documento->departamento ? $documento->departamento->gabinete : null;
+                    $isChefeGab = $gabinete && (int)$gabinete->responsavel_id === (int)$user->id;
+                    $isChefeDep = Departamento::where('gabinete_id', $docGabId)->where('responsavel_id', $user->id)->exists();
+
+                    if (! $isChefeGab && ! $isChefeDep) {
+                        return back()->withErrors(['destino_ids' => 'O Super Chefe só pode delegar tarefas ao Chefe de Gabinete ou aos Chefes de Departamento do respetivo gabinete.']);
+                    }
+                } else {
+                    $isGabResp = $this->permissionService->isGabineteResponsavel($actor, $docGabId);
+
+                    if ($isGabResp) {
+                        $uDep = $user->departamento;
+                        if (! $uDep || $uDep->gabinete_id !== $docGabId) {
+                            return back()->withErrors(['destino_ids' => 'Selecione usuário do seu gabinete.']);
+                        }
+                    } else {
+                        // Chief Dept
+                        $depId = (int) $documento->departamento_id;
+                        $belongs = ((int) $user->departamento_id === $depId) || $user->departamentos()->where('departamento_id', $depId)->exists();
+                        if (! $belongs) {
+                            return back()->withErrors(['destino_ids' => 'Selecione usuário do seu departamento.']);
+                        }
+                    }
+                }
+                $usuariosValidos[] = $user;
+            }
+
+            // Gerar UUID comum para agrupar as tarefas
+            $grupoUuid = (count($usuariosValidos) > 1) ? (string) \Illuminate\Support\Str::uuid() : null;
+
+            foreach ($usuariosValidos as $user) {
+                $data = [
+                    'titulo' => $validated['titulo'],
+                    'descricao' => $validated['descricao'] ?? null,
+                    'prazo_at' => $validated['prazo_at'] ?? null,
+                    'assigned_to_user_id' => $user->id,
+                    'grupo_tarefa_uuid' => $grupoUuid,
+                ];
+                $this->documentoService->createTask($documento, $data, $actor);
+            }
+        } else {
+            // departamento
+            $destinoId = (int) $validated['destino_id'];
+            if ($isSuperChefe) {
                 return back()->withErrors(['tipo' => 'O Super Chefe apenas pode delegar tarefas a utilizadores específicos.']);
             }
-            $user = User::find($destinoId);
-            if (! $user) {
-                return back()->withErrors(['destino_id' => 'Usuário não encontrado.']);
-            }
 
-            $gabinete = $documento->departamento ? $documento->departamento->gabinete : null;
-            $isChefeGab = $gabinete && (int)$gabinete->responsavel_id === (int)$user->id;
-            $isChefeDep = Departamento::where('gabinete_id', $docGabId)->where('responsavel_id', $user->id)->exists();
-
-            if (! $isChefeGab && ! $isChefeDep) {
-                return back()->withErrors(['destino_id' => 'O Super Chefe só pode delegar tarefas ao Chefe de Gabinete ou aos Chefes de Departamento do respetivo gabinete.']);
-            }
-
-            $data['assigned_to_user_id'] = $user->id;
-        } elseif ($tipo === 'usuario') {
-            $user = User::find($destinoId);
-            if (! $user) {
-                return back()->withErrors(['destino_id' => 'Usuário não encontrado.']);
-            }
-
-            $isGabResp = $this->permissionService->isGabineteResponsavel($actor, $docGabId);
-
-            if ($isGabResp) {
-                // Ensure user belongs to cabinet
-                // Simplified check: user's department must belong to cabinet
-                $uDep = $user->departamento;
-                if (! $uDep || $uDep->gabinete_id !== $docGabId) {
-                    return back()->withErrors(['destino_id' => 'Selecione usuário do seu gabinete.']);
-                }
-            } else {
-                // Chief Dept
-                $depId = (int) $documento->departamento_id;
-                $belongs = ((int) $user->departamento_id === $depId) || $user->departamentos()->where('departamento_id', $depId)->exists();
-                if (! $belongs) {
-                    return back()->withErrors(['destino_id' => 'Selecione usuário do seu departamento.']);
-                }
-            }
-
-            $data['assigned_to_user_id'] = $user->id;
-        } else {
             $dep = Departamento::find($destinoId);
             if (! $dep) {
                 return back()->withErrors(['destino_id' => 'Departamento não encontrado.']);
@@ -513,10 +525,14 @@ class DocumentoEntradaController extends Controller
                 return back()->withErrors(['destino_id' => 'Selecione departamento do seu gabinete.']);
             }
 
-            $data['assigned_to_departamento_id'] = $dep->id;
+            $data = [
+                'titulo' => $validated['titulo'],
+                'descricao' => $validated['descricao'] ?? null,
+                'prazo_at' => $validated['prazo_at'] ?? null,
+                'assigned_to_departamento_id' => $dep->id,
+            ];
+            $this->documentoService->createTask($documento, $data, $actor);
         }
-
-        $this->documentoService->createTask($documento, $data, $actor);
 
         return redirect()->route('documentos-entradas.show', $documento)->with('success', 'Tarefa designada com sucesso.');
     }
@@ -1061,12 +1077,27 @@ class DocumentoEntradaController extends Controller
 
         $docsDisk = config('filesystems.docs_disk');
         if (Storage::disk($docsDisk)->exists($documento->arquivo_caminho)) {
-            return Storage::disk($docsDisk)->response($documento->arquivo_caminho);
+            return $this->safeFileResponse($docsDisk, $documento->arquivo_caminho);
         }
         if (Storage::disk('public')->exists($documento->arquivo_caminho)) {
-            return Storage::disk('public')->response($documento->arquivo_caminho);
+            return $this->safeFileResponse('public', $documento->arquivo_caminho);
         }
         abort(404);
+    }
+
+    /**
+     * Serve um ficheiro com Content-Type validado contra o conteúdo real
+     * (whitelist inline + nosniff) para impedir XSS via ficheiros disfarçados.
+     */
+    private function safeFileResponse(string $disk, string $path)
+    {
+        $mime = Storage::disk($disk)->mimeType($path) ?: null;
+
+        return Storage::disk($disk)->response(
+            $path,
+            null,
+            \App\Support\SafeFileHeaders::for($mime, basename($path))
+        );
     }
 
     public function downloadAnexo(DocumentoEntrada $documento, Anexo $anexo)
@@ -1098,11 +1129,11 @@ class DocumentoEntradaController extends Controller
 
         $docsDisk = config('filesystems.docs_disk');
         if (Storage::disk($docsDisk)->exists($anexo->caminho_arquivo)) {
-            return Storage::disk($docsDisk)->response($anexo->caminho_arquivo);
+            return $this->safeFileResponse($docsDisk, $anexo->caminho_arquivo);
         }
 
         if (Storage::disk('public')->exists($anexo->caminho_arquivo)) {
-            return Storage::disk('public')->response($anexo->caminho_arquivo);
+            return $this->safeFileResponse('public', $anexo->caminho_arquivo);
         }
         abort(404);
     }
@@ -1147,4 +1178,56 @@ class DocumentoEntradaController extends Controller
         return redirect()->route('documentos-entradas.index')
             ->with('success', 'Documento excluído com sucesso.');
     }
+
+    public function generateCabinetNote(DocumentoEntrada $documento)
+    {
+        $actor = Auth::user();
+        if (! $this->permissionService->canViewDocument($actor, $documento)) {
+            return response()->json(['error' => 'Não autorizado.'], 403);
+        }
+
+        $assistant = app(\App\Services\Ai\DocumentoAssistantService::class);
+        if (! $assistant->isAvailable()) {
+            return response()->json(['error' => 'Assistente de IA não está ativo ou configurado.'], 503);
+        }
+
+        try {
+            $note = $assistant->generateCabinetNote($documento);
+            return response()->json(['nota' => $note]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'Falha ao gerar nota: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function suggestActions(DocumentoEntrada $documento)
+    {
+        $actor = Auth::user();
+        if (! $this->permissionService->canViewDocument($actor, $documento)) {
+            return response()->json(['error' => 'Não autorizado.'], 403);
+        }
+
+        $assistant = app(\App\Services\Ai\DocumentoAssistantService::class);
+        if (! $assistant->isAvailable()) {
+            return response()->json(['error' => 'Assistente de IA não está ativo ou configurado.'], 503);
+        }
+
+        $gab = optional($documento->departamento)->gabinete;
+        if ($gab) {
+            $departments = Departamento::where('gabinete_id', $gab->id)->orderBy('nome')->get(['id', 'nome']);
+            $users = User::with('departamento')->whereHas('departamento', function ($q) use ($gab) {
+                $q->where('gabinete_id', $gab->id);
+            })->orderBy('name')->get(['id', 'name', 'departamento_id']);
+        } else {
+            $departments = Departamento::orderBy('nome')->get(['id', 'nome']);
+            $users = User::with('departamento')->orderBy('name')->get(['id', 'name', 'departamento_id']);
+        }
+
+        try {
+            $suggestions = $assistant->suggestActions($documento, $departments, $users);
+            return response()->json($suggestions);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'Falha ao sugerir ações: ' . $e->getMessage()], 500);
+        }
+    }
 }
+

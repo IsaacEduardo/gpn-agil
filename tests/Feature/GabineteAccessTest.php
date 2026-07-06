@@ -208,7 +208,7 @@ class GabineteAccessTest extends TestCase
         // Mocking list of eligible users in show
         $responseDelegate = $this->actingAs($superChefe)->post(route('documentos-entradas.tarefas.store', $docEntrada), [
             'tipo' => 'usuario',
-            'destino_id' => $this->chefeGabinete->id,
+            'destino_ids' => [$this->chefeGabinete->id],
             'titulo' => 'Analisar URGENTE',
             'prazo_at' => now()->addDays(2)->format('Y-m-d'),
         ]);
@@ -221,11 +221,11 @@ class GabineteAccessTest extends TestCase
         // B. Delegate to regular user (blocked)
         $responseDelegateUser = $this->actingAs($superChefe)->post(route('documentos-entradas.tarefas.store', $docEntrada), [
             'tipo' => 'usuario',
-            'destino_id' => $this->userA->id,
+            'destino_ids' => [$this->userA->id],
             'titulo' => 'Fazer algo',
             'prazo_at' => now()->addDays(2)->format('Y-m-d'),
         ]);
-        $responseDelegateUser->assertSessionHasErrors(['destino_id']);
+        $responseDelegateUser->assertSessionHasErrors(['destino_ids']);
 
         // C. Delegate to department (blocked)
         $responseDelegateDept = $this->actingAs($superChefe)->post(route('documentos-entradas.tarefas.store', $docEntrada), [
@@ -235,5 +235,78 @@ class GabineteAccessTest extends TestCase
             'prazo_at' => now()->addDays(2)->format('Y-m-d'),
         ]);
         $responseDelegateDept->assertSessionHasErrors(['tipo']);
+    }
+
+    public function test_super_cabinet_chief_can_delegate_task_to_multiple_eligible_chiefs()
+    {
+        $superChefe = User::factory()->create(['name' => 'Super Chefe']);
+        $roleSuper = Role::firstOrCreate(['name' => 'super-chefe-gabinete', 'guard_name' => 'web']);
+        $superChefe->assignRole($roleSuper);
+        $superChefe->update(['role_id' => $roleSuper->id]);
+        
+        $this->gabinete->update(['super_chefe_id' => $superChefe->id]);
+
+        $docEntrada = \App\Models\DocumentoEntrada::create([
+            'assunto' => 'Doc Teste Lote',
+            'procedencia' => 'Externo',
+            'numero_sequencial' => 2,
+            'ano_referencia' => 2026,
+            'departamento_id' => $this->deptA->id,
+            'status' => 'recebido',
+            'data_entrada' => now(),
+            'user_id' => $superChefe->id,
+        ]);
+
+        // Criar outro chefe elegível para testar delegação múltipla
+        $chefeDepto = User::factory()->create(['name' => 'Chefe Depto A', 'departamento_id' => $this->deptA->id]);
+        $this->deptA->update(['responsavel_id' => $chefeDepto->id]);
+
+        // A. Delegate to multiple eligible chiefs (Cabinet Chief + Dept Chief)
+        \Illuminate\Support\Facades\Notification::fake();
+        \Illuminate\Support\Facades\Event::fake([
+            \App\Events\TaskAssigned::class
+        ]);
+
+        $responseDelegate = $this->actingAs($superChefe)->post(route('documentos-entradas.tarefas.store', $docEntrada), [
+            'tipo' => 'usuario',
+            'destino_ids' => [$this->chefeGabinete->id, $chefeDepto->id],
+            'titulo' => 'Analisar Lote URGENTE',
+            'prazo_at' => now()->addDays(2)->format('Y-m-d'),
+        ]);
+
+        $responseDelegate->assertSessionHasNoErrors();
+
+        // 1. Verificar registros individuais no BD
+        $this->assertDatabaseHas('documento_tarefas', [
+            'titulo' => 'Analisar Lote URGENTE',
+            'assigned_to_user_id' => $this->chefeGabinete->id,
+        ]);
+        $this->assertDatabaseHas('documento_tarefas', [
+            'titulo' => 'Analisar Lote URGENTE',
+            'assigned_to_user_id' => $chefeDepto->id,
+        ]);
+
+        // Verificar que compartilham o mesmo grupo_tarefa_uuid
+        $tarefas = \App\Models\DocumentoTarefa::where('titulo', 'Analisar Lote URGENTE')->get();
+        $this->assertCount(2, $tarefas);
+        $this->assertNotNull($tarefas[0]->grupo_tarefa_uuid);
+        $this->assertEquals($tarefas[0]->grupo_tarefa_uuid, $tarefas[1]->grupo_tarefa_uuid);
+
+        // 2. Disparar notificações e eventos individuais
+        \Illuminate\Support\Facades\Event::assertDispatched(\App\Events\TaskAssigned::class, 2);
+
+        // B. Delegate to multiple, but one is ineligible (regular user A). Should block entire batch.
+        $responseDelegateBlocked = $this->actingAs($superChefe)->post(route('documentos-entradas.tarefas.store', $docEntrada), [
+            'tipo' => 'usuario',
+            'destino_ids' => [$this->chefeGabinete->id, $this->userA->id],
+            'titulo' => 'Fazer algo em lote bloqueado',
+            'prazo_at' => now()->addDays(2)->format('Y-m-d'),
+        ]);
+
+        $responseDelegateBlocked->assertSessionHasErrors(['destino_ids']);
+        // Verificar que nenhuma tarefa com esse título foi salva
+        $this->assertDatabaseMissing('documento_tarefas', [
+            'titulo' => 'Fazer algo em lote bloqueado',
+        ]);
     }
 }

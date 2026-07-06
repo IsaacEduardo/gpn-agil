@@ -142,34 +142,23 @@ class GabineteDashboardController extends Controller
 
         $user = Auth::user();
 
-        // 1. Validar Senha do Usuário uma única vez
-        if (! \Illuminate\Support\Facades\Hash::check($request->password, $user->password)) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'password' => ['A senha informada está incorreta.'],
-            ]);
-        }
-
-        // Senha do certificado P12 fornecida uma vez para todo o lote (mantida apenas em memória).
-        $certificatePassword = $request->input('certificate_password');
-        $ids = $request->documento_ids;
-        $successCount = 0;
-
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($ids, $user, $request, $certificatePassword, &$successCount) {
-                foreach ($ids as $id) {
-                    $doc = DocumentoInterno::findOrFail($id);
-
-                    // Security Check: User must have access
-                    if (! $user->can('view', $doc)) {
-                        throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException("Você não tem permissão para acessar o documento ID {$id}.");
-                    }
-
-                    $this->signatureService->sign($doc, $user, $request->password, true, $certificatePassword);
-                    $successCount++;
-                }
-            });
+            $successCount = $this->signatureService->batchSign(
+                $request->documento_ids,
+                DocumentoInterno::class,
+                $user,
+                $request->password,
+                $request->input('certificate_password')
+            );
 
             return back()->with('success', "{$successCount} documentos assinados com sucesso.");
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Senha do utilizador errada -> erro de validação no formulário
+            if (array_key_exists('password', $e->errors())) {
+                throw $e;
+            }
+
+            return back()->with('error', 'Falha ao assinar lote de documentos: '.collect($e->errors())->flatten()->implode(' '));
         } catch (\Exception $e) {
             return back()->with('error', 'Falha ao assinar lote de documentos: '.$e->getMessage());
         }

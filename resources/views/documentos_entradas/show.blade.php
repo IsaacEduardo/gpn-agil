@@ -646,7 +646,7 @@
                                 <div class="mt-2 small text-danger"><i class="fas fa-comment me-1"></i> {{ $doc->visto_departamento_observacao }}</div>
                             @endif
 
-                            @if ($canVisto && !$doc->saida_gabinete_data)
+                            @if ($canVisto && !$doc->saida_gabinete_data && $stDep === 'pendente')
                                 <div class="mt-2 d-flex gap-2">
                                     <form id="visto-dep-aprovar-form" action="{{ route('documentos-entradas.visto.aprovar', $doc) }}" method="POST" class="w-100">
                                         @csrf
@@ -685,7 +685,7 @@
                                 <div class="mt-2 small text-danger"><i class="fas fa-comment me-1"></i> {{ $doc->visto_gabinete_observacao }}</div>
                             @endif
 
-                            @if ($canVistoGabinete && !$doc->saida_gabinete_data)
+                            @if ($canVistoGabinete && !$doc->saida_gabinete_data && $stGab === 'pendente')
                                 <div class="mt-2 d-flex gap-2">
                                     <form id="visto-gab-aprovar-form" action="{{ route('documentos-entradas.visto-gabinete.aprovar', $doc) }}" method="POST" class="w-100">
                                         @csrf
@@ -698,6 +698,13 @@
                         </div>
                     </div>
                 </div>
+
+                @if (config('app.feature_assistente') && auth()->user()?->can('assistente.usar'))
+                    @include('assistente._automacao', [
+                        'doc' => $doc,
+                        'departamentos' => $departamentos
+                    ])
+                @endif
 
                 <!-- Attachments Card -->
                 <div class="card shadow-sm border-0 mb-4">
@@ -953,11 +960,25 @@
                     const isDep = tipoDepartamento && tipoDepartamento.checked;
                     destinoUsuario.classList.toggle('d-none', isDep);
                     if (destinoDepartamento) destinoDepartamento.classList.toggle('d-none', !isDep);
-                    const selectVisible = isDep ? depSelect : userSelect;
-                    if (selectVisible && selectVisible.name !== 'destino_id') {
-                        const otherSelect = isDep ? userSelect : depSelect;
-                        if (otherSelect) otherSelect.removeAttribute('name');
-                        selectVisible.setAttribute('name', 'destino_id');
+                    
+                    if (isDep) {
+                        if (depSelect) {
+                            depSelect.setAttribute('name', 'destino_id');
+                            depSelect.required = true;
+                        }
+                        if (userSelect) {
+                            userSelect.removeAttribute('name');
+                            userSelect.required = false;
+                        }
+                    } else {
+                        if (userSelect) {
+                            userSelect.setAttribute('name', 'destino_ids[]');
+                            userSelect.required = true;
+                        }
+                        if (depSelect) {
+                            depSelect.removeAttribute('name');
+                            depSelect.required = false;
+                        }
                     }
                 };
                 if (tipoUsuario) tipoUsuario.addEventListener('change', updateVisibility);

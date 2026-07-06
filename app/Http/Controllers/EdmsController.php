@@ -326,9 +326,10 @@ class EdmsController extends Controller
             'user_agent' => $request->userAgent(),
         ]);
 
-        return response($content)
-            ->header('Content-Type', $versao->mime_type ?? 'application/pdf')
-            ->header('Content-Disposition', 'inline; filename="'.$versao->titulo.'"');
+        return response($content, 200, \App\Support\SafeFileHeaders::for(
+            $versao->mime_type ?? 'application/pdf',
+            $versao->titulo
+        ));
     }
 
     public function streamAttachment(Request $request, $anexoId)
@@ -360,9 +361,13 @@ class EdmsController extends Controller
 
         $fileContent = Storage::disk($disk)->get($anexo->caminho_arquivo);
 
-        return response($fileContent)
-            ->header('Content-Type', $anexo->mime_type ?? 'application/octet-stream')
-            ->header('Content-Disposition', 'inline; filename="'.$anexo->nome_original.'"');
+        // Valida contra o conteúdo real do ficheiro, não apenas o mime registado na BD
+        $detectedMime = Storage::disk($disk)->mimeType($anexo->caminho_arquivo) ?: $anexo->mime_type;
+
+        return response($fileContent, 200, \App\Support\SafeFileHeaders::for(
+            $detectedMime,
+            $anexo->nome_original ?? 'anexo'
+        ));
     }
 
     public function shareFolder(Request $request, $folderId)

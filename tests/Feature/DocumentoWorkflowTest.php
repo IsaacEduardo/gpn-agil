@@ -127,7 +127,8 @@ class DocumentoWorkflowTest extends TestCase
         // Try to approve as boss
         $response = $this->actingAs($this->chefe)->post(route('documentos-internos.approve', $doc));
 
-        $response->assertSessionHas('error'); // Should return error because it's not in review
+        // A policy nega (403) porque o documento não está em análise
+        $response->assertForbidden();
         $this->assertEquals(DocumentoStatus::RASCUNHO, $doc->fresh()->status);
     }
 

@@ -16,6 +16,30 @@ class FakeLlmClient implements LlmClient
 
     public function chat(string $system, array $messages, array $options = []): string
     {
+        if (str_contains($system, 'JSON')) {
+            return json_encode([
+                'classificacao_sugerida' => 'Ofício Técnico',
+                'assunto_resumido' => 'Assunto extraído automaticamente (Modo de Demonstração)',
+                'prioridade' => 'alta',
+                'encaminhar_para_departamento_id' => null,
+                'justificativa_encaminhamento' => 'Recomendado encaminhar para análise técnica complementar no departamento sugerido.',
+                'tarefas_sugeridas' => [
+                    [
+                        'titulo' => 'Análise técnica da solicitação',
+                        'descricao' => 'Proceder com a verificação de conformidade do relatório de atividades e fatura.',
+                        'assigned_to_user_id' => null,
+                        'prazo_dias_sugerido' => 3
+                    ],
+                    [
+                        'titulo' => 'Preparar despacho conclusivo',
+                        'descricao' => 'Elaborar minuta de despacho com a resposta oficial do gabinete.',
+                        'assigned_to_user_id' => null,
+                        'prazo_dias_sugerido' => 5
+                    ]
+                ]
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        }
+
         $ultima = '';
         foreach (array_reverse($messages) as $m) {
             if (($m['role'] ?? '') === 'user') {

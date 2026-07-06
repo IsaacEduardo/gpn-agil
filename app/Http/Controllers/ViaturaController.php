@@ -221,8 +221,8 @@ class ViaturaController extends Controller
                 ->withInput();
         }
 
-        // Atualiza os dados da viatura
-        $viatura->update($request->all());
+        // Atualiza apenas os campos validados (evita mass assignment de campos extra)
+        $viatura->update($validator->validated());
 
         // Processa as fotos para remover
         if ($request->has('remover_fotos')) {

@@ -126,11 +126,7 @@ class DocumentoInternoPolicy
 
     public function sign(User $user, DocumentoInterno $doc)
     {
-        // A lógica complexa já está no SignatureService::canSign
-        // Podemos chamar o service aqui ou deixar a responsabilidade lá.
-        // Por consistência com o workflow, seria bom ter aqui, mas o service tem regras de negócio específicas (tipo de documento).
-        // Vamos permitir View -> Sign button -> Controller -> Service.
-        return true;
+        return app(\App\Services\SignatureService::class)->canSign($doc, $user);
     }
 
     /**

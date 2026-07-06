@@ -191,7 +191,7 @@
                                 <p class="small">Tudo em dia! Todos os documentos do gabinete estão assinados.</p>
                             </div>
                         @else
-                            <form id="batchSignForm" action="{{ route('gabinete.batch-sign') }}" method="POST">
+                            <form id="batchSignForm" action="{{ route('gabinete.batch-sign') }}" method="POST" x-data="{ submitting: false }" @submit="submitting = true">
                                 @csrf
                                 <div class="table-responsive">
                                     <table class="table table-hover align-middle">
@@ -275,8 +275,13 @@
                                                 </div>
                                             </div>
                                             <div class="modal-footer border-0 p-4">
-                                                <button type="button" class="btn btn-light rounded-pill px-3" data-bs-dismiss="modal">Cancelar</button>
-                                                <button type="submit" class="btn btn-success rounded-pill px-4 fw-bold">Confirmar Assinatura</button>
+                                                <button type="button" class="btn btn-light rounded-pill px-3" data-bs-dismiss="modal" :disabled="submitting">Cancelar</button>
+                                                <button type="submit" class="btn btn-success rounded-pill px-4 fw-bold d-flex align-items-center gap-2" :disabled="submitting">
+                                                    <template x-if="submitting">
+                                                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                                    </template>
+                                                    <span x-text="submitting ? 'Assinando...' : 'Confirmar Assinatura'">Confirmar Assinatura</span>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -515,6 +520,7 @@
 @endsection
 
 @section('scripts')
+<script src="https://unpkg.com/alpinejs" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {

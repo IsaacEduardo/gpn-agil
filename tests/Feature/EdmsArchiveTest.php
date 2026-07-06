@@ -33,7 +33,7 @@ class EdmsArchiveTest extends TestCase
         $this->gabinete = Gabinete::create(['nome' => 'Gabinete de Teste', 'sigla' => 'GT']);
         $this->departamento = Departamento::create(['nome' => 'Departamento de Teste', 'sigla' => 'DT', 'gabinete_id' => $this->gabinete->id]);
         $this->user = User::factory()->create(['departamento_id' => $this->departamento->id]);
-        $this->especie = DocumentoEspecie::create(['nome' => 'Memorando', 'ativo' => true]);
+        $this->especie = DocumentoEspecie::firstOrCreate(['nome' => 'Memorando'], ['ativo' => true]);
 
         $this->actingAs($this->user);
     }

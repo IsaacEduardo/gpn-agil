@@ -276,19 +276,19 @@
                     <div class="col-md-6" data-field="destino-usuario">
                         <label class="form-label fw-semibold">
                             @if($actorIsSuperChefe)
-                                Chefe de destino
+                                Chefes de destino
                             @else
-                                Usuário destino
+                                Usuários destino
                             @endif
                             <span class="text-danger">*</span>
                         </label>
-                        <select name="destino_id" class="form-select" required>
-                            <option value="">Selecione...</option>
+                        <select name="destino_ids[]" class="form-select" multiple required style="min-height: 120px;">
                             @php($listaUsuarios = ($actorIsRespGab || $actorIsSuperChefe) ? ($gabUsuarios ?? collect()) : ($depUsuarios ?? collect()))
                             @foreach ($listaUsuarios as $u)
                                 <option value="{{ $u->id }}">{{ $u->name }}</option>
                             @endforeach
                         </select>
+                        <div class="form-text text-muted small">Pressione Ctrl (ou Cmd) para selecionar mais do que um.</div>
                     </div>
 
                     @if($actorIsRespGab)

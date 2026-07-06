@@ -22,3 +22,7 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+*.zip
+/scratch
+/memory
+/database/database.sqlite

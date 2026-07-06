@@ -6,8 +6,8 @@ services:
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:-gpn_agil}
       MYSQL_USER: ${DB_USERNAME:-gpn_agil}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no .env antes de subir os containers}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD no .env antes de subir os containers}
     ports:
       - "3306:3306"
     volumes:

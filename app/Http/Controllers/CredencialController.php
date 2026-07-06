@@ -120,10 +120,14 @@ class CredencialController extends Controller
 
         $path = Storage::disk('public')->path($credencial->caminho_arquivo);
         if (request()->boolean('download')) {
-            return response()->download($path, basename($path));
+            return response()->download($path, basename($path), ['X-Content-Type-Options' => 'nosniff']);
         }
 
-        return response()->file($path);
+        // Credenciais são PDFs gerados pelo sistema; força o tipo e impede sniffing
+        return response()->file($path, [
+            'Content-Type' => 'application/pdf',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     /**

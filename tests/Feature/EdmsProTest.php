@@ -58,7 +58,7 @@ class EdmsProTest extends TestCase
         $roleAdmin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $this->admin->assignRole($roleAdmin);
 
-        $this->especie = DocumentoEspecie::create(['nome' => 'Memorando', 'ativo' => true]);
+        $this->especie = DocumentoEspecie::firstOrCreate(['nome' => 'Memorando'], ['ativo' => true]);
     }
 
     public function test_admin_can_access_retention_config_and_store_rules()

@@ -21,6 +21,7 @@ class DocumentoTarefa extends Model
         'responsavel_user_id',
         'prazo_at',
         'status',
+        'grupo_tarefa_uuid',
     ];
 
     protected $casts = [

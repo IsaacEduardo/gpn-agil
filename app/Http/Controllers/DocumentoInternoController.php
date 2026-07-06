@@ -405,6 +405,8 @@ class DocumentoInternoController extends Controller
 
         $valido = false;
         $erroMsg = '';
+        // 'certificado' = assinatura digital real; 'visto' = hash de integridade sem certificado
+        $tipoAssinatura = 'certificado';
 
         if ($documento && $documento->assinado_em) {
             // Verificar a integridade criptográfica
@@ -412,35 +414,47 @@ class DocumentoInternoController extends Controller
             $contentHash = hash('sha256', $content);
             $signatureString = "DOC:{$documento->id}|TS:{$documento->assinado_em}|USER:{$documento->assinado_por_user_id}|CONTENT_HASH:{$contentHash}";
 
-            $certificate = \App\Models\UserCertificate::where('user_id', $documento->assinado_por_user_id)->latest()->first();
+            $storedHash = (string) $documento->assinatura_hash;
+            $vistoPrefix = \App\Services\SignatureService::VISTO_PREFIX;
 
-            if ($certificate && $certificate->isValid() && $certificate->public_key) {
-                // Verificar assinatura com a chave pública do certificado
-                $binarySignature = base64_decode($documento->assinatura_hash);
-                $pubKey = openssl_pkey_get_public($certificate->public_key);
-                if ($pubKey) {
-                    $ok = openssl_verify($signatureString, $binarySignature, $pubKey, OPENSSL_ALGO_SHA256);
-                    if ($ok === 1) {
-                        $valido = true;
-                    } else {
-                        $erroMsg = 'A assinatura digital do certificado não corresponde ao conteúdo atual do documento (pode ter havido adulteração).';
-                    }
-                } else {
-                    $erroMsg = 'Chave pública do certificado associado inválida.';
-                }
-            } else {
-                // Caso não tenha certificado, validar o hash simples
+            if (str_starts_with($storedHash, $vistoPrefix) || preg_match('/^[a-f0-9]{64}$/', $storedHash)) {
+                // Visto eletrónico (com prefixo) ou registo legado sem prefixo:
+                // valida apenas a integridade do conteúdo, sem valor de assinatura digital.
+                $tipoAssinatura = 'visto';
                 $expectedHash = hash('sha256', $signatureString);
-                if ($documento->assinatura_hash === $expectedHash) {
+                $storedIntegrity = str_starts_with($storedHash, $vistoPrefix)
+                    ? substr($storedHash, strlen($vistoPrefix))
+                    : $storedHash;
+                if (hash_equals($expectedHash, $storedIntegrity)) {
                     $valido = true;
                 } else {
                     $erroMsg = 'O hash de integridade do documento é inválido (pode ter havido adulteração).';
+                }
+            } else {
+                // Assinatura digital: verificar com a chave pública do certificado do signatário
+                $certificate = \App\Models\UserCertificate::where('user_id', $documento->assinado_por_user_id)->latest()->first();
+
+                if ($certificate && $certificate->public_key) {
+                    $binarySignature = base64_decode($storedHash);
+                    $pubKey = openssl_pkey_get_public($certificate->public_key);
+                    if ($pubKey) {
+                        $ok = openssl_verify($signatureString, $binarySignature, $pubKey, OPENSSL_ALGO_SHA256);
+                        if ($ok === 1) {
+                            $valido = true;
+                        } else {
+                            $erroMsg = 'A assinatura digital do certificado não corresponde ao conteúdo atual do documento (pode ter havido adulteração).';
+                        }
+                    } else {
+                        $erroMsg = 'Chave pública do certificado associado inválida.';
+                    }
+                } else {
+                    $erroMsg = 'Certificado do signatário não encontrado para validar a assinatura digital.';
                 }
             }
         } else {
             $erroMsg = 'Documento não encontrado no sistema ou não foi assinado digitalmente.';
         }
 
-        return view('documentos_internos.verificar', compact('documento', 'valido', 'erroMsg', 'hash'));
+        return view('documentos_internos.verificar', compact('documento', 'valido', 'erroMsg', 'hash', 'tipoAssinatura'));
     }
 }

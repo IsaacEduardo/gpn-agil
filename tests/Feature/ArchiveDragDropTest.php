@@ -53,7 +53,7 @@ class ArchiveDragDropTest extends TestCase
         $this->user = User::factory()->create(['departamento_id' => $this->departamento->id]);
         $this->estranho = User::factory()->create(['departamento_id' => $this->outroDepartamento->id]);
 
-        $this->especie = DocumentoEspecie::create(['nome' => 'Memorando', 'ativo' => true]);
+        $this->especie = DocumentoEspecie::firstOrCreate(['nome' => 'Memorando'], ['ativo' => true]);
     }
 
     /**

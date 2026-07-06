@@ -25,6 +25,10 @@ class ProcessarOcrAnexo implements ShouldQueue
     public function __construct(int $anexoId)
     {
         $this->anexoId = $anexoId;
+        
+        // Ensure the job is dispatched only after the active database transaction commits.
+        // This prevents a race condition with Redis queue workers.
+        $this->afterCommit = true;
     }
 
     /**

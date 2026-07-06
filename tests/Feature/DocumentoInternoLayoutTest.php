@@ -32,8 +32,9 @@ class DocumentoInternoLayoutTest extends TestCase
             'departamento_id' => $departamento->id,
         ]);
 
-        $especie = DocumentoEspecie::create([
+        $especie = DocumentoEspecie::firstOrCreate([
             'nome' => 'Memorando',
+        ], [
             'ativo' => true,
         ]);
 

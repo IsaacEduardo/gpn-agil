@@ -15,6 +15,143 @@ use Illuminate\Validation\ValidationException;
 class SignatureService
 {
     /**
+     * Prefixo que distingue um visto eletrónico (hash de integridade sem
+     * certificado) de uma assinatura digital real (base64 de openssl_sign).
+     */
+    public const VISTO_PREFIX = 'VISTO-';
+
+    /**
+     * Assina um lote de documentos numa única transação.
+     *
+     * Valida a senha do utilizador uma única vez e, existindo certificado,
+     * extrai a chave privada uma única vez para todo o lote. Sem certificado,
+     * cada documento recebe um visto eletrónico (ver sign()).
+     *
+     * @param  array<int|string>  $ids
+     * @param  class-string<Model>  $modelClass  DocumentoInterno::class ou Requisicao::class
+     * @return int Número de documentos assinados
+     *
+     * @throws ValidationException
+     */
+    public function batchSign(array $ids, string $modelClass, User $user, string $password, ?string $certificatePassword = null): int
+    {
+        if (! Hash::check($password, $user->password)) {
+            throw ValidationException::withMessages([
+                'password' => ['A senha informada está incorreta.'],
+            ]);
+        }
+
+        // Extrai a chave privada uma única vez, fora da transação
+        $privateKey = null;
+        if (UserCertificate::where('user_id', $user->id)->exists()) {
+            $privateKey = $this->extractPrivateKey($user, $certificatePassword);
+        }
+
+        $timestamp = now();
+        $count = 0;
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($ids, $modelClass, $user, $privateKey, $timestamp, &$count) {
+            foreach ($ids as $id) {
+                $documento = $modelClass::query()->findOrFail($id);
+
+                if ($privateKey) {
+                    $this->signWithPrivateKey($documento, $user, $privateKey, $timestamp);
+                } else {
+                    $this->sign($documento, $user, '', true);
+                }
+
+                $count++;
+            }
+        });
+
+        return $count;
+    }
+
+    /**
+     * Carrega e valida o certificado P12 do usuário, extraindo a chave privada.
+     *
+     * @throws ValidationException
+     */
+    public function extractPrivateKey(User $user, ?string $certificatePassword): string
+    {
+        $certificate = UserCertificate::where('user_id', $user->id)->latest()->first();
+        
+        if (!$certificate || !$certificate->isValid()) {
+            throw ValidationException::withMessages([
+                'certificate' => ['Certificado digital não encontrado ou expirado.'],
+            ]);
+        }
+
+        $p12 = $certificate->encrypted_p12;
+        $certs = [];
+        
+        if (!openssl_pkcs12_read($p12, $certs, $certificatePassword ?? '')) {
+            throw ValidationException::withMessages([
+                'certificate' => ['Senha do certificado digital P12 incorreta.'],
+            ]);
+        }
+
+        return $certs['pkey'];
+    }
+
+    /**
+     * Assina um documento de forma otimizada usando a chave privada pré-carregada.
+     *
+     * @throws ValidationException
+     */
+    public function signWithPrivateKey(Model $documento, User $user, string $privateKey, \DateTime $timestamp): Model
+    {
+        if (!$this->canSign($documento, $user)) {
+            throw ValidationException::withMessages([
+                'authorization' => ["Você não tem permissão para assinar este documento ID {$documento->id}."],
+            ]);
+        }
+
+        if ($documento instanceof DocumentoInterno && $documento->status !== DocumentoStatus::APROVADO) {
+            throw ValidationException::withMessages([
+                'status' => ["O documento ID {$documento->id} deve estar APROVADO para ser assinado."],
+            ]);
+        }
+
+        $content = '';
+        if ($documento instanceof DocumentoInterno) {
+            $content = $documento->conteudo_final;
+        } elseif ($documento instanceof Requisicao) {
+            $content = $documento->observacoes.$documento->tipo->value;
+        }
+
+        $contentHash = hash('sha256', $content);
+        $signatureString = "DOC:{$documento->id}|TS:{$timestamp->format('Y-m-d H:i:s')}|USER:{$user->id}|CONTENT_HASH:{$contentHash}";
+
+        $signature = '';
+        if (!openssl_sign($signatureString, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
+            throw ValidationException::withMessages([
+                'certificate' => ['Falha ao gerar assinatura digital com a chave privada fornecida.'],
+            ]);
+        }
+
+        $updateData = [
+            'assinado_em' => $timestamp,
+            'assinado_por_user_id' => $user->id,
+            'assinatura_hash' => base64_encode($signature),
+            'bloqueado_edicao' => true,
+        ];
+
+        if ($documento instanceof DocumentoInterno) {
+            $updateData['status'] = DocumentoStatus::ASSINADO;
+            $documento->versao_major += 1;
+            $documento->versao_minor = 0;
+            $documento->versao_patch = 0;
+            $updateData['versao_major'] = $documento->versao_major;
+            $updateData['versao_minor'] = 0;
+            $updateData['versao_patch'] = 0;
+        }
+
+        $documento->update($updateData);
+
+        return $documento;
+    }
+    /**
      * Assina digitalmente um documento.
      *
      * @param  Model  $documento  (DocumentoInterno ou Requisicao)
@@ -93,8 +230,9 @@ class SignatureService
                 ]);
             }
         } else {
-            // Fallback para hash simples apenas quando o usuário NÃO tem um certificado registrado
-            $finalHash = hash('sha256', $signatureString);
+            // Sem certificado não existe assinatura digital: registra-se um VISTO
+            // eletrónico (hash de integridade prefixado), nunca apresentado como assinatura.
+            $finalHash = self::VISTO_PREFIX.hash('sha256', $signatureString);
         }
 
         // 5. Salvar Assinatura e Atualizar Estado

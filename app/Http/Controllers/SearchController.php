@@ -6,16 +6,14 @@ use App\Models\Departamento;
 use App\Models\DocumentoEntrada;
 use App\Models\Empresa;
 use App\Models\Requisicao;
-use App\Models\User;
 use App\Models\Viatura;
-use App\Services\DocumentoPermissionService;
-use Illuminate\Database\Eloquent\Builder;
+use App\Services\DocumentoEntradaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class SearchController extends Controller
 {
-    public function __construct(private DocumentoPermissionService $permissionService) {}
+    public function __construct(private DocumentoEntradaService $documentoService) {}
 
     public function index(Request $request)
     {
@@ -93,7 +91,7 @@ class SearchController extends Controller
                     });
             });
 
-        $this->applyDocumentoVisibility($docsQuery, $user);
+        $this->documentoService->applyVisibilityScope($docsQuery, $user);
 
         $docs = $docsQuery->limit(5)->get();
 
@@ -130,53 +128,6 @@ class SearchController extends Controller
         }
 
         return response()->json($results);
-    }
-
-    /**
-     * Restringe a query de documentos de entrada ao que o utilizador pode ver,
-     * espelhando DocumentoPermissionService::canViewDocument ao nível da query
-     * (departamento atual, gabinete responsável ou histórico de encaminhamento).
-     */
-    private function applyDocumentoVisibility(Builder $query, User $user): void
-    {
-        if ($this->permissionService->isAdmin($user)) {
-            return;
-        }
-
-        $userDeps = $this->permissionService->getUserDepartments($user);
-        $userGabs = $this->permissionService->getUserResponsibleGabinetes($user);
-
-        $isSuperChefe = $user->isSuperChefeGabinete();
-        $superGabId = ($isSuperChefe && $user->gabineteSuperGerenciado) ? $user->gabineteSuperGerenciado->id : null;
-
-        // Sem departamento nem gabinete responsável nem super gabinete: não vê nenhum documento.
-        if (empty($userDeps) && empty($userGabs) && ! $superGabId) {
-            $query->whereRaw('1 = 0');
-
-            return;
-        }
-
-        $query->where(function ($q) use ($userDeps, $userGabs, $superGabId) {
-            if (! empty($userDeps)) {
-                $q->whereIn('departamento_id', $userDeps)
-                    ->orWhereHas('encaminhamentos', function ($e) use ($userDeps) {
-                        $e->whereIn('origem_departamento_id', $userDeps)
-                            ->orWhereIn('destino_departamento_id', $userDeps);
-                    });
-            }
-
-            if (! empty($userGabs)) {
-                $q->orWhereHas('departamento', function ($d) use ($userGabs) {
-                    $d->whereIn('gabinete_id', $userGabs);
-                });
-            }
-
-            if ($superGabId) {
-                $q->orWhereHas('departamento', function ($d) use ($superGabId) {
-                    $d->where('gabinete_id', $superGabId);
-                });
-            }
-        });
     }
 
     private function getRequisicaoUrl($req)

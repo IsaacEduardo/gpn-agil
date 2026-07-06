@@ -26,6 +26,7 @@ Este guia cobre duas estratégias: Docker Compose (rápida para MVP) e instalaç
    - `docker compose exec php php artisan key:generate`
 4. Migre o banco e faça seed:
    - `docker compose exec php php artisan migrate --force`
+   - Defina `SEED_ADMIN_EMAIL` e `SEED_ADMIN_PASSWORD` (mín. 12 caracteres) no `.env`
    - `docker compose exec php php artisan db:seed --class=InitialRolesAndAdminSeeder --force`
 5. Otimizações (opcional):
    - `docker compose exec php php artisan config:cache`
@@ -33,7 +34,7 @@ Este guia cobre duas estratégias: Docker Compose (rápida para MVP) e instalaç
    - `docker compose exec php php artisan route:cache` (use apenas se não houver rotas com closures)
 6. Acesse o sistema:
    - `http://localhost:8080/home`
-   - Login inicial: `admin@empresa.com` / `TroqueEstaSenha123!` (altere imediatamente em Perfil)
+   - Login inicial: o email/senha definidos em `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` (não existem credenciais padrão)
 
 ### Observações
 - MySQL está exposto na porta `3306`; em produção, prefira mantê-lo privado.
@@ -57,6 +58,7 @@ Este guia cobre duas estratégias: Docker Compose (rápida para MVP) e instalaç
 4. Banco de dados:
    - Criar DB/usuário e permissões
    - `php artisan migrate --force`
+   - Defina `SEED_ADMIN_EMAIL` e `SEED_ADMIN_PASSWORD` (mín. 12 caracteres) no `.env`
    - `php artisan db:seed --class=InitialRolesAndAdminSeeder --force`
 5. Nginx:
    - Root em `/var/www/GPN-AGIL/public` e PHP-FPM socket

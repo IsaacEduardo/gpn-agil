@@ -21,7 +21,10 @@ Route::get('/', function () {
 Auth::routes();
 
 // Rota pública de verificação de autenticidade de documentos (acesso externo via hash)
-Route::get('/verificar/documento/{hash}', [App\Http\Controllers\DocumentoInternoController::class, 'verificarPublico'])->name('documentos-internos.verificar');
+// throttle impede enumeração/brute-force de hashes
+Route::get('/verificar/documento/{hash}', [App\Http\Controllers\DocumentoInternoController::class, 'verificarPublico'])
+    ->middleware('throttle:30,1')
+    ->name('documentos-internos.verificar');
 
 // A partir daqui, todas as rotas exigem autenticação
 Route::middleware(['auth'])->group(function () {
@@ -248,6 +251,8 @@ if (config('app.feature_assistente')) {
         Route::get('/assistente', [AssistenteController::class, 'index'])->name('assistente.index');
         Route::post('/assistente/perguntar', [AssistenteController::class, 'perguntarGlobal'])->name('assistente.perguntar');
         Route::post('documentos-entradas/{documento}/assistente', [AssistenteController::class, 'perguntarEntrada'])->name('assistente.entrada');
+        Route::post('documentos-entradas/{documento}/gerar-nota-gab', [DocumentoEntradaController::class, 'generateCabinetNote'])->name('documentos-entradas.gerar-nota-gab');
+        Route::post('documentos-entradas/{documento}/sugerir-acoes', [DocumentoEntradaController::class, 'suggestActions'])->name('documentos-entradas.sugerir-acoes');
         Route::post('documentos-internos/{documentoInterno}/assistente', [AssistenteController::class, 'perguntarInterno'])->name('assistente.interno');
     });
 }
@@ -307,16 +312,3 @@ Route::get('/deploy-setup', function (\Illuminate\Http\Request $request) {
     }
 })->middleware('throttle:6,1');
 
-// Rota de Login para Desenvolvimento (disponível apenas localmente)
-if (app()->environment('local')) {
-    Route::get('/dev-login/{id}', function ($id) {
-        $user = \App\Models\User::find($id);
-        if ($user) {
-            Auth::login($user);
-
-            return 'Logged in as '.$user->email;
-        }
-
-        return 'User not found';
-    });
-}

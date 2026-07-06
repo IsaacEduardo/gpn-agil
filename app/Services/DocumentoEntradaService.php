@@ -34,6 +34,54 @@ class DocumentoEntradaService
         $this->permissionService = $permissionService;
     }
 
+    /**
+     * Restringe a query aos documentos de entrada visíveis pelo utilizador
+     * (departamentos próprios, gabinetes responsáveis e histórico de
+     * encaminhamentos). Admin vê tudo.
+     */
+    public function applyVisibilityScope($query, User $user): void
+    {
+        if ($this->permissionService->isAdmin($user)) {
+            return;
+        }
+
+        $actorDeps = $this->permissionService->getUserDepartments($user);
+        $actorGabIds = $this->permissionService->getUserResponsibleGabinetes($user);
+
+        $cabinetDeps = [];
+        if (count($actorGabIds)) {
+            $cabinetDeps = Departamento::whereIn('gabinete_id', $actorGabIds)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        }
+        if ($user->hasPermissionTo('gabinete.view_all') && $user->departamento && $user->departamento->gabinete_id) {
+            $userCabinetDeps = Departamento::where('gabinete_id', $user->departamento->gabinete_id)->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $cabinetDeps = array_merge($cabinetDeps, $userCabinetDeps);
+        }
+
+        if ($user->isSuperChefeGabinete() && $user->gabineteSuperGerenciado) {
+            $superCabinetDeps = Departamento::where('gabinete_id', $user->gabineteSuperGerenciado->id)->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $cabinetDeps = array_merge($cabinetDeps, $superCabinetDeps);
+        }
+
+        $visibleDeps = array_values(array_unique(array_merge($actorDeps, $cabinetDeps)));
+
+        if (count($visibleDeps)) {
+            $query->where(function ($q) use ($visibleDeps) {
+                $q->whereIn('departamento_id', $visibleDeps)
+                    ->orWhereExists(function ($sub) use ($visibleDeps) {
+                        $sub->selectRaw(1)
+                            ->from('documento_encaminhamentos as de')
+                            ->whereColumn('de.documento_entrada_id', 'documentos_entradas.id')
+                            ->where(function ($subQ) use ($visibleDeps) {
+                                $subQ->whereIn('de.destino_departamento_id', $visibleDeps)
+                                    ->orWhereIn('de.origem_departamento_id', $visibleDeps);
+                            });
+                    });
+            });
+        } else {
+            $query->whereNull('id');
+        }
+    }
+
     public function getFilteredDocumentsQuery(Request $request, ?User $user)
     {
         $query = DocumentoEntrada::select([
@@ -64,43 +112,7 @@ class DocumentoEntradaService
 
         // Authorization Scopes
         if ($user) {
-            if (! $this->permissionService->isAdmin($user)) {
-                $actorDeps = $this->permissionService->getUserDepartments($user);
-                $actorGabIds = $this->permissionService->getUserResponsibleGabinetes($user);
-
-                $cabinetDeps = [];
-                if (count($actorGabIds)) {
-                    $cabinetDeps = Departamento::whereIn('gabinete_id', $actorGabIds)->pluck('id')->map(fn ($id) => (int) $id)->all();
-                }
-                if ($user->hasPermissionTo('gabinete.view_all') && $user->departamento && $user->departamento->gabinete_id) {
-                    $userCabinetDeps = Departamento::where('gabinete_id', $user->departamento->gabinete_id)->pluck('id')->map(fn ($id) => (int) $id)->all();
-                    $cabinetDeps = array_merge($cabinetDeps, $userCabinetDeps);
-                }
-
-                if ($user->isSuperChefeGabinete() && $user->gabineteSuperGerenciado) {
-                    $superCabinetDeps = Departamento::where('gabinete_id', $user->gabineteSuperGerenciado->id)->pluck('id')->map(fn ($id) => (int) $id)->all();
-                    $cabinetDeps = array_merge($cabinetDeps, $superCabinetDeps);
-                }
-
-                $visibleDeps = array_values(array_unique(array_merge($actorDeps, $cabinetDeps)));
-
-                if (count($visibleDeps)) {
-                    $query->where(function ($q) use ($visibleDeps) {
-                        $q->whereIn('departamento_id', $visibleDeps)
-                            ->orWhereExists(function ($sub) use ($visibleDeps) {
-                                $sub->selectRaw(1)
-                                    ->from('documento_encaminhamentos as de')
-                                    ->whereColumn('de.documento_entrada_id', 'documentos_entradas.id')
-                                    ->where(function ($subQ) use ($visibleDeps) {
-                                        $subQ->whereIn('de.destino_departamento_id', $visibleDeps)
-                                            ->orWhereIn('de.origem_departamento_id', $visibleDeps);
-                                    });
-                            });
-                    });
-                } else {
-                    $query->whereNull('id');
-                }
-            }
+            $this->applyVisibilityScope($query, $user);
         }
 
         // Standard Filters
@@ -370,6 +382,7 @@ class DocumentoEntradaService
             'assigned_to_departamento_id' => $data['assigned_to_departamento_id'] ?? null,
             'prazo_at' => $data['prazo_at'] ?? null,
             'status' => 'pendente',
+            'grupo_tarefa_uuid' => $data['grupo_tarefa_uuid'] ?? null,
         ]);
 
         $numero = sprintf('%03d/%d', $documento->numero_sequencial, $documento->ano_referencia);

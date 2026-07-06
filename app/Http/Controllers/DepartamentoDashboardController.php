@@ -33,28 +33,23 @@ class DepartamentoDashboardController extends Controller
 
         $user = Auth::user();
 
-        // 1. Validar Senha do Usuário uma única vez
-        if (! \Illuminate\Support\Facades\Hash::check($request->password, $user->password)) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'password' => ['A senha informada está incorreta.'],
-            ]);
-        }
-
-        // Senha do certificado P12 fornecida uma vez para todo o lote (mantida apenas em memória).
-        $certificatePassword = $request->input('certificate_password');
-        $signatureService = app(\App\Services\SignatureService::class);
-        $count = 0;
-
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($request, $user, $signatureService, $certificatePassword, &$count) {
-                foreach ($request->documento_ids as $id) {
-                    $doc = DocumentoInterno::findOrFail($id);
-                    $signatureService->sign($doc, $user, $request->password, true, $certificatePassword);
-                    $count++;
-                }
-            });
+            $count = app(\App\Services\SignatureService::class)->batchSign(
+                $request->documento_ids,
+                DocumentoInterno::class,
+                $user,
+                $request->password,
+                $request->input('certificate_password')
+            );
 
             return back()->with('success', "{$count} documentos assinados com sucesso.");
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Senha do utilizador errada -> erro de validação no formulário
+            if (array_key_exists('password', $e->errors())) {
+                throw $e;
+            }
+
+            return back()->with('error', 'Falha ao assinar lote de documentos: '.collect($e->errors())->flatten()->implode(' '));
         } catch (\Exception $e) {
             return back()->with('error', 'Falha ao assinar lote de documentos: '.$e->getMessage());
         }
@@ -70,28 +65,23 @@ class DepartamentoDashboardController extends Controller
 
         $user = Auth::user();
 
-        // 1. Validar Senha do Usuário uma única vez
-        if (! \Illuminate\Support\Facades\Hash::check($request->password, $user->password)) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'password' => ['A senha informada está incorreta.'],
-            ]);
-        }
-
-        // Senha do certificado P12 fornecida uma vez para todo o lote (mantida apenas em memória).
-        $certificatePassword = $request->input('certificate_password');
-        $signatureService = app(\App\Services\SignatureService::class);
-        $count = 0;
-
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($request, $user, $signatureService, $certificatePassword, &$count) {
-                foreach ($request->requisicao_ids as $id) {
-                    $req = Requisicao::findOrFail($id);
-                    $signatureService->sign($req, $user, $request->password, true, $certificatePassword);
-                    $count++;
-                }
-            });
+            $count = app(\App\Services\SignatureService::class)->batchSign(
+                $request->requisicao_ids,
+                Requisicao::class,
+                $user,
+                $request->password,
+                $request->input('certificate_password')
+            );
 
             return back()->with('success', "{$count} requisições assinadas com sucesso.");
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Senha do utilizador errada -> erro de validação no formulário
+            if (array_key_exists('password', $e->errors())) {
+                throw $e;
+            }
+
+            return back()->with('error', 'Falha ao assinar lote de requisições: '.collect($e->errors())->flatten()->implode(' '));
         } catch (\Exception $e) {
             return back()->with('error', 'Falha ao assinar lote de requisições: '.$e->getMessage());
         }

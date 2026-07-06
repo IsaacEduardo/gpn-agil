@@ -146,7 +146,7 @@ class UsabilidadeCompletaTest extends TestCase
         // 4. Criar Tarefa no documento (Chefe Destino)
         $response = $this->actingAs($this->chefeDestino)->post(route('documentos-entradas.tarefas.store', $doc), [
             'tipo' => 'usuario',
-            'destino_id' => $this->chefeDestino->id,
+            'destino_ids' => [$this->chefeDestino->id],
             'titulo' => 'Analisar Documento',
             'descricao' => 'Verificar conteúdo.',
         ]);

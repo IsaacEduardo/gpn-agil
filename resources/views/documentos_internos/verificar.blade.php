@@ -243,8 +243,13 @@
                     <span class="status-badge status-success">
                         🛡️ Documento Autêntico
                     </span>
-                    <h4 class="fw-bold text-white mb-1">Assinatura Digital Válida</h4>
-                    <p class="text-secondary small mb-4">A integridade criptográfica deste documento foi verificada e validada com sucesso.</p>
+                    @if (($tipoAssinatura ?? 'certificado') === 'visto')
+                        <h4 class="fw-bold text-white mb-1">Visto Eletrónico Válido</h4>
+                        <p class="text-secondary small mb-4">A integridade deste documento foi verificada. Atenção: o documento foi validado por visto eletrónico (sem certificado digital), não constituindo assinatura digital qualificada.</p>
+                    @else
+                        <h4 class="fw-bold text-white mb-1">Assinatura Digital Válida</h4>
+                        <p class="text-secondary small mb-4">A integridade criptográfica deste documento foi verificada e validada com sucesso.</p>
+                    @endif
                 </div>
 
                 <div class="doc-details">
@@ -263,6 +268,10 @@
                     <div class="detail-row">
                         <span class="detail-label">Gabinete / Órgão</span>
                         <span class="detail-value">{{ $documento->departamento->gabinete->nome ?? ($documento->departamento->nome ?? 'Não Definido') }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Tipo de Validação</span>
+                        <span class="detail-value">{{ ($tipoAssinatura ?? 'certificado') === 'visto' ? 'Visto Eletrónico (sem certificado)' : 'Assinatura Digital com Certificado' }}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Assinado Por</span>
