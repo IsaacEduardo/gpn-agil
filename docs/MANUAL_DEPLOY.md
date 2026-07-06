@@ -1,7 +1,7 @@
 # Manual de Deploy — GPN-AGIL
 
 > Manual verificado contra o código-fonte real do projeto (Laravel 12 / PHP 8.2).
-> Substitui e corrige instruções imprecisas de `DEPLOY_CPANEL.md` (ver §9).
+> Documento canónico de deploy (substituiu os antigos DEPLOY_CPANEL.md, HOSTING_GUIDE.md e README_DEPLOY.md).
 > Última verificação: 2026-06-21.
 
 ---

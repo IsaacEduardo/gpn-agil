@@ -142,8 +142,41 @@ sudo chown -R www-data:www-data storage bootstrap/cache
 
 ### 5.3. Nginx (Document Root → `public/`)
 
-Use o exemplo de `HOSTING_GUIDE.md` (server block com `root .../public`, `try_files`, e `fastcgi_pass`
-para o socket do PHP-FPM 8.2). Garanta HTTPS (Let's Encrypt / certbot) e `APP_URL=https://...`.
+Garanta HTTPS (Let's Encrypt / certbot) e `APP_URL=https://...`. Exemplo de server block:
+
+```nginx
+server {
+    listen 80;
+    server_name seu-dominio.com;
+    root /var/www/gpn-agil/public;
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+
+    index index.php;
+
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+```
 
 ### 5.4. Worker de fila (Supervisor) — necessário para OCR, Push, indexação
 
@@ -218,7 +251,6 @@ docker compose exec php php artisan optimize
 ## Documentos relacionados
 
 - [MANUAL_DEPLOY.md](MANUAL_DEPLOY.md) — passo a passo de instalação (SSH e cPanel), `.env` modelo, troubleshooting.
-- [HOSTING_GUIDE.md](HOSTING_GUIDE.md) — exemplo de Nginx + Supervisor.
-- [docs/ARQUITETURA.md](docs/ARQUITETURA.md) — arquitetura e componentes do sistema.
-- [docs/deploy-performance.md](docs/deploy-performance.md) — metas e checklist de performance.
-- [docs/CHATBOT.md](docs/CHATBOT.md) — detalhes do módulo de chatbot/RAG.
+- [ARQUITETURA.md](ARQUITETURA.md) — arquitetura e componentes do sistema.
+- [deploy-performance.md](deploy-performance.md) — metas e checklist de performance.
+- [CHATBOT.md](CHATBOT.md) — detalhes do módulo de chatbot/RAG.

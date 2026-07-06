@@ -107,54 +107,60 @@ class DepartamentoDashboardController extends Controller
 
         // --- KPIs e Analytics ---
 
-        // 1. Documentos
-        $docsQuery = DocumentoInterno::where('departamento_id', $departamento->id);
+        // 1. Documentos — contagens por status numa única query
+        $docsPorStatus = DocumentoInterno::where('departamento_id', $departamento->id)
+            ->select('status', \Illuminate\Support\Facades\DB::raw('count(*) as total'))
+            ->groupBy('status')
+            ->pluck('total', 'status');
 
         $statsDocs = [
-            'total' => (clone $docsQuery)->count(),
-            'pendentes' => (clone $docsQuery)->where('status', DocumentoStatus::RASCUNHO)->count(), // Chefes revisam rascunhos da equipe? Ou aprovam?
-            // Chefes aprovam o envio para o gabinete? Depende do workflow.
+            'total' => $docsPorStatus->sum(),
             // No workflow atual, o autor envia -> EM_ANALISE (Chefe/Gabinete aprova).
-            // Se o chefe é do depto, ele deve ver os 'EM_ANALISE' do seu depto para aprovar.
-            'para_aprovacao' => (clone $docsQuery)->where('status', DocumentoStatus::EM_ANALISE)->count(),
-            'aprovados' => (clone $docsQuery)->where('status', DocumentoStatus::APROVADO)->count(),
+            'pendentes' => (int) $docsPorStatus->get(DocumentoStatus::RASCUNHO->value, 0),
+            'para_aprovacao' => (int) $docsPorStatus->get(DocumentoStatus::EM_ANALISE->value, 0),
+            'aprovados' => (int) $docsPorStatus->get(DocumentoStatus::APROVADO->value, 0),
         ];
 
-        // 2. Requisições
-        // Requisicoes onde o usuario pertence ao departamento
-        $reqsQuery = Requisicao::whereHas('usuario', function ($q) use ($departamento) {
+        // 2. Requisições — contagens por status numa única query
+        $reqsPorStatus = Requisicao::whereHas('usuario', function ($q) use ($departamento) {
             $q->where('departamento_id', $departamento->id);
-        });
+        })
+            ->select('status', \Illuminate\Support\Facades\DB::raw('count(*) as total'))
+            ->groupBy('status')
+            ->pluck('total', 'status');
 
         $statsReqs = [
-            'total' => (clone $reqsQuery)->count(),
-            'pendentes' => (clone $reqsQuery)->where('status', StatusRequisicao::PENDENTE)->count(),
-            'aprovadas' => (clone $reqsQuery)->where('status', StatusRequisicao::APROVADO)->count(),
-            'rejeitadas' => (clone $reqsQuery)->where('status', StatusRequisicao::REJEITADO)->count(),
+            'total' => $reqsPorStatus->sum(),
+            'pendentes' => (int) $reqsPorStatus->get(StatusRequisicao::PENDENTE->value, 0),
+            'aprovadas' => (int) $reqsPorStatus->get(StatusRequisicao::APROVADO->value, 0),
+            'rejeitadas' => (int) $reqsPorStatus->get(StatusRequisicao::REJEITADO->value, 0),
         ];
 
-        // 3. Analytics (Tempo médio, etc - Simulado/Calculado simples)
-        // Calculo via PHP para compatibilidade com SQLite/MySQL
-        $docsAprovados = DocumentoInterno::where('departamento_id', $departamento->id)
-            ->where('status', DocumentoStatus::APROVADO)
+        // 3. Analytics — tempo médio até assinatura calculado no banco de dados
+        $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+        $avgExpr = $driver === 'sqlite'
+            ? 'AVG(julianday(assinado_em) - julianday(created_at))'
+            : 'AVG(DATEDIFF(assinado_em, created_at))';
+
+        $avgTimeDocs = (float) (DocumentoInterno::where('departamento_id', $departamento->id)
             ->whereNotNull('assinado_em')
-            ->get(['created_at', 'assinado_em']);
+            ->selectRaw($avgExpr.' as avg_days')
+            ->value('avg_days') ?? 0);
 
-        $avgTimeDocs = 0;
-        if ($docsAprovados->count() > 0) {
-            $totalDays = $docsAprovados->sum(function ($doc) {
-                return $doc->created_at->diffInDays($doc->assinado_em);
-            });
-            $avgTimeDocs = $totalDays / $docsAprovados->count();
-        }
-
-        // --- SLA Compliance ---
-        $slaDocs = \App\Models\DocumentoEntrada::where('departamento_id', $departamento->id)
+        // --- SLA Compliance — contagens em SQL (sla 'normal' = menos de 2 dias decorridos) ---
+        $slaBase = \App\Models\DocumentoEntrada::where('departamento_id', $departamento->id)
             ->whereIn('status', ['registrado', 'recebido'])
-            ->where('arquivado', false)
-            ->get();
-        $totalSlaDocs = $slaDocs->count();
-        $compliantSlaDocs = $slaDocs->filter(fn ($d) => $d->sla_status === 'normal')->count();
+            ->where('arquivado', false);
+
+        $totalSlaDocs = (clone $slaBase)->count();
+        $slaCutoff = now()->subDays(2);
+        $compliantSlaDocs = (clone $slaBase)
+            ->where(function ($q) use ($slaCutoff) {
+                $q->where('data_entrada', '>', $slaCutoff)
+                    ->orWhere(function ($qq) use ($slaCutoff) {
+                        $qq->whereNull('data_entrada')->where('created_at', '>', $slaCutoff);
+                    });
+            })->count();
         $slaCompliance = $totalSlaDocs > 0 ? round(($compliantSlaDocs / $totalSlaDocs) * 100) : 100;
 
         // --- Logs de Atividade Recentes ---
@@ -163,10 +169,10 @@ class DepartamentoDashboardController extends Controller
                 $qu->where('departamento_id', $departamento->id);
             })->orWhere(function ($qu) use ($departamento) {
                 $qu->where('auditable_type', DocumentoInterno::class)
-                    ->whereIn('auditable_id', DocumentoInterno::where('departamento_id', $departamento->id)->pluck('id'));
+                    ->whereIn('auditable_id', DocumentoInterno::where('departamento_id', $departamento->id)->select('id'));
             })->orWhere(function ($qu) use ($departamento) {
                 $qu->where('auditable_type', Requisicao::class)
-                    ->whereIn('auditable_id', Requisicao::whereHas('usuario', fn ($qusr) => $qusr->where('departamento_id', $departamento->id))->pluck('id'));
+                    ->whereIn('auditable_id', Requisicao::whereHas('usuario', fn ($qusr) => $qusr->where('departamento_id', $departamento->id))->select('id'));
             });
         })->with(['user', 'auditable'])->latest()->take(5)->get();
 
@@ -194,6 +200,7 @@ class DepartamentoDashboardController extends Controller
 
         $docsParaAssinar = DocumentoInterno::where('departamento_id', $departamento->id)
             ->where('status', DocumentoStatus::APROVADO)
+            ->with(['especie', 'departamento.gabinete']) // canSign navega estas relações
             ->get()
             ->filter(function ($doc) use ($signatureService, $user) {
                 return $signatureService->canSign($doc, $user);
@@ -205,6 +212,7 @@ class DepartamentoDashboardController extends Controller
         })
             ->where('status', StatusRequisicao::APROVADO)
             ->whereNull('assinado_em')
+            ->with('usuario') // canSign consulta o departamento do requisitante
             ->get()
             ->filter(function ($req) use ($signatureService, $user) {
                 return $signatureService->canSign($req, $user);

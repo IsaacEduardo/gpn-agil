@@ -2,29 +2,27 @@
 
 namespace App\Http\Controllers;
 
-use App\Exports\DocumentoEntradasExport;
 use App\Http\Requests\StoreDocumentoEntradaRequest;
 use App\Models\Anexo;
 use App\Models\Departamento;
 use App\Models\DocumentoEncaminhamento;
 use App\Models\DocumentoEntrada;
 use App\Models\DocumentoEspecie;
-use App\Models\DocumentoProtocolo;
-use App\Models\DocumentoTarefa;
+use App\Models\DocumentoInterno;
 use App\Models\Gabinete;
+use App\Models\ModeloDespacho;
 use App\Models\Pasta;
 use App\Models\User;
+use App\Services\Ai\DocumentoAssistantService;
 use App\Services\DocumentoEntradaService;
 use App\Services\DocumentoPermissionService;
-use Carbon\Carbon;
-use Dompdf\Dompdf;
-use Dompdf\Options;
+use App\Support\SafeFileHeaders;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Maatwebsite\Excel\Facades\Excel;
 
 class DocumentoEntradaController extends Controller
 {
@@ -36,31 +34,6 @@ class DocumentoEntradaController extends Controller
     {
         $this->documentoService = $documentoService;
         $this->permissionService = $permissionService;
-    }
-
-    public function batchReceber(Request $request)
-    {
-        $validated = $request->validate([
-            'ids' => ['required', 'json'],
-        ]);
-
-        $ids = json_decode($validated['ids'], true);
-        if (! is_array($ids) || empty($ids)) {
-            return back()->with('error', 'Nenhum documento selecionado.');
-        }
-
-        $result = $this->documentoService->receiveBatch($ids, Auth::user());
-
-        if ($result['success'] > 0) {
-            $msg = $result['success'].' documento(s) recebido(s) com sucesso.';
-            if ($result['failed'] > 0) {
-                $msg .= ' ('.$result['failed'].' falharam ou sem permissão).';
-            }
-
-            return back()->with('success', $msg);
-        }
-
-        return back()->with('error', 'Não foi possível receber os documentos selecionados. Verifique as permissões.');
     }
 
     public function searchJson(Request $request)
@@ -116,7 +89,7 @@ class DocumentoEntradaController extends Controller
             });
 
         // Search also in Documentos Internos (scoped à visibilidade do utilizador)
-        $queryInternos = \App\Models\DocumentoInterno::query()->accessibleBy($actor);
+        $queryInternos = DocumentoInterno::query()->accessibleBy($actor);
         $queryInternos->where(function ($q) use ($search) {
             $q->where('titulo', 'like', "%{$search}%")
                 ->orWhere('numero_referencia', 'like', "%{$search}%")
@@ -282,7 +255,7 @@ class DocumentoEntradaController extends Controller
             ->orderBy('nome')
             ->get();
 
-        $modelosDespacho = \App\Models\ModeloDespacho::ativos()
+        $modelosDespacho = ModeloDespacho::ativos()
             ->globalOrUser($actor->id)
             ->orderBy('titulo')
             ->get(['id', 'titulo', 'texto']);
@@ -360,7 +333,7 @@ class DocumentoEntradaController extends Controller
         $tipoDoc = $validated['relacionado_type'] ?? 'entrada';
 
         if ($tipoDoc === 'interno') {
-            $docInterno = \App\Models\DocumentoInterno::find($validated['relacionado_id']);
+            $docInterno = DocumentoInterno::find($validated['relacionado_id']);
             if (! $docInterno) {
                 return back()->withErrors(['relacionado_id' => 'Documento interno não encontrado.']);
             }
@@ -382,7 +355,7 @@ class DocumentoEntradaController extends Controller
             return back()->withErrors(['relacionado_id' => 'Documento de entrada não encontrado.']);
         }
 
-        $alreadyRelated = \Illuminate\Support\Facades\DB::table('documento_relacoes')
+        $alreadyRelated = DB::table('documento_relacoes')
             ->where(function ($q) use ($documento, $validated) {
                 $q->where('documento_id', $documento->id)
                     ->where('relacionado_id', $validated['relacionado_id']);
@@ -408,7 +381,7 @@ class DocumentoEntradaController extends Controller
     {
         // Check if it's an internal document unlink
         if ($request->query('type') === 'interno') {
-            $docInterno = \App\Models\DocumentoInterno::where('id', $relacionadoId)
+            $docInterno = DocumentoInterno::where('id', $relacionadoId)
                 ->where('documento_entrada_id', $documento->id)
                 ->first();
 
@@ -427,345 +400,6 @@ class DocumentoEntradaController extends Controller
         $documento->documentosRelacionadosInverso()->detach($relacionadoId);
 
         return back()->with('success', 'Vínculo removido com sucesso.');
-    }
-
-    public function tarefasStore(Request $request, DocumentoEntrada $documento)
-    {
-        $validated = $request->validate([
-            'tipo' => ['required', 'in:usuario,departamento'],
-            'destino_id' => ['required_if:tipo,departamento', 'nullable', 'integer'],
-            'destino_ids' => ['required_if:tipo,usuario', 'nullable', 'array'],
-            'destino_ids.*' => ['integer', 'exists:users,id'],
-            'titulo' => ['required', 'string', 'max:255'],
-            'descricao' => ['nullable', 'string'],
-            'prazo_at' => ['nullable', 'date'],
-        ]);
-
-        $actor = Auth::user();
-        if (! $this->permissionService->canManageTasks($actor, $documento)) {
-            return back()->with('danger', 'Você não tem permissão para designar tarefa neste documento.');
-        }
-
-        $tipo = $validated['tipo'];
-        $docGabId = optional($documento->departamento)->gabinete_id;
-        $isSuperChefe = $actor->isSuperChefeDoGabinete($docGabId);
-
-        if ($tipo === 'usuario') {
-            $destinoIds = $request->destino_ids ?? [];
-            if (empty($destinoIds)) {
-                return back()->withErrors(['destino_ids' => 'Selecione pelo menos um usuário de destino.']);
-            }
-
-            $usuariosValidos = [];
-            foreach ($destinoIds as $userId) {
-                $user = User::find($userId);
-                if (! $user) {
-                    return back()->withErrors(['destino_ids' => 'Usuário não encontrado.']);
-                }
-
-                if ($isSuperChefe) {
-                    $gabinete = $documento->departamento ? $documento->departamento->gabinete : null;
-                    $isChefeGab = $gabinete && (int)$gabinete->responsavel_id === (int)$user->id;
-                    $isChefeDep = Departamento::where('gabinete_id', $docGabId)->where('responsavel_id', $user->id)->exists();
-
-                    if (! $isChefeGab && ! $isChefeDep) {
-                        return back()->withErrors(['destino_ids' => 'O Super Chefe só pode delegar tarefas ao Chefe de Gabinete ou aos Chefes de Departamento do respetivo gabinete.']);
-                    }
-                } else {
-                    $isGabResp = $this->permissionService->isGabineteResponsavel($actor, $docGabId);
-
-                    if ($isGabResp) {
-                        $uDep = $user->departamento;
-                        if (! $uDep || $uDep->gabinete_id !== $docGabId) {
-                            return back()->withErrors(['destino_ids' => 'Selecione usuário do seu gabinete.']);
-                        }
-                    } else {
-                        // Chief Dept
-                        $depId = (int) $documento->departamento_id;
-                        $belongs = ((int) $user->departamento_id === $depId) || $user->departamentos()->where('departamento_id', $depId)->exists();
-                        if (! $belongs) {
-                            return back()->withErrors(['destino_ids' => 'Selecione usuário do seu departamento.']);
-                        }
-                    }
-                }
-                $usuariosValidos[] = $user;
-            }
-
-            // Gerar UUID comum para agrupar as tarefas
-            $grupoUuid = (count($usuariosValidos) > 1) ? (string) \Illuminate\Support\Str::uuid() : null;
-
-            foreach ($usuariosValidos as $user) {
-                $data = [
-                    'titulo' => $validated['titulo'],
-                    'descricao' => $validated['descricao'] ?? null,
-                    'prazo_at' => $validated['prazo_at'] ?? null,
-                    'assigned_to_user_id' => $user->id,
-                    'grupo_tarefa_uuid' => $grupoUuid,
-                ];
-                $this->documentoService->createTask($documento, $data, $actor);
-            }
-        } else {
-            // departamento
-            $destinoId = (int) $validated['destino_id'];
-            if ($isSuperChefe) {
-                return back()->withErrors(['tipo' => 'O Super Chefe apenas pode delegar tarefas a utilizadores específicos.']);
-            }
-
-            $dep = Departamento::find($destinoId);
-            if (! $dep) {
-                return back()->withErrors(['destino_id' => 'Departamento não encontrado.']);
-            }
-
-            $isGabResp = $this->permissionService->isGabineteResponsavel($actor, $docGabId);
-
-            if (! $isGabResp) {
-                return back()->withErrors(['tipo' => 'Apenas responsável do gabinete pode designar ao departamento.']);
-            }
-            if ((int) $dep->gabinete_id !== (int) $docGabId) {
-                return back()->withErrors(['destino_id' => 'Selecione departamento do seu gabinete.']);
-            }
-
-            $data = [
-                'titulo' => $validated['titulo'],
-                'descricao' => $validated['descricao'] ?? null,
-                'prazo_at' => $validated['prazo_at'] ?? null,
-                'assigned_to_departamento_id' => $dep->id,
-            ];
-            $this->documentoService->createTask($documento, $data, $actor);
-        }
-
-        return redirect()->route('documentos-entradas.show', $documento)->with('success', 'Tarefa designada com sucesso.');
-    }
-
-    public function tarefasConcluir(Request $request, DocumentoEntrada $documento, DocumentoTarefa $tarefa)
-    {
-        if ((int) $tarefa->documento_entrada_id !== (int) $documento->id) {
-            abort(404);
-        }
-        if ($tarefa->status !== 'pendente') {
-            return back()->with('info', 'Tarefa já atualizada.');
-        }
-
-        $actor = Auth::user();
-        // Permission check is a bit complex for completion, let's keep it safe.
-        // Or implement canCompleteTask in PermissionService.
-        // For now, reuse logic or simplify.
-
-        // Simplified Logic:
-        $can = false;
-        if ($tarefa->assigned_to_user_id && (int) $tarefa->assigned_to_user_id === (int) $actor->id) {
-            $can = true;
-        } elseif ($this->permissionService->canManageTasks($actor, $documento)) {
-            $can = true;
-        }
-
-        // Specific case: task assigned to department, check if user is in that department
-        if ($tarefa->assigned_to_departamento_id) {
-            $userDeps = $this->permissionService->getUserDepartments($actor);
-            if (in_array($tarefa->assigned_to_departamento_id, $userDeps)) {
-                $can = true;
-            }
-        }
-
-        if (! $can) {
-            return back()->with('danger', 'Sem permissão para concluir esta tarefa.');
-        }
-
-        $responsavelId = null;
-        if ($tarefa->assigned_to_departamento_id) {
-            $respId = $request->input('responsavel_user_id');
-            if ($respId) {
-                // Validate responsible
-                $user = User::find((int) $respId);
-                $dep = Departamento::find($tarefa->assigned_to_departamento_id);
-                $belongs = $user && (((int) $user->departamento_id === (int) $dep->id) || $user->departamentos()->where('departamento_id', $dep->id)->exists());
-                if (! $belongs) {
-                    return back()->withErrors(['responsavel_user_id' => 'Selecione um responsável pertencente ao departamento destino.']);
-                }
-                $responsavelId = (int) $respId;
-            } else {
-                $userDeps = $this->permissionService->getUserDepartments($actor);
-                if (in_array($tarefa->assigned_to_departamento_id, $userDeps)) {
-                    $responsavelId = $actor->id;
-                } else {
-                    return back()->withErrors(['responsavel_user_id' => 'Informe o responsável atual do departamento para concluir.']);
-                }
-            }
-        }
-
-        $this->documentoService->completeTask($tarefa, $actor, $responsavelId);
-
-        if ($request->wantsJson()) {
-            return response()->json(['message' => 'Tarefa marcada como concluída.']);
-        }
-
-        return back()->with('success', 'Tarefa marcada como concluída.');
-    }
-
-    public function tarefasCancelar(Request $request, DocumentoEntrada $documento, DocumentoTarefa $tarefa)
-    {
-        if ((int) $tarefa->documento_entrada_id !== (int) $documento->id) {
-            abort(404);
-        }
-        if ($tarefa->status !== 'pendente') {
-            $msg = 'Tarefa já atualizada.';
-
-            return $request->wantsJson() ? response()->json(['message' => $msg], 400) : back()->with('info', $msg);
-        }
-
-        $actor = Auth::user();
-        $can = false;
-        if ((int) $tarefa->assigned_by_id === (int) $actor->id) {
-            $can = true;
-        } elseif ($this->permissionService->canManageTasks($actor, $documento)) {
-            $can = true;
-        }
-
-        if (! $can) {
-            $msg = 'Sem permissão para cancelar esta tarefa.';
-
-            return $request->wantsJson() ? response()->json(['message' => $msg], 403) : back()->with('danger', $msg);
-        }
-
-        $this->documentoService->cancelTask($tarefa, $actor);
-
-        if ($request->wantsJson()) {
-            return response()->json(['message' => 'Tarefa cancelada com sucesso.']);
-        }
-
-        return back()->with('success', 'Tarefa cancelada com sucesso.');
-    }
-
-    public function protocolo(DocumentoEntrada $documento)
-    {
-        // View logic mostly, keep as is but maybe move creation to service if missing
-        $documento->load(['departamento', 'usuario', 'protocolo']);
-
-        if (! $documento->protocolo) {
-            // Should verify if this happens, usually created on store.
-            // If it happens, create via service or just do it here.
-            $codigo = sprintf('PRT-%d-%03d-%s', $documento->ano_referencia, $documento->numero_sequencial, strtoupper(Str::random(6)));
-            $consultaUrl = route('documentos-entradas.protocolo', $documento);
-            $protocolo = DocumentoProtocolo::create([
-                'documento_entrada_id' => $documento->id,
-                'codigo' => $codigo,
-                'url_consulta' => $consultaUrl,
-                'gerado_em' => now(),
-            ]);
-            $documento->setRelation('protocolo', $protocolo);
-        }
-
-        $consultaUrl = $documento->protocolo->url_consulta ?? route('documentos-entradas.protocolo', $documento);
-        $protocolo = $documento->protocolo;
-
-        return view('documentos_entradas.protocolo', compact('documento', 'protocolo', 'consultaUrl'));
-    }
-
-    public function protocoloPdf(DocumentoEntrada $documento)
-    {
-        // Same as above, keep view logic
-        $documento->load(['departamento', 'usuario', 'protocolo']);
-
-        if (! $documento->protocolo) {
-            $codigo = sprintf('PRT-%d-%03d-%s', $documento->ano_referencia, $documento->numero_sequencial, strtoupper(Str::random(6)));
-            $consultaUrl = route('documentos-entradas.protocolo', $documento);
-            $protocolo = DocumentoProtocolo::create([
-                'documento_entrada_id' => $documento->id,
-                'codigo' => $codigo,
-                'url_consulta' => $consultaUrl,
-                'gerado_em' => now(),
-            ]);
-            $documento->setRelation('protocolo', $protocolo);
-        }
-
-        $consultaUrl = $documento->protocolo->url_consulta ?? route('documentos-entradas.protocolo', $documento);
-        $protocolo = $documento->protocolo;
-
-        // Create temporary QR Code SVG file for robust DomPDF rendering
-        $tempQrCodePath = storage_path('app/temp_qr_'.$documento->id.'_'.Str::random(4).'.svg');
-        try {
-            $qrCodeSvg = \SimpleSoftwareIO\QrCode\Facades\QrCode::size(120)->generate($consultaUrl);
-            file_put_contents($tempQrCodePath, (string) $qrCodeSvg);
-        } catch (\Exception $e) {
-            $tempQrCodePath = null;
-        }
-
-        $options = new Options;
-        $options->set('isRemoteEnabled', true);
-        $options->set('defaultFont', 'DejaVu Sans');
-        $options->set('chroot', base_path()); // Allow local file access for insignia and QR Code
-        $dompdf = new Dompdf($options);
-
-        $html = view('documentos_entradas.protocolo_pdf', compact('documento', 'protocolo', 'consultaUrl', 'tempQrCodePath'))->render();
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A5', 'landscape');
-        $dompdf->render();
-
-        // Cleanup temporary QR Code file
-        if ($tempQrCodePath && file_exists($tempQrCodePath)) {
-            @unlink($tempQrCodePath);
-        }
-
-        $filename = sprintf('protocolo_%03d_%d.pdf', $documento->numero_sequencial, $documento->ano_referencia);
-
-        return response($dompdf->output(), 200)
-            ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', 'inline; filename="'.$filename.'"');
-    }
-
-    public function exportPDF(Request $request)
-    {
-        $query = $this->documentoService->getFilteredDocumentsQuery($request, Auth::user());
-        $query->with([
-            'departamento:id,nome',
-            'ultimoEncaminhamento',
-            'ultimoEncaminhamento.origemDepartamento:id,nome',
-            'ultimoEncaminhamento.destinoDepartamento:id,nome',
-        ]);
-        $documentos = $query->get();
-
-        $filtersSummary = [];
-        if ($request->filled('departamento_id')) {
-            $depName = optional(Departamento::find($request->input('departamento_id')))->nome;
-            if ($depName) {
-                $filtersSummary['Departamento'] = $depName;
-            }
-        }
-
-        $options = new Options;
-        $options->set('isHtml5ParserEnabled', true);
-        $options->set('isRemoteEnabled', true);
-        $dompdf = new Dompdf($options);
-        $html = view('documentos_entradas.pdf', compact('documentos', 'filtersSummary'))->render();
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'landscape');
-        $dompdf->render();
-
-        return $dompdf->stream('relatorio-documentos-entradas-'.date('Y-m-d').'.pdf');
-    }
-
-    public function exportExcel(Request $request)
-    {
-        $query = $this->documentoService->getFilteredDocumentsQuery($request, Auth::user());
-        $documentos = $query->get();
-
-        return Excel::download(new DocumentoEntradasExport($documentos), 'relatorio-documentos-entradas-'.date('Y-m-d').'.xlsx');
-    }
-
-    public function marcarProtocoloImpresso(DocumentoEntrada $documento, Request $request)
-    {
-        $documento->load('protocolo');
-        if (! $documento->protocolo) {
-            return response()->json(['message' => 'Protocolo não encontrado'], 404);
-        }
-
-        $documento->protocolo->impresso_em = Carbon::now();
-        $documento->protocolo->save();
-
-        return response()->json([
-            'message' => 'Protocolo marcado como impresso',
-            'impresso_em' => $documento->protocolo->impresso_em,
-        ]);
     }
 
     public function edit(DocumentoEntrada $documentos_entrada)
@@ -829,194 +463,6 @@ class DocumentoEntradaController extends Controller
         $anexo->delete();
 
         return back()->with('success', 'Anexo removido com sucesso.');
-    }
-
-    public function encaminhar(Request $request, DocumentoEntrada $documento)
-    {
-        $this->authorize('encaminhar', $documento);
-
-        $validated = $request->validate([
-            'destino_departamento_id' => ['required', 'exists:departamentos,id'],
-            'observacao' => ['nullable', 'string'],
-        ]);
-
-        if ($documento->encaminhamentos()->whereNull('recebido_em')->exists()) {
-            return $this->respondForwardError($request, 'destino_departamento_id', 'Há encaminhamento pendente; aguarde o recebimento antes de criar um novo.');
-        }
-        if ($documento->departamento_id === (int) $validated['destino_departamento_id']) {
-            return $this->respondForwardError($request, 'destino_departamento_id', 'Selecione um departamento diferente do atual.');
-        }
-
-        try {
-            $enc = $this->documentoService->forwardDocument(
-                $documento,
-                (int) $validated['destino_departamento_id'],
-                $validated['observacao'] ?? null,
-                Auth::user()
-            );
-        } catch (\RuntimeException $e) {
-            // Corrida fechada pelo lock atómico do serviço.
-            return $this->respondForwardError($request, 'destino_departamento_id', $e->getMessage());
-        }
-
-        if ($request->wantsJson()) {
-            $destino = Departamento::find((int) $validated['destino_departamento_id']);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Documento encaminhado com sucesso.',
-                'documento_id' => $documento->id,
-                'encaminhamento_id' => $enc->id,
-                'destino' => $destino?->nome,
-                'encaminhado_em' => optional($enc->encaminhado_em)->format('d/m'),
-            ]);
-        }
-
-        return redirect()->route('documentos-entradas.show', $documento)->with('success', 'Documento encaminhado com sucesso.');
-    }
-
-    /**
-     * Encaminhamento em lote para um único departamento de destino.
-     * Autorização e validações são feitas por documento dentro do serviço.
-     */
-    public function batchEncaminhar(Request $request)
-    {
-        $validated = $request->validate([
-            'ids' => ['required', 'json'],
-            'destino_departamento_id' => ['required', 'exists:departamentos,id'],
-            'observacao' => ['nullable', 'string'],
-        ]);
-
-        $ids = json_decode($validated['ids'], true);
-        if (! is_array($ids) || empty($ids)) {
-            return $request->wantsJson()
-                ? response()->json(['success' => false, 'message' => 'Nenhum documento selecionado.'], 422)
-                : back()->with('error', 'Nenhum documento selecionado.');
-        }
-
-        $result = $this->documentoService->forwardBatch(
-            array_map('intval', $ids),
-            (int) $validated['destino_departamento_id'],
-            $validated['observacao'] ?? null,
-            Auth::user()
-        );
-
-        $message = $result['success'] > 0
-            ? $result['success'].' documento(s) encaminhado(s) com sucesso.'.($result['failed'] > 0 ? ' ('.$result['failed'].' falharam, sem permissão, pendentes ou já no destino).' : '')
-            : 'Nenhum documento pôde ser encaminhado. Verifique permissões, pendências ou o departamento de destino.';
-
-        if ($request->wantsJson()) {
-            return response()->json(['success' => $result['success'] > 0, 'message' => $message] + $result, $result['success'] > 0 ? 200 : 422);
-        }
-
-        return $result['success'] > 0 ? back()->with('success', $message) : back()->with('error', $message);
-    }
-
-    /**
-     * Resposta de erro do encaminhamento: JSON 422 para pedidos AJAX, redirect com
-     * erros de validação para pedidos web (mantém o comportamento original).
-     */
-    private function respondForwardError(Request $request, string $field, string $message)
-    {
-        if ($request->wantsJson()) {
-            return response()->json(['success' => false, 'message' => $message, 'errors' => [$field => [$message]]], 422);
-        }
-
-        return back()->withErrors([$field => $message]);
-    }
-
-    public function cancelarEncaminhamento(DocumentoEntrada $documento, DocumentoEncaminhamento $encaminhamento)
-    {
-        // 1. Validações básicas
-        if ((int) $encaminhamento->documento_entrada_id !== (int) $documento->id) {
-            abort(404);
-        }
-
-        // 2. Verifica se já foi recebido (não pode cancelar se o destino já recebeu)
-        if ($encaminhamento->recebido_em) {
-            return back()->with('error', 'Não é possível cancelar. O documento já foi recebido pelo destino.');
-        }
-
-        $actor = Auth::user();
-
-        // 3. Verifica permissão: Apenas quem encaminhou ou quem tem permissão de gerência pode cancelar
-        $isAuthor = (int) $encaminhamento->usuario_id === (int) $actor->id;
-        // $isManager = $this->permissionService->isChefeDepartamento($actor);
-
-        if (! $isAuthor) {
-            abort(403, 'Você não tem permissão para cancelar este encaminhamento.');
-        }
-
-        // 4. Executa o cancelamento via Service
-        $this->documentoService->cancelForwarding($encaminhamento, $actor);
-
-        return back()->with('success', 'Encaminhamento cancelado com sucesso. O documento está disponível novamente.');
-    }
-
-    public function receberEncaminhamento(Request $request, DocumentoEntrada $documento, DocumentoEncaminhamento $encaminhamento)
-    {
-        if ((int) $encaminhamento->documento_entrada_id !== (int) $documento->id) {
-            abort(404);
-        }
-
-        $actor = Auth::user();
-        if (! $this->permissionService->canReceiveInDepartment($actor, (int) $encaminhamento->destino_departamento_id)) {
-            abort(403);
-        }
-
-        // Idempotente: receiveDocument devolve false se já estava recebido (corrida).
-        $recebeu = $encaminhamento->recebido_em
-            ? false
-            : $this->documentoService->receiveDocument($documento, $encaminhamento, $actor);
-
-        if ($request->wantsJson()) {
-            return response()->json([
-                'success' => true,
-                'already' => ! $recebeu,
-                'message' => $recebeu ? 'Documento marcado como recebido.' : 'Encaminhamento já marcado como recebido.',
-                'documento_id' => $documento->id,
-            ]);
-        }
-
-        return $recebeu
-            ? back()->with('success', 'Documento marcado como recebido.')
-            : back()->with('info', 'Encaminhamento já marcado como recebido.');
-    }
-
-    public function saidaGabinete(Request $request, DocumentoEntrada $documento)
-    {
-        $this->authorize('saidaGabinete', $documento);
-
-        $validated = $request->validate([
-            'destino_gabinete_id' => ['required', 'exists:gabinetes,id'],
-            'saida_gabinete_data' => ['required', 'date'],
-            'encaminhamento_oficio_numero' => ['nullable', 'string', 'max:100'],
-        ]);
-
-        $actor = Auth::user();
-
-        $docGabineteId = optional($documento->departamento)->gabinete_id;
-        if ($documento->saida_gabinete_data) {
-            return back()->withErrors(['destino_gabinete_id' => 'Documento já possui saída de gabinete registrada.']);
-        }
-        if ($documento->encaminhamentos()->whereNull('recebido_em')->exists()) {
-            return back()->withErrors(['destino_gabinete_id' => 'Há encaminhamento interno pendente; receba antes de dar saída.']);
-        }
-        if ($docGabineteId && (int) $validated['destino_gabinete_id'] === (int) $docGabineteId) {
-            return back()->withErrors(['destino_gabinete_id' => 'Selecione um gabinete diferente do atual.']);
-        }
-
-        $this->documentoService->sendToGabinete(
-            $documento,
-            (int) $validated['destino_gabinete_id'],
-            $validated['saida_gabinete_data'],
-            $validated['encaminhamento_oficio_numero'] ?? null,
-            $request->input('observacao'),
-            $actor
-        );
-
-        return redirect()->route('documentos-entradas.show', $documento)
-            ->with('success', 'Saída do gabinete registrada com sucesso.');
     }
 
     // Visto Aprovar/Rejeitar - keeping as is but ensuring status strings match Enums implicitly
@@ -1096,7 +542,7 @@ class DocumentoEntradaController extends Controller
         return Storage::disk($disk)->response(
             $path,
             null,
-            \App\Support\SafeFileHeaders::for($mime, basename($path))
+            SafeFileHeaders::for($mime, basename($path))
         );
     }
 
@@ -1186,16 +632,17 @@ class DocumentoEntradaController extends Controller
             return response()->json(['error' => 'Não autorizado.'], 403);
         }
 
-        $assistant = app(\App\Services\Ai\DocumentoAssistantService::class);
+        $assistant = app(DocumentoAssistantService::class);
         if (! $assistant->isAvailable()) {
             return response()->json(['error' => 'Assistente de IA não está ativo ou configurado.'], 503);
         }
 
         try {
             $note = $assistant->generateCabinetNote($documento);
+
             return response()->json(['nota' => $note]);
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Falha ao gerar nota: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Falha ao gerar nota: '.$e->getMessage()], 500);
         }
     }
 
@@ -1206,7 +653,7 @@ class DocumentoEntradaController extends Controller
             return response()->json(['error' => 'Não autorizado.'], 403);
         }
 
-        $assistant = app(\App\Services\Ai\DocumentoAssistantService::class);
+        $assistant = app(DocumentoAssistantService::class);
         if (! $assistant->isAvailable()) {
             return response()->json(['error' => 'Assistente de IA não está ativo ou configurado.'], 503);
         }
@@ -1224,10 +671,10 @@ class DocumentoEntradaController extends Controller
 
         try {
             $suggestions = $assistant->suggestActions($documento, $departments, $users);
+
             return response()->json($suggestions);
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Falha ao sugerir ações: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Falha ao sugerir ações: '.$e->getMessage()], 500);
         }
     }
 }
-

@@ -51,22 +51,12 @@ class GabineteDashboardController extends Controller
             abort(404, 'Gabinete não encontrado para este usuário.');
         }
 
-        // KPIs
-        $stats = [
-            'total_docs' => DocumentoInterno::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabinete->id))->count(),
-            'em_analise' => DocumentoInterno::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabinete->id))
-                ->where('status', DocumentoStatus::EM_ANALISE)->count(),
-            'assinados_hoje' => DocumentoInterno::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabinete->id))
-                ->where('status', DocumentoStatus::ASSINADO)
-                ->whereDate('assinado_em', today())->count(),
-        ];
-
         // Lista de Departamentos
         $departamentos = $gabinete->departamentos()->withCount(['documentosInternos as docs_pendentes' => function ($q) {
             $q->where('status', DocumentoStatus::EM_ANALISE);
         }])->get();
 
-        // Distribuição de status para gráfico doughnut
+        // Distribuição de status para gráfico doughnut (também alimenta os KPIs)
         $statusDistrib = DocumentoInterno::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabinete->id))
             ->select('status', \Illuminate\Support\Facades\DB::raw('count(*) as count'))
             ->groupBy('status')
@@ -77,13 +67,22 @@ class GabineteDashboardController extends Controller
                 return [$statusKey => $item->count];
             });
 
+        // KPIs derivados da distribuição (evita repetir contagens no banco)
+        $stats = [
+            'total_docs' => $statusDistrib->sum(),
+            'em_analise' => (int) $statusDistrib->get(DocumentoStatus::EM_ANALISE->value, 0),
+            'assinados_hoje' => DocumentoInterno::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabinete->id))
+                ->where('status', DocumentoStatus::ASSINADO)
+                ->whereDate('assinado_em', today())->count(),
+        ];
+
         // Logs de Atividade Recentes
         $recentLogs = \App\Models\AuditLog::where(function ($q) use ($gabinete) {
             $q->whereHas('user', function ($qu) use ($gabinete) {
                 $qu->whereHas('departamento', fn ($qd) => $qd->where('gabinete_id', $gabinete->id));
             })->orWhere(function ($qu) use ($gabinete) {
                 $qu->where('auditable_type', DocumentoInterno::class)
-                    ->whereIn('auditable_id', DocumentoInterno::whereHas('departamento', fn ($qd) => $qd->where('gabinete_id', $gabinete->id))->pluck('id'));
+                    ->whereIn('auditable_id', DocumentoInterno::whereHas('departamento', fn ($qd) => $qd->where('gabinete_id', $gabinete->id))->select('id'));
             });
         })->with(['user', 'auditable'])->latest()->take(5)->get();
 

@@ -47,28 +47,28 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('gabinetes', GabineteController::class);
 });
 Route::middleware(['auth'])->group(function () {
-    Route::post('documentos-entradas/batch/receber', [DocumentoEntradaController::class, 'batchReceber'])
+    Route::post('documentos-entradas/batch/receber', [App\Http\Controllers\DocumentoEntradaEncaminhamentoController::class, 'batchReceber'])
         ->name('documentos-entradas.batch.receber');
-    Route::post('documentos-entradas/batch/encaminhar', [DocumentoEntradaController::class, 'batchEncaminhar'])
+    Route::post('documentos-entradas/batch/encaminhar', [App\Http\Controllers\DocumentoEntradaEncaminhamentoController::class, 'batchEncaminhar'])
         ->name('documentos-entradas.batch.encaminhar');
     Route::get('documentos-entradas/search/json', [DocumentoEntradaController::class, 'searchJson'])
         ->name('documentos-entradas.search.json');
     Route::resource('documentos-entradas', DocumentoEntradaController::class)->names('documentos-entradas');
     Route::get('documentos-entradas/{documento}/preview-ajax', [DocumentoEntradaController::class, 'previewAjax'])
         ->name('documentos-entradas.preview-ajax');
-    Route::get('documentos-entradas/{documento}/protocolo', [DocumentoEntradaController::class, 'protocolo'])
+    Route::get('documentos-entradas/{documento}/protocolo', [App\Http\Controllers\DocumentoEntradaProtocoloController::class, 'protocolo'])
         ->name('documentos-entradas.protocolo');
-    Route::get('documentos-entradas/{documento}/protocolo/pdf', [DocumentoEntradaController::class, 'protocoloPdf'])
+    Route::get('documentos-entradas/{documento}/protocolo/pdf', [App\Http\Controllers\DocumentoEntradaProtocoloController::class, 'protocoloPdf'])
         ->name('documentos-entradas.protocolo.pdf');
-    Route::patch('documentos-entradas/{documento}/protocolo/impresso', [DocumentoEntradaController::class, 'marcarProtocoloImpresso'])
+    Route::patch('documentos-entradas/{documento}/protocolo/impresso', [App\Http\Controllers\DocumentoEntradaProtocoloController::class, 'marcarImpresso'])
         ->name('documentos-entradas.protocolo.impresso');
-    Route::post('documentos-entradas/{documento}/encaminhar', [DocumentoEntradaController::class, 'encaminhar'])
+    Route::post('documentos-entradas/{documento}/encaminhar', [App\Http\Controllers\DocumentoEntradaEncaminhamentoController::class, 'encaminhar'])
         ->name('documentos-entradas.encaminhar');
-    Route::post('documentos-entradas/{documento}/saida-gabinete', [DocumentoEntradaController::class, 'saidaGabinete'])
+    Route::post('documentos-entradas/{documento}/saida-gabinete', [App\Http\Controllers\DocumentoEntradaEncaminhamentoController::class, 'saidaGabinete'])
         ->name('documentos-entradas.saida-gabinete');
-    Route::patch('documentos-entradas/{documento}/encaminhamentos/{encaminhamento}/receber', [DocumentoEntradaController::class, 'receberEncaminhamento'])
+    Route::patch('documentos-entradas/{documento}/encaminhamentos/{encaminhamento}/receber', [App\Http\Controllers\DocumentoEntradaEncaminhamentoController::class, 'receber'])
         ->name('documentos-entradas.encaminhamentos.receber');
-    Route::delete('documentos-entradas/{documento}/encaminhamentos/{encaminhamento}', [DocumentoEntradaController::class, 'cancelarEncaminhamento'])
+    Route::delete('documentos-entradas/{documento}/encaminhamentos/{encaminhamento}', [App\Http\Controllers\DocumentoEntradaEncaminhamentoController::class, 'cancelar'])
         ->name('documentos-entradas.encaminhamentos.cancelar');
     Route::delete('documentos-entradas/{documento}/anexos/{anexo}', [DocumentoEntradaController::class, 'destroyAnexo'])
         ->name('documentos-entradas.anexos.destroy');
@@ -88,15 +88,15 @@ Route::middleware(['auth'])->group(function () {
         ->name('documentos-entradas.visto-gabinete.rejeitar');
     Route::post('documentos-entradas/{documento}/relacionar', [DocumentoEntradaController::class, 'relacionar'])->name('documentos-entradas.relacionar');
     Route::delete('documentos-entradas/{documento}/relacionar/{relacionado}', [DocumentoEntradaController::class, 'desrelacionar'])->name('documentos-entradas.desrelacionar');
-    Route::post('documentos-entradas/{documento}/tarefas', [DocumentoEntradaController::class, 'tarefasStore'])
+    Route::post('documentos-entradas/{documento}/tarefas', [App\Http\Controllers\DocumentoEntradaTarefaController::class, 'store'])
         ->name('documentos-entradas.tarefas.store');
-    Route::patch('documentos-entradas/{documento}/tarefas/{tarefa}/concluir', [DocumentoEntradaController::class, 'tarefasConcluir'])
+    Route::patch('documentos-entradas/{documento}/tarefas/{tarefa}/concluir', [App\Http\Controllers\DocumentoEntradaTarefaController::class, 'concluir'])
         ->name('documentos-entradas.tarefas.concluir');
-    Route::patch('documentos-entradas/{documento}/tarefas/{tarefa}/cancelar', [DocumentoEntradaController::class, 'tarefasCancelar'])
+    Route::patch('documentos-entradas/{documento}/tarefas/{tarefa}/cancelar', [App\Http\Controllers\DocumentoEntradaTarefaController::class, 'cancelar'])
         ->name('documentos-entradas.tarefas.cancelar');
-    Route::get('documentos-entradas-export/pdf', [DocumentoEntradaController::class, 'exportPDF'])
+    Route::get('documentos-entradas-export/pdf', [App\Http\Controllers\DocumentoEntradaProtocoloController::class, 'exportPDF'])
         ->name('documentos-entradas.export.pdf');
-    Route::get('documentos-entradas-export/excel', [DocumentoEntradaController::class, 'exportExcel'])
+    Route::get('documentos-entradas-export/excel', [App\Http\Controllers\DocumentoEntradaProtocoloController::class, 'exportExcel'])
         ->name('documentos-entradas.export.excel');
 
     // Minhas Tarefas

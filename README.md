@@ -1,61 +1,44 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# GPN-AGIL
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Sistema de Gestão Administrativa e Documental do **Governo Provincial do Namibe** (EDMS), construído em **Laravel 12 / PHP 8.2**.
 
-## About Laravel
+## Módulos principais
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **Documentos de Entrada** — registo, protocolo, encaminhamento entre departamentos, vistos (departamento e gabinete) e arquivo
+- **Documentos Internos** — criação por modelos institucionais, versionamento, workflow (rascunho → análise → aprovado → assinado) e assinatura digital com certificado P12
+- **Requisições** — produto, oficina, serviço e passagem, com fluxo de visto e assinatura
+- **EDMS / Arquivo** — pastas hierárquicas por departamento/gabinete, políticas de retenção e verificação de SLA
+- **Reservas de Espaço, Viaturas e Termos de Entrega**
+- **Assistente de IA** (opcional, feature-flag) — perguntas sobre documentos com controlo de permissões, OCR de anexos via Tesseract
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Início rápido (desenvolvimento)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+# Definir SEED_ADMIN_EMAIL e SEED_ADMIN_PASSWORD no .env antes de:
+php artisan db:seed --class=InitialRolesAndAdminSeeder
+php artisan serve
+```
 
-## Learning Laravel
+Testes:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+```bash
+./vendor/bin/phpunit
+```
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## Documentação
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+| Documento | Conteúdo |
+|-----------|----------|
+| [docs/README.md](docs/README.md) | Índice completo da documentação |
+| [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | Arquitetura, módulos e modelo de dados |
+| [docs/FLUXOS-DE-NEGOCIO.md](docs/FLUXOS-DE-NEGOCIO.md) | Workflows e máquinas de estado |
+| [docs/GUIA_HOSPEDAGEM.md](docs/GUIA_HOSPEDAGEM.md) | Escolha de hospedagem (cPanel, VPS, Docker) e dimensionamento |
+| [docs/MANUAL_DEPLOY.md](docs/MANUAL_DEPLOY.md) | Passo a passo de deploy e `.env` de produção |
 
-## Laravel Sponsors
+## Licença
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
-
-### Premium Partners
-
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
-
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Projeto proprietário do Governo Provincial do Namibe.
