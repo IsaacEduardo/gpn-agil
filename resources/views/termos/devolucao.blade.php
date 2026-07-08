@@ -201,14 +201,12 @@
 
 <body>
     <div class="header">
-        <img class="insignia" src="{{ $insigniaSrc }}" alt="Insígnia da República de Angola">
-        <div class="title">{{ $dadosInstituicao->cabecalho_linha1 }}</div>
-        <div class="title">{{ $dadosInstituicao->cabecalho_linha2 }}</div>
-        @if($dadosInstituicao->cabecalho_linha3)
-            <div class="title">{{ $dadosInstituicao->cabecalho_linha3 }}</div>
-        @else
-            <div class="title">SECRETARIA GERAL</div>
-        @endif
+        @include('partials.document-header', [
+            'logoSrc' => $insigniaSrc,
+            'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete(
+                (isset($requisicao) && $requisicao->gabinete) ? $requisicao->gabinete : optional(auth()->user())->gabinete()
+            ),
+        ])
         <h1>TERMO DE DEVOLUÇÃO</h1>
         <h2>Ondaka - Sistema de Gestão de Logística e Patrimônio</h2>
     </div>

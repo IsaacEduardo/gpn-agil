@@ -327,8 +327,9 @@
             <td class="header-text-cell">
                 <div class="inst-title">{{ $dadosInstituicao->cabecalho_linha1 }}</div>
                 <div class="inst-gov">{{ $dadosInstituicao->cabecalho_linha2 }}</div>
-                @if($dadosInstituicao->cabecalho_linha3)
-                    <div class="inst-sub">{{ $dadosInstituicao->cabecalho_linha3 }}</div>
+                @php($gabDestino = \App\Support\CabecalhoDocumento::linhaGabinete(optional($documento->departamento)->gabinete))
+                @if($gabDestino)
+                    <div class="inst-sub">{{ $gabDestino }}</div>
                 @endif
             </td>
         </tr>

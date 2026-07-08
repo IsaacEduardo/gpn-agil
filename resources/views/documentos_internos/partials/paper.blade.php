@@ -1,16 +1,9 @@
-<!-- Insígnia/Logo da Instituição (Similar à Requisição) -->
+<!-- Insígnia/Logo da Instituição (cabeçalho padronizado) -->
 <div class="text-center mb-4">
-    <img src="{{ $dadosInstituicao->logo_url }}" alt="Insígnia"
-        style="width: 22mm; height: auto;">
-    <div
-        style="margin-top: 10px; font-family: 'Times New Roman', serif; font-size: 12pt; font-weight: bold; text-transform: uppercase;">
-        {{ $dadosInstituicao->cabecalho_linha1 }}<br>
-        {{ $dadosInstituicao->cabecalho_linha2 }}<br>
-        @if($dadosInstituicao->cabecalho_linha3)
-            {{ $dadosInstituicao->cabecalho_linha3 }}<br>
-        @endif
-        {{ mb_strtoupper($documentoInterno->departamento->gabinete->nome ?? ($documentoInterno->departamento->nome ?? 'GABINETE NÃO DEFINIDO')) }}
-    </div>
+    @include('partials.document-header', [
+        'logoSrc' => $dadosInstituicao->logo_url,
+        'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->departamento?->gabinete),
+    ])
 </div>
 
 <div class="paper-content">

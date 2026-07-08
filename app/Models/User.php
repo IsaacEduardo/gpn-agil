@@ -97,6 +97,25 @@ class User extends Authenticatable
     }
 
     /**
+     * Departamento principal do utilizador: o vínculo único (departamento_id),
+     * com fallback para o primeiro departamento da relação múltipla.
+     */
+    public function departamentoPrincipal(): ?Departamento
+    {
+        return $this->departamento ?? $this->departamentos()->first();
+    }
+
+    /**
+     * Gabinete a que o utilizador pertence, derivado do seu departamento
+     * principal. Não existe vínculo direto users→gabinetes: a relação é
+     * sempre indireta (User → Departamento → Gabinete).
+     */
+    public function gabinete(): ?Gabinete
+    {
+        return $this->departamentoPrincipal()?->gabinete;
+    }
+
+    /**
      * Relação com o certificado digital do usuário
      */
     public function certificate()

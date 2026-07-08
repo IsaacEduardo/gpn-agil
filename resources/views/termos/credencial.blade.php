@@ -162,10 +162,9 @@
         <div class="republica">{{ $dadosInstituicao->cabecalho_linha1 }}</div>
         <div class="dashed-line">------.........------</div>
         <div class="governo">{{ $dadosInstituicao->cabecalho_linha2 }}</div>
-        @if($dadosInstituicao->cabecalho_linha3)
-            <div class="secretaria">{{ $dadosInstituicao->cabecalho_linha3 }}</div>
-        @else
-            <div class="secretaria">SECRETARIA GERAL</div>
+        @php($gabineteCred = \App\Support\CabecalhoDocumento::linhaGabineteDeUser(auth()->user()))
+        @if($gabineteCred)
+            <div class="secretaria">{{ $gabineteCred }}</div>
         @endif
     </div>
 

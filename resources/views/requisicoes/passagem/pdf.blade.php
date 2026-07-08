@@ -206,15 +206,12 @@
         </div>
     @endif
     <div class="header">
-        <img class="insignia" src="{{ $insigniaSrc }}" alt="Insígnia">
-        <div class="title">{{ $dadosInstituicao->cabecalho_linha1 }}</div>
-        <div class="gov">{{ $dadosInstituicao->cabecalho_linha2 }}</div>
-        @if($dadosInstituicao->cabecalho_linha3)
-            <div class="title">{{ $dadosInstituicao->cabecalho_linha3 }}</div>
-        @else
-            <div class="title">SECRETARIA GERAL</div>
-            <div class="title">DLP</div>
-        @endif
+        @include('partials.document-header', [
+            'logoSrc' => $insigniaSrc,
+            'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete(
+                (isset($requisicao) && $requisicao->gabinete) ? $requisicao->gabinete : optional(auth()->user())->gabinete()
+            ),
+        ])
     </div>
     <div class="visto">
         <div class="titulo">VISTO</div>

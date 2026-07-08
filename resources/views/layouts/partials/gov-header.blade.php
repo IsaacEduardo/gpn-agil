@@ -7,10 +7,10 @@
 <header class="gov-header">
     <div class="gov-header__top">
         <a href="{{ route('home') }}" class="gov-brand">
-            <img src="{{ asset('images/insignia.png') }}" alt="Brasão da República de Angola" class="gov-brand__emblem">
+            <img src="{{ $dadosInstituicao->logo_url }}" alt="Brasão da {{ $dadosInstituicao->cabecalho_linha1 ?? 'República de Angola' }}" class="gov-brand__emblem">
             <span class="gov-brand__text">
-                <span class="gov-brand__republic">República de Angola</span>
-                <span class="gov-brand__ministry">Governo Provincial do Namibe</span>
+                <span class="gov-brand__republic">{{ $dadosInstituicao->cabecalho_linha1 ?? 'República de Angola' }}</span>
+                <span class="gov-brand__ministry">{{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial do Namibe' }}</span>
             </span>
         </a>
 

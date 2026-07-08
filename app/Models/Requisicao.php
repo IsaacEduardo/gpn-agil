@@ -20,6 +20,7 @@ class Requisicao extends Model
         'codigo_sequencial',
         'data_requisicao',
         'usuario_id',
+        'gabinete_id',
         'status',
         'empresa_destinataria',
         'empresa_id',
@@ -64,6 +65,15 @@ class Requisicao extends Model
     public function usuario()
     {
         return $this->belongsTo(User::class, 'usuario_id');
+    }
+
+    /**
+     * Gabinete do criador, capturado no momento da criação (snapshot).
+     * Fonte imutável para o cabeçalho do documento; ver RequisicaoObserver.
+     */
+    public function gabinete(): BelongsTo
+    {
+        return $this->belongsTo(Gabinete::class, 'gabinete_id');
     }
 
     public function empresa(): BelongsTo

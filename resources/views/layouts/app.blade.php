@@ -100,7 +100,7 @@
 
     <footer class="gov-footer">
         <div class="gov-footer__inner">
-            &copy; {{ date('Y') }} Governo Provincial do Namibe &mdash; Gabinete do Vice-Governador Para o Sector Politico, Social e Económico. Todos os direitos reservados.
+            &copy; {{ date('Y') }} {{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial do Namibe' }} &mdash; Gabinete do Vice-Governador Para o Sector Politico, Social e Económico. Todos os direitos reservados.
         </div>
     </footer>
 

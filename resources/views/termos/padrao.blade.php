@@ -172,14 +172,12 @@
 
 <body>
     <div class="header">
-        <img class="insignia" src="{{ $insigniaSrc }}" alt="Insígnia da República de Angola">
-        <div class="title">{{ $dadosInstituicao->cabecalho_linha1 }}</div>
-        <div class="title">{{ $dadosInstituicao->cabecalho_linha2 }}</div>
-        @if($dadosInstituicao->cabecalho_linha3)
-            <div class="title">{{ $dadosInstituicao->cabecalho_linha3 }}</div>
-        @else
-            <div class="title">SECRETARIA GERAL</div>
-        @endif
+        @include('partials.document-header', [
+            'logoSrc' => $insigniaSrc,
+            'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete(
+                (isset($requisicao) && $requisicao->gabinete) ? $requisicao->gabinete : optional(auth()->user())->gabinete()
+            ),
+        ])
         <h1>TERMO DE ENTREGA PADRÃO</h1>
         <h2>Ondaka - Sistema de Gestão de Logística e Patrimônio</h2>
     </div>
@@ -205,7 +203,7 @@
             </div>
             <div class="info-row">
                 <div class="info-label">Status:</div>
-                <div class="info-value"><span class="status-badge">{{ strtoupper($requisicao->status) }}</span></div>
+                <div class="info-value"><span class="status-badge">{{ strtoupper($requisicao->status instanceof \App\Enums\StatusRequisicao ? $requisicao->status->label() : (string) $requisicao->status) }}</span></div>
             </div>
         </div>
     </div>

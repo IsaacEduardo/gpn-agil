@@ -3,11 +3,21 @@
 namespace App\Observers;
 
 use App\Models\Requisicao;
+use App\Models\User;
+use App\Support\CabecalhoDocumento;
 
 class RequisicaoObserver
 {
     public function creating(Requisicao $requisicao): void
     {
+        // Snapshot do gabinete do criador para o cabeçalho do documento.
+        // Fixa o gabinete à data de emissão (imutável mesmo que o utilizador
+        // seja transferido de departamento mais tarde).
+        if (empty($requisicao->gabinete_id) && $requisicao->usuario_id) {
+            $usuario = User::find($requisicao->usuario_id);
+            $requisicao->gabinete_id = CabecalhoDocumento::gabineteDeUser($usuario)?->id;
+        }
+
         if (empty($requisicao->codigo_sequencial)) {
             $mesAno = date('m/Y');
             

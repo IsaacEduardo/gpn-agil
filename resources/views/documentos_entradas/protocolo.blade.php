@@ -75,8 +75,9 @@
                 <img src="{{ $dadosInstituicao->logo_url }}" alt="Insígnia Oficial" class="institutional-logo mb-3">
                 <div class="institutional-title">{{ $dadosInstituicao->cabecalho_linha1 }}</div>
                 <div class="institutional-gov text-uppercase">{{ $dadosInstituicao->cabecalho_linha2 }}</div>
-                @if($dadosInstituicao->cabecalho_linha3)
-                    <div class="institutional-sub py-1">{{ $dadosInstituicao->cabecalho_linha3 }}</div>
+                @php($gabDestino = \App\Support\CabecalhoDocumento::linhaGabinete(optional($documento->departamento)->gabinete))
+                @if($gabDestino)
+                    <div class="institutional-sub py-1">{{ $gabDestino }}</div>
                 @endif
             </div>
 
