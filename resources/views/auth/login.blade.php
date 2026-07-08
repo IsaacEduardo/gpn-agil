@@ -141,7 +141,7 @@
                             <div class="col-md-5 brand-panel d-none d-md-flex flex-column align-items-center justify-content-center text-center p-5">
                                 <div class="position-relative" style="z-index: 1;">
                                     <img src="{{ $dadosInstituicao->logo_url }}" alt="Insígnia institucional"
-                                        class="img-fluid mb-4 brand-logo">
+                                        class="img-fluid mb-4 brand-logo d-block mx-auto">
                                     <div class="brand-pill mb-3">{{ $dadosInstituicao->cabecalho_linha1 ?? 'República de Angola' }}</div>
                                     <h2 class="brand-title mb-2">{{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial do Namibe' }}</h2>
                                     <p class="brand-sub mb-0">
