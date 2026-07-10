@@ -29,6 +29,7 @@ class DocumentoEntrada extends Model
         'departamento_id',
         'user_id',
         'status',
+        'sla_nivel_notificado',
         'arquivo_caminho',
         'visto_departamento_status',
         'visto_departamento_por',

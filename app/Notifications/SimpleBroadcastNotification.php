@@ -2,12 +2,14 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\CanonicalPayload;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Notification;
 
 class SimpleBroadcastNotification extends Notification
 {
+    use CanonicalPayload;
     // use Queueable; // Removido para envio síncrono
 
     protected string $title;
@@ -16,11 +18,17 @@ class SimpleBroadcastNotification extends Notification
 
     protected ?string $url;
 
-    public function __construct(string $title = 'Notificação de teste', string $message = 'Olá! Isto é um teste de notificação.', ?string $url = null)
+    protected string $priority;
+
+    protected ?string $type;
+
+    public function __construct(string $title = 'Notificação de teste', string $message = 'Olá! Isto é um teste de notificação.', ?string $url = null, string $priority = 'normal', ?string $type = null)
     {
         $this->title = $title;
         $this->message = $message;
         $this->url = $url ?: url('/notifications');
+        $this->priority = $priority;
+        $this->type = $type;
     }
 
     public function via($notifiable): array
@@ -38,20 +46,25 @@ class SimpleBroadcastNotification extends Notification
 
     public function toArray($notifiable): array
     {
-        return [
-            'title' => $this->title,
-            'message' => $this->message,
-            'url' => $this->url,
-        ];
+        return $this->canonicalPayload(
+            title: $this->title,
+            url: $this->url,
+            body: $this->message,
+            priority: $this->priority,
+            type: $this->type,
+            extra: ['message' => $this->message], // BC com leitores/testes existentes
+        );
     }
 
     public function toBroadcast($notifiable): BroadcastMessage
     {
-        return new BroadcastMessage([
-            'id' => $this->id,
-            'title' => $this->title,
-            'message' => $this->message,
-            'url' => $this->url,
-        ]);
+        return new BroadcastMessage($this->canonicalPayload(
+            title: $this->title,
+            url: $this->url,
+            body: $this->message,
+            priority: $this->priority,
+            type: $this->type,
+            extra: ['id' => $this->id, 'message' => $this->message],
+        ));
     }
 }

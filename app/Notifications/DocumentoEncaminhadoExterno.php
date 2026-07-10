@@ -6,6 +6,7 @@ use App\Models\DocumentoEncaminhamentoExterno;
 use App\Models\DocumentoEntrada;
 use App\Models\Gabinete;
 use App\Models\User;
+use App\Notifications\Concerns\CanonicalPayload;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -13,7 +14,7 @@ use Illuminate\Notifications\Notification;
 
 class DocumentoEncaminhadoExterno extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use CanonicalPayload, Queueable;
 
     protected DocumentoEntrada $documento;
 
@@ -47,20 +48,26 @@ class DocumentoEncaminhadoExterno extends Notification implements ShouldQueue
         $origem = Gabinete::find($this->encaminhamentoExterno->origem_gabinete_id);
         $destino = Gabinete::find($this->encaminhamentoExterno->destino_gabinete_id);
 
-        return [
-            'title' => 'Documento '.$numero.' encaminhado para '.($destino ? ($destino->sigla ? $destino->nome.' ('.$destino->sigla.')' : $destino->nome) : 'gabinete destino'),
-            'acao' => 'encaminhado_externo',
-            'documento_id' => $this->documento->id,
-            'numero' => $numero,
-            'assunto' => $this->documento->assunto,
-            'procedencia' => $this->documento->procedencia,
-            'origem_gabinete' => $origem ? ($origem->sigla ? $origem->nome.' ('.$origem->sigla.')' : $origem->nome) : null,
-            'destino_gabinete' => $destino ? ($destino->sigla ? $destino->nome.' ('.$destino->sigla.')' : $destino->nome) : null,
-            'enviado_em' => optional($this->encaminhamentoExterno->enviado_em)?->toDateTimeString(),
-            'por' => $this->actor->name,
-            'oficio_numero' => $this->encaminhamentoExterno->oficio_numero,
-            'url' => route('documentos-entradas.show', $this->documento->id),
-        ];
+        return $this->canonicalPayload(
+            title: 'Documento '.$numero.' encaminhado para '.($destino ? ($destino->sigla ? $destino->nome.' ('.$destino->sigla.')' : $destino->nome) : 'gabinete destino'),
+            url: route('documentos-entradas.show', $this->documento->id),
+            body: 'Ofício '.($this->encaminhamentoExterno->oficio_numero ?: '—').' · por '.$this->actor->name,
+            priority: 'normal',
+            type: 'documento_encaminhado_externo',
+            icon: 'fas fa-paper-plane',
+            extra: [
+                'acao' => 'encaminhado_externo', // BC
+                'documento_id' => $this->documento->id,
+                'numero' => $numero,
+                'assunto' => $this->documento->assunto,
+                'procedencia' => $this->documento->procedencia,
+                'origem_gabinete' => $origem ? ($origem->sigla ? $origem->nome.' ('.$origem->sigla.')' : $origem->nome) : null,
+                'destino_gabinete' => $destino ? ($destino->sigla ? $destino->nome.' ('.$destino->sigla.')' : $destino->nome) : null,
+                'enviado_em' => optional($this->encaminhamentoExterno->enviado_em)?->toDateTimeString(),
+                'por' => $this->actor->name,
+                'oficio_numero' => $this->encaminhamentoExterno->oficio_numero,
+            ],
+        );
     }
 
     public function toBroadcast(object $notifiable): BroadcastMessage

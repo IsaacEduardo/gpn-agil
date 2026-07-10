@@ -6,6 +6,7 @@ use App\Models\Departamento;
 use App\Models\DocumentoEncaminhamento;
 use App\Models\DocumentoEntrada;
 use App\Models\User;
+use App\Notifications\Concerns\CanonicalPayload;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -13,7 +14,7 @@ use Illuminate\Notifications\Notification;
 
 class DocumentoEncaminhadoDepartamento extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use CanonicalPayload, Queueable;
 
     protected DocumentoEntrada $documento;
 
@@ -47,19 +48,25 @@ class DocumentoEncaminhadoDepartamento extends Notification implements ShouldQue
         $destino = Departamento::find($this->encaminhamento->destino_departamento_id);
         $origem = Departamento::find($this->encaminhamento->origem_departamento_id);
 
-        return [
-            'title' => 'Documento '.$numero.' encaminhado para '.($destino ? $destino->nome : 'departamento destino'),
-            'acao' => 'encaminhado_interno',
-            'documento_id' => $this->documento->id,
-            'numero' => $numero,
-            'assunto' => $this->documento->assunto,
-            'procedencia' => $this->documento->procedencia,
-            'origem_departamento' => $origem ? $origem->nome : null,
-            'destino_departamento' => $destino ? $destino->nome : null,
-            'encaminhado_em' => optional($this->encaminhamento->encaminhado_em)?->toDateTimeString(),
-            'por' => $this->actor->name,
-            'url' => route('documentos-entradas.show', $this->documento->id),
-        ];
+        return $this->canonicalPayload(
+            title: 'Documento '.$numero.' encaminhado para '.($destino ? $destino->nome : 'departamento destino'),
+            url: route('documentos-entradas.show', $this->documento->id),
+            body: 'Assunto: '.($this->documento->assunto ?: '—').' · por '.$this->actor->name,
+            priority: 'normal',
+            type: 'documento_encaminhado_interno',
+            icon: 'fas fa-share',
+            extra: [
+                'acao' => 'encaminhado_interno', // BC
+                'documento_id' => $this->documento->id,
+                'numero' => $numero,
+                'assunto' => $this->documento->assunto,
+                'procedencia' => $this->documento->procedencia,
+                'origem_departamento' => $origem ? $origem->nome : null,
+                'destino_departamento' => $destino ? $destino->nome : null,
+                'encaminhado_em' => optional($this->encaminhamento->encaminhado_em)?->toDateTimeString(),
+                'por' => $this->actor->name,
+            ],
+        );
     }
 
     public function toBroadcast(object $notifiable): BroadcastMessage

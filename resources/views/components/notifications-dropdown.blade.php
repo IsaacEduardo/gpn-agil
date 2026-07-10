@@ -25,19 +25,20 @@
         <div class="list-group list-group-flush" id="notificationsList" style="max-height: 380px; overflow:auto;">
             @forelse($latest as $n)
                 @php
-                    $data = $n->data ?? [];
-                    $title = $data['title'] ?? ($data['message'] ?? 'Nova notificação');
-                    $url = $data['url'] ?? null;
+                    $p = \App\Support\NotificationPresenter::present($n->data ?? []);
+                    $title = $p['title'];
+                    $url = $p['url'];
                     $isUnread = is_null($n->read_at);
+                    $dotColor = $isUnread ? \App\Support\NotificationPresenter::priorityColor($p['priority']) : 'transparent';
                 @endphp
                 <a href="{{ $url ?: '#' }}"
                     class="list-group-item list-group-item-action d-flex gap-2 align-items-start notification-item {{ $isUnread ? 'fw-semibold' : '' }}"
                     data-id="{{ $n->id }}" data-url="{{ $url }}">
                     <i class="fas fa-circle mt-1"
-                        style="font-size: .5rem; color: {{ $isUnread ? '#0d6efd' : 'transparent' }};"></i>
+                        style="font-size: .5rem; color: {{ $dotColor }};"></i>
                     <div class="flex-grow-1">
                         <div class="small text-muted">{{ $n->created_at->diffForHumans() }}</div>
-                        <div class="text-wrap">{!! $title !!}</div>
+                        <div class="text-wrap">{{ $title }}</div>
                     </div>
                 </a>
             @empty
@@ -58,6 +59,16 @@
         const badge = document.getElementById('notificationsBadge');
         const list = document.getElementById('notificationsList');
         const POLL_INTERVAL = 30000; // 30 seconds
+
+        // Escapa dados vindos do servidor antes de injetar via innerHTML (proteção XSS).
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
 
         function fetchNotifications() {
             fetch('{{ route('notifications.index') }}')
@@ -88,19 +99,24 @@
             let html = '';
             notifications.forEach(n => {
                 const isUnread = !n.read_at;
-                const data = n.data || {};
-                const title = data.title || data.message || 'Nova notificação';
-                const url = data.url || '#';
+                const title = n.title || 'Notificação';
+                const url = n.url || '#';
+                const priority = n.priority || 'normal';
+                const priorityColor = priority === 'urgent' ? '#dc3545'
+                    : priority === 'high' ? '#fd7e14'
+                    : priority === 'info' ? '#6c757d'
+                    : '#0d6efd';
+                const dotColor = isUnread ? priorityColor : 'transparent';
                 const time = n.created_at_human ||
                 'agora mesmo'; // Backend should provide human readable time or we compute
 
                 html += `
-                <a href="${url}" class="list-group-item list-group-item-action d-flex gap-2 align-items-start notification-item ${isUnread ? 'fw-semibold' : ''}"
-                   data-id="${n.id}">
-                    <i class="fas fa-circle mt-1" style="font-size: .5rem; color: ${isUnread ? '#0d6efd' : 'transparent'};"></i>
+                <a href="${escapeHtml(url)}" class="list-group-item list-group-item-action d-flex gap-2 align-items-start notification-item ${isUnread ? 'fw-semibold' : ''}"
+                   data-id="${escapeHtml(n.id)}">
+                    <i class="fas fa-circle mt-1" style="font-size: .5rem; color: ${dotColor};"></i>
                     <div class="flex-grow-1">
-                        <div class="small text-muted">${time}</div>
-                        <div class="text-wrap">${title}</div>
+                        <div class="small text-muted">${escapeHtml(time)}</div>
+                        <div class="text-wrap">${escapeHtml(title)}</div>
                     </div>
                 </a>`;
             });

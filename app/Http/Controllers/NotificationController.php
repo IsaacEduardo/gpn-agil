@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\NotificationPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 
@@ -12,6 +13,7 @@ class NotificationController extends Controller
         $user = $request->user();
         $notifications = $user->notifications()->latest()->limit(10)->get()->map(function (DatabaseNotification $n) {
             $data = $n->data ?? [];
+            $p = NotificationPresenter::present($data);
 
             return [
                 'id' => $n->id,
@@ -19,9 +21,13 @@ class NotificationController extends Controller
                 'created_at' => $n->created_at->toIso8601String(),
                 'created_at_human' => $n->created_at->diffForHumans(),
                 'data' => $data, // Include raw data for frontend
-                'title' => $data['title'] ?? ($data['message'] ?? 'Nova notificação'),
-                'acao' => $data['acao'] ?? null,
-                'url' => $data['url'] ?? null,
+                'title' => $p['title'],
+                'body' => $p['body'],
+                'url' => $p['url'],
+                'priority' => $p['priority'],
+                'type' => $p['type'],
+                'icon' => $p['icon'],
+                'acao' => $data['acao'] ?? $p['type'], // BC
             ];
         });
 

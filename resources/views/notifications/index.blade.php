@@ -15,16 +15,18 @@
         <div class="list-group list-group-flush" id="notificationsListPage">
             @forelse($notifications as $n)
                 @php
-                    $data = $n->data ?? [];
-                    $title = $data['title'] ?? ($data['message'] ?? 'Nova notificação');
-                    $url = $data['url'] ?? null;
+                    $p = \App\Support\NotificationPresenter::present($n->data ?? []);
+                    $title = $p['title'];
+                    $url = $p['url'];
                     $isUnread = is_null($n->read_at);
+                    $dotColor = $isUnread ? \App\Support\NotificationPresenter::priorityColor($p['priority']) : 'transparent';
                 @endphp
                 <a href="{{ $url ?: '#' }}" class="list-group-item list-group-item-action d-flex gap-2 align-items-start notification-item {{ $isUnread ? 'fw-semibold' : '' }}" data-id="{{ $n->id }}" data-url="{{ $url }}">
-                    <i class="fas fa-circle mt-1" style="font-size:.5rem;color: {{ $isUnread ? '#0d6efd' : 'transparent' }}"></i>
+                    <i class="fas fa-circle mt-1" style="font-size:.5rem;color: {{ $dotColor }}"></i>
                     <div class="flex-grow-1">
                         <div class="small text-muted">{{ $n->created_at->format('d/m/Y H:i') }}</div>
-                        <div class="text-wrap">{!! $title !!}</div>
+                        <div class="text-wrap">{{ $title }}</div>
+                        @if($p['body'])<div class="small text-muted text-wrap">{{ $p['body'] }}</div>@endif
                     </div>
                 </a>
             @empty

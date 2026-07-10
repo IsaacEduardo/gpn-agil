@@ -4,13 +4,14 @@ namespace App\Notifications;
 
 use App\Models\Requisicao;
 use App\Models\User;
+use App\Notifications\Concerns\CanonicalPayload;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class RequisicaoAssinada extends Notification
 {
-    use Queueable;
+    use CanonicalPayload, Queueable;
 
     protected $requisicao;
 
@@ -54,13 +55,17 @@ class RequisicaoAssinada extends Notification
      */
     public function toArray(object $notifiable): array
     {
-        return [
-            'titulo' => 'Requisição Assinada',
-            'mensagem' => "A requisição #{$this->requisicao->codigo_sequencial} foi assinada por {$this->signer->name}.",
-            'requisicao_id' => $this->requisicao->id,
-            'action_url' => route('requisicoes.show', $this->requisicao->id),
-            'icon' => 'fas fa-file-signature',
-            'color' => 'success',
-        ];
+        return $this->canonicalPayload(
+            title: 'Requisição Assinada',
+            url: route('requisicoes.show', $this->requisicao->id),
+            body: "A requisição #{$this->requisicao->codigo_sequencial} foi assinada por {$this->signer->name}.",
+            priority: 'normal',
+            type: 'requisicao_assinada',
+            icon: 'fas fa-file-signature',
+            extra: [
+                'requisicao_id' => $this->requisicao->id,
+                'color' => 'success',
+            ],
+        );
     }
 }

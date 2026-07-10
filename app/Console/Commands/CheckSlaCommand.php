@@ -43,6 +43,13 @@ class CheckSlaCommand extends Command
             $dias = $doc->dias_decorridos;
 
             if ($statusSla === 'normal') {
+                // Re-armar: se o documento já esteve em alerta, limpar a marca para
+                // permitir nova notificação caso volte a violar o SLA no futuro.
+                if ($doc->sla_nivel_notificado !== null) {
+                    $doc->sla_nivel_notificado = null;
+                    $doc->save();
+                }
+
                 continue;
             }
 
@@ -59,15 +66,25 @@ class CheckSlaCommand extends Command
                 continue;
             }
 
+            // Idempotência: não repetir a notificação enquanto o documento permanecer
+            // no mesmo nível de SLA já comunicado. Uma escalada (warning -> critical)
+            // ainda gera nova notificação, porque o nível muda.
+            if ($doc->sla_nivel_notificado === $statusSla) {
+                continue;
+            }
+
             $prefix = $statusSla === 'critical' ? 'Alerta Crítico de SLA' : 'Alerta de SLA';
             $urgency = $statusSla === 'critical' ? '(Crítico)' : '(Atenção)';
+            $priority = $statusSla === 'critical' ? 'urgent' : 'high';
 
             $title = "{$prefix}: Documento #{$doc->numero_sequencial}/{$doc->ano_referencia}";
             $message = "O documento '{$doc->assunto}' está pendente no departamento há {$dias} dias {$urgency}.";
             $url = route('documentos-entradas.show', $doc->id);
 
             try {
-                $chefe->notify(new SimpleBroadcastNotification($title, $message, $url));
+                $chefe->notify(new SimpleBroadcastNotification($title, $message, $url, $priority, 'sla_'.$statusSla));
+                $doc->sla_nivel_notificado = $statusSla;
+                $doc->save();
                 $notifiedCount++;
                 $this->line("Notificado chefe {$chefe->name} do departamento '{$departamento->nome}' sobre o documento #{$doc->numero_sequencial}/{$doc->ano_referencia} ({$dias} dias)");
             } catch (\Throwable $e) {

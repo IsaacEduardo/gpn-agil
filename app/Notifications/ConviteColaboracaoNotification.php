@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Enums\NivelColaboracao;
 use App\Models\DocumentoInterno;
 use App\Models\User;
+use App\Notifications\Concerns\CanonicalPayload;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ConviteColaboracaoNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use CanonicalPayload, Queueable;
 
     public function __construct(
         public DocumentoInterno $documento,
@@ -53,15 +54,19 @@ class ConviteColaboracaoNotification extends Notification implements ShouldQueue
      */
     public function toArray(object $notifiable): array
     {
-        return [
-            'tipo' => 'convite_colaboracao',
-            'documento_interno_id' => $this->documento->id,
-            'titulo' => $this->documento->titulo,
-            'nivel' => $this->nivel->value,
-            'convidado_por' => $this->convidadoPor->name,
-            'url' => route('documentos-internos.collab.editor', $this->documento),
-            'mensagem' => $this->convidadoPor->name.' convidou-o(a) para editar "'.$this->documento->titulo.'".',
-        ];
+        return $this->canonicalPayload(
+            title: 'Convite para editar "'.$this->documento->titulo.'"',
+            url: route('documentos-internos.collab.editor', $this->documento),
+            body: $this->convidadoPor->name.' convidou-o(a) para editar "'.$this->documento->titulo.'".',
+            priority: 'normal',
+            type: 'convite_colaboracao',
+            icon: 'fas fa-user-edit',
+            extra: [
+                'documento_interno_id' => $this->documento->id,
+                'nivel' => $this->nivel->value,
+                'convidado_por' => $this->convidadoPor->name,
+            ],
+        );
     }
 
     public function failed(\Throwable $exception): void
