@@ -221,6 +221,10 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read_all');
     Route::post('/notifications/read/{id}', [NotificationController::class, 'markAsRead'])->name('notifications.read');
 
+    // Preferências de subscrição (opt-in/opt-out por categoria e canal)
+    Route::get('/notifications/preferences', [\App\Http\Controllers\NotificationPreferenceController::class, 'edit'])->name('notifications.preferences.edit');
+    Route::put('/notifications/preferences', [\App\Http\Controllers\NotificationPreferenceController::class, 'update'])->name('notifications.preferences.update');
+
     // Web Push
     Route::post('/push/subscribe', [PushSubscriptionController::class, 'store'])->name('push.subscribe');
 

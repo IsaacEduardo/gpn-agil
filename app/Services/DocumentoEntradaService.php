@@ -410,6 +410,7 @@ class DocumentoEntradaService
         $url = route('documentos-entradas.show', $documento->id);
         $title = 'Tarefa concluída no documento '.$numero;
         $body = 'Concluída por '.($actor->name ?? 'usuário');
+        $type = 'tarefa_concluida';
 
         $notify = collect();
         if ($tarefa->assigned_by_id) {
@@ -427,7 +428,7 @@ class DocumentoEntradaService
 
         $notify = $notify->unique('id')->values();
         if ($notify->count()) {
-            Notification::send($notify, new SimpleBroadcastNotification($title, $body, $url));
+            Notification::send($notify, new SimpleBroadcastNotification($title, $body, $url, 'normal', $type));
         }
 
         return $tarefa;
@@ -443,6 +444,7 @@ class DocumentoEntradaService
         $url = route('documentos-entradas.show', $documento->id);
         $title = 'Tarefa cancelada no documento '.$numero;
         $body = 'Cancelada por '.($actor->name ?? 'usuário');
+        $type = 'tarefa_cancelada';
 
         $notify = collect();
         if ($tarefa->assigned_by_id) {
@@ -460,7 +462,7 @@ class DocumentoEntradaService
 
         $notify = $notify->unique('id')->values();
         if ($notify->count()) {
-            Notification::send($notify, new SimpleBroadcastNotification($title, $body, $url));
+            Notification::send($notify, new SimpleBroadcastNotification($title, $body, $url, 'normal', $type));
         }
 
         return $tarefa;
@@ -615,7 +617,7 @@ class DocumentoEntradaService
         if ($depAtual && $depAtual->chefe && (int) $depAtual->chefe->id !== (int) $actor->id) {
             $numero = sprintf('%03d/%d', $documento->numero_sequencial, $documento->ano_referencia);
             $titulo = 'Documento '.$numero.' recebido no departamento '.($depAtual->nome ?? '');
-            $depAtual->chefe->notify(new SimpleBroadcastNotification($titulo, 'Aguardando ação do chefe', route('documentos-entradas.show', $documento->id)));
+            $depAtual->chefe->notify(new SimpleBroadcastNotification($titulo, 'Aguardando ação do chefe', route('documentos-entradas.show', $documento->id), 'normal', 'documento_recebido'));
         }
 
         return true;
@@ -766,7 +768,7 @@ class DocumentoEntradaService
         // Confirmation to author
         $confirmTitle = 'Documento '.sprintf('%03d/%d', $documento->numero_sequencial, $documento->ano_referencia)
             .' enviado para '.($gabineteDestino ? ($gabineteDestino->sigla ? ($gabineteDestino->nome.' ('.$gabineteDestino->sigla.')') : $gabineteDestino->nome) : 'gabinete destino');
-        $actor->notify(new SimpleBroadcastNotification($confirmTitle, 'Saída registrada com sucesso', route('documentos-entradas.show', $documento->id)));
+        $actor->notify(new SimpleBroadcastNotification($confirmTitle, 'Saída registrada com sucesso', route('documentos-entradas.show', $documento->id), 'normal', 'documento_enviado'));
     }
 
     public function registerVisto(DocumentoEntrada $documento, string $type, string $status, User $actor): void

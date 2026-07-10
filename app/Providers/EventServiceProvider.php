@@ -3,12 +3,15 @@
 namespace App\Providers;
 
 use App\Events\DocumentoArquivado;
+use App\Listeners\ApplyNotificationPreferences;
 use App\Listeners\LogDocumentoArquivado;
 use App\Events\TaskAssigned;
+use App\Listeners\NotificationAuditSubscriber;
 use App\Listeners\SendTaskAssignedNotification;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Support\Facades\Event;
 
 class EventServiceProvider extends ServiceProvider
@@ -28,6 +31,18 @@ class EventServiceProvider extends ServiceProvider
         TaskAssigned::class => [
             SendTaskAssignedNotification::class,
         ],
+        NotificationSending::class => [
+            ApplyNotificationPreferences::class,
+        ],
+    ];
+
+    /**
+     * The subscriber classes to register.
+     *
+     * @var array<int, class-string>
+     */
+    protected $subscribe = [
+        NotificationAuditSubscriber::class,
     ];
 
     /**

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\DocumentoInterno;
 use App\Models\RetentionSchedule;
+use App\Notifications\SimpleBroadcastNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -47,9 +48,29 @@ class CheckRetentionPolicy implements ShouldQueue
                 Log::info("Encontrados {$expiredDocs->count()} documentos vencidos para a espécie ID {$schedule->documento_especie_id}. Ação prevista: {$schedule->acao_final}");
 
                 foreach ($expiredDocs as $doc) {
-                    // Aqui poderia ser criado um alerta no banco de dados
-                    // Ex: Notification::send(...)
-                    Log::warning("Documento ID {$doc->id} ({$doc->titulo}) venceu em {$doc->created_at->addYears($schedule->temporalidade_anos)->format('d/m/Y')}. Ação: {$schedule->acao_final}");
+                    $vencimento = $doc->created_at->addYears($schedule->temporalidade_anos)->format('d/m/Y');
+                    Log::warning("Documento ID {$doc->id} ({$doc->titulo}) venceu em {$vencimento}. Ação: {$schedule->acao_final}");
+
+                    // Idempotência: notificar o chefe apenas uma vez por documento.
+                    if ($doc->retencao_notificada_em !== null) {
+                        continue;
+                    }
+
+                    $chefe = $doc->departamento?->chefe;
+                    if (! $chefe) {
+                        continue;
+                    }
+
+                    $chefe->notify(new SimpleBroadcastNotification(
+                        'Temporalidade atingida: '.$doc->titulo,
+                        'O documento venceu o prazo de retenção em '.$vencimento.'. Ação prevista: '.$schedule->acao_final.'.',
+                        route('documentos-internos.show', $doc->id),
+                        'high',
+                        'retencao',
+                    ));
+
+                    $doc->retencao_notificada_em = now();
+                    $doc->save();
                 }
             }
         }

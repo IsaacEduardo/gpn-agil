@@ -24,6 +24,7 @@ class DocumentoInterno extends Model
         'criado_por',
         'departamento_id',
         'status',
+        'retencao_notificada_em',
         'destinatario_nome',
         'destinatario_cargo',
         'destinatario_orgao',
@@ -44,6 +45,7 @@ class DocumentoInterno extends Model
 
     protected $casts = [
         'status' => DocumentoStatus::class,
+        'retencao_notificada_em' => 'datetime',
         'assinado_em' => 'datetime',
         'bloqueado_edicao' => 'boolean',
         'versao_atual' => 'integer',
