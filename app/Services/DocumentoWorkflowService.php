@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\DocumentoStatus;
 use App\Models\DocumentoInterno;
 use App\Models\User;
+use App\Notifications\SimpleBroadcastNotification;
 use Illuminate\Validation\ValidationException;
 
 class DocumentoWorkflowService
@@ -34,8 +35,17 @@ class DocumentoWorkflowService
             'status' => DocumentoStatus::EM_ANALISE,
         ]);
 
-        // TODO: Disparar notificação para o chefe do departamento
-        // Notification::send($chefe, new DocumentoParaAnalise($doc));
+        // Notifica o chefe do departamento de que há um documento a aguardar análise.
+        $chefe = $doc->departamento?->chefe;
+        if ($chefe && $chefe->id !== $user->id) {
+            $chefe->notify(new SimpleBroadcastNotification(
+                'Documento para análise: '.$doc->titulo,
+                $user->name.' enviou o documento '.$this->numeroDoc($doc).' para a sua análise.',
+                route('documentos-internos.show', $doc->id),
+                'high',
+                'documento_enviado_analise',
+            ));
+        }
 
         return $doc;
     }
@@ -57,6 +67,18 @@ class DocumentoWorkflowService
             'bloqueado_edicao' => true, // Bloqueia para garantir integridade até a assinatura
         ]);
 
+        // Notifica o autor de que o seu documento foi aprovado.
+        $autor = $doc->autor;
+        if ($autor && $autor->id !== $user->id) {
+            $autor->notify(new SimpleBroadcastNotification(
+                'Documento aprovado: '.$doc->titulo,
+                $user->name.' aprovou o documento '.$this->numeroDoc($doc).'.',
+                route('documentos-internos.show', $doc->id),
+                'normal',
+                'documento_aprovado',
+            ));
+        }
+
         return $doc;
     }
 
@@ -74,10 +96,30 @@ class DocumentoWorkflowService
             'bloqueado_edicao' => false,
         ]);
 
+        // Notifica o autor de que o seu documento foi devolvido, com o motivo.
+        $autor = $doc->autor;
+        if ($autor && $autor->id !== $user->id) {
+            $autor->notify(new SimpleBroadcastNotification(
+                'Documento devolvido para correção: '.$doc->titulo,
+                $user->name.' devolveu o documento '.$this->numeroDoc($doc).'. Motivo: '.$motivo,
+                route('documentos-internos.show', $doc->id),
+                'high',
+                'documento_devolvido',
+            ));
+        }
+
         // Logar o motivo no histórico ou auditoria
         // $doc->logAudit('rejeicao', null, ['motivo' => $motivo]);
 
         return $doc;
+    }
+
+    /**
+     * Rótulo curto do documento para o corpo da notificação (número de referência ou #id).
+     */
+    private function numeroDoc(DocumentoInterno $doc): string
+    {
+        return $doc->numero_referencia ?: ('#'.$doc->id);
     }
 
     /**
