@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Enums\DocumentoStatus;
+use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 
 class DocumentoInterno extends Model
 {
-    use \App\Traits\Auditable, HasFactory;
+    use Auditable, HasFactory;
 
     protected $table = 'documento_internos';
 
@@ -40,7 +43,7 @@ class DocumentoInterno extends Model
     ];
 
     protected $casts = [
-        'status' => \App\Enums\DocumentoStatus::class,
+        'status' => DocumentoStatus::class,
         'assinado_em' => 'datetime',
         'bloqueado_edicao' => 'boolean',
         'versao_atual' => 'integer',
@@ -93,7 +96,7 @@ class DocumentoInterno extends Model
                     });
                 }
             }
-        } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist $e) {
+        } catch (PermissionDoesNotExist $e) {
             // Permissão não existe, ignorar
         }
 
@@ -160,5 +163,21 @@ class DocumentoInterno extends Model
     {
         return $this->belongsToMany(User::class, 'documento_interno_favoritos', 'documento_interno_id', 'user_id')
             ->withTimestamps();
+    }
+
+    /**
+     * Colaboradores convidados para edição em tempo real.
+     */
+    public function colaboradores()
+    {
+        return $this->hasMany(DocumentoColaborador::class, 'documento_interno_id');
+    }
+
+    /**
+     * Log durável de updates Yjs (CRDT) da edição colaborativa.
+     */
+    public function collabUpdates()
+    {
+        return $this->hasMany(DocumentoCollabUpdate::class, 'documento_interno_id');
     }
 }

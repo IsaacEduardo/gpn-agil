@@ -5,6 +5,8 @@ namespace App\Policies;
 use App\Enums\DocumentoStatus;
 use App\Models\DocumentoInterno;
 use App\Models\User;
+use App\Services\DocumentoCollaborationService;
+use App\Services\SignatureService;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class DocumentoInternoPolicy
@@ -126,7 +128,7 @@ class DocumentoInternoPolicy
 
     public function sign(User $user, DocumentoInterno $doc)
     {
-        return app(\App\Services\SignatureService::class)->canSign($doc, $user);
+        return app(SignatureService::class)->canSign($doc, $user);
     }
 
     /**
@@ -139,7 +141,7 @@ class DocumentoInternoPolicy
             return true;
         }
         // Owner can archive own draft
-        if ($doc->criado_por === $user->id && $doc->status === \App\Enums\DocumentoStatus::RASCUNHO) {
+        if ($doc->criado_por === $user->id && $doc->status === DocumentoStatus::RASCUNHO) {
             return true;
         }
         // Department head can archive documents of their department
@@ -153,6 +155,34 @@ class DocumentoInternoPolicy
                 return true;
             }
         }
+
         return false;
+    }
+
+    // Edição colaborativa em tempo real
+
+    /**
+     * Pode participar numa sessão colaborativa (presença/edição) do documento.
+     * Restrito a rascunhos não bloqueados; o nível efetivo é resolvido pelo serviço.
+     */
+    public function collaborate(User $user, DocumentoInterno $doc)
+    {
+        if ($doc->status !== DocumentoStatus::RASCUNHO || $doc->bloqueado_edicao) {
+            return false;
+        }
+
+        return app(DocumentoCollaborationService::class)->podeColaborar($user, $doc);
+    }
+
+    /**
+     * Pode gerir colaboradores (convidar, alterar nível, remover). Apenas nível Administrar.
+     */
+    public function manageCollaborators(User $user, DocumentoInterno $doc)
+    {
+        if ($doc->status !== DocumentoStatus::RASCUNHO || $doc->bloqueado_edicao) {
+            return false;
+        }
+
+        return app(DocumentoCollaborationService::class)->podeAdministrar($user, $doc);
     }
 }

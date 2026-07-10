@@ -7,6 +7,8 @@ export default defineConfig({
             input: [
                 'resources/sass/app.scss',
                 'resources/js/app.js',
+                // Editor colaborativo (Tiptap + Yjs). Carregado apenas na página de colaboração.
+                'resources/js/collab.js',
             ],
             refresh: true,
         }),

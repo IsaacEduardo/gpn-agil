@@ -19,7 +19,15 @@
         <div class="row justify-content-center">
             <div class="col-md-12">
                 <div class="card">
-                    <div class="card-header">Editar Documento Interno</div>
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Editar Documento Interno</span>
+                        @if (config('app.feature_collab'))
+                            <a href="{{ route('documentos-internos.collab.editor', $documentoInterno) }}"
+                               class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-users me-1"></i> Editar em colaboração
+                            </a>
+                        @endif
+                    </div>
 
                     <div class="card-body">
                         <form method="POST" action="{{ route('documentos-internos.update', $documentoInterno) }}"

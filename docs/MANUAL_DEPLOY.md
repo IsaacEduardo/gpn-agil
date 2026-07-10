@@ -344,6 +344,55 @@ redirect_stderr=true
 stdout_logfile=/home/USUARIO/gpn-agil/storage/logs/worker.log
 ```
 
+### 8.4. Edição colaborativa em tempo real (Laravel Reverb) — opcional, **somente VPS/Docker**
+
+A edição colaborativa de Documentos Internos (co-edição, cursores, presença) usa **WebSockets**
+via **Laravel Reverb**, que é um **processo long-running**. Isto **não funciona em cPanel/shared
+hosting** (sem Supervisor/daemons). Nesses ambientes, mantenha a funcionalidade **desligada** —
+o sistema continua 100% operacional e o editor clássico (TinyMCE) permanece disponível.
+
+**Desligado (cPanel — padrão):** deixe `FEATURE_COLLAB=false` no `.env`. Nenhuma outra ação.
+
+**Ligado (VPS/Docker):**
+
+1. `.env`:
+   ```env
+   FEATURE_COLLAB=true
+   BROADCAST_CONNECTION=reverb
+   ```
+2. Gere as chaves do Reverb (preenche `REVERB_*` no `.env`):
+   ```bash
+   php artisan reverb:install
+   ```
+3. Exponha as variáveis ao frontend e refaça o build:
+   ```env
+   VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
+   VITE_REVERB_HOST="seu-dominio"     # host público do WebSocket
+   VITE_REVERB_PORT=443
+   VITE_REVERB_SCHEME=https           # wss:// (TLS 1.3 no proxy)
+   ```
+   ```bash
+   npm run build
+   ```
+4. Corra o servidor Reverb como serviço persistente:
+   - **Docker:** já incluído no `docker-compose.yml` (serviço `reverb`).
+   - **Supervisor (VPS):**
+     ```ini
+     [program:gpn-reverb]
+     command=php /home/USUARIO/gpn-agil/artisan reverb:start --host=0.0.0.0 --port=8080
+     autostart=true
+     autorestart=true
+     user=USUARIO
+     redirect_stderr=true
+     stdout_logfile=/home/USUARIO/gpn-agil/storage/logs/reverb.log
+     ```
+5. No proxy (nginx/traefik), faça o *upgrade* WebSocket para a porta do Reverb e termine **TLS 1.3**
+   (`wss://`). O canal de presença é autorizado por sessão + gabinete/nível — não há exposição a
+   utilizadores não autorizados.
+
+> Isolamento: a colaboração está atrás da flag `FEATURE_COLLAB`. Se o Reverb ficar indisponível,
+> o editor colaborativo degrada para o editor clássico e o **resto do sistema não é afetado**.
+
 ---
 
 ## 9. Segurança (obrigatório)
