@@ -30,6 +30,7 @@ class DocumentoEntrada extends Model
         'user_id',
         'status',
         'sla_nivel_notificado',
+        'sla_escalado_em',
         'arquivo_caminho',
         'visto_departamento_status',
         'visto_departamento_por',
@@ -54,6 +55,7 @@ class DocumentoEntrada extends Model
         'visto_gabinete_data' => 'datetime',
         'arquivado_em' => 'datetime',
         'arquivado' => 'boolean',
+        'sla_escalado_em' => 'datetime',
     ];
 
     public function scopeArquivados($query)

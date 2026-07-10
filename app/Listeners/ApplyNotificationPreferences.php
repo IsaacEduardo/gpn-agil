@@ -22,7 +22,7 @@ class ApplyNotificationPreferences
 
     public function handle(NotificationSending $event): bool
     {
-        // Só se aplica a utilizadores e a canais geríveis.
+        // Só se aplica a utilizadores e a canais geríveis (o in-app nunca é suprimido).
         if (! $event->notifiable instanceof User) {
             return true;
         }
@@ -30,26 +30,41 @@ class ApplyNotificationPreferences
             return true;
         }
 
-        $category = NotificationCategory::forType($this->resolveType($event->notification, $event->notifiable));
+        $payload = $this->payload($event->notification, $event->notifiable);
+        $category = NotificationCategory::forType($payload['type'] ?? null);
+        $priority = $payload['priority'] ?? 'normal';
 
-        return $this->preferences->isEnabled($event->notifiable, $category, $event->channel);
+        // 1) Preferência explícita por categoria/canal (opt-out).
+        if (! $this->preferences->isEnabled($event->notifiable, $category, $event->channel)) {
+            return false;
+        }
+
+        // 2) Quiet hours: fora de urgências, silenciar mail/broadcast no período de silêncio.
+        //    O canal in-app continua a registar (nunca chega aqui, por não ser gerível).
+        if ($priority !== 'urgent' && $this->preferences->isWithinQuietHours($event->notifiable)) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
-     * Extrai o 'type' canónico do payload da notificação, quando disponível.
+     * Extrai o payload canónico (type/priority) da notificação, quando disponível.
+     *
+     * @return array<string, mixed>
      */
-    private function resolveType(object $notification, object $notifiable): ?string
+    private function payload(object $notification, object $notifiable): array
     {
         if (! method_exists($notification, 'toArray')) {
-            return null;
+            return [];
         }
 
         try {
             $data = $notification->toArray($notifiable);
 
-            return is_array($data) ? ($data['type'] ?? null) : null;
+            return is_array($data) ? $data : [];
         } catch (\Throwable $e) {
-            return null;
+            return [];
         }
     }
 }

@@ -24,6 +24,12 @@ class CheckSlaCommand extends Command
     protected $description = 'Verifica o SLA dos documentos de entrada pendentes e notifica os chefes';
 
     /**
+     * Nº de dias decorridos a partir do qual um documento crítico é escalado
+     * para o responsável do gabinete.
+     */
+    private const DIAS_ESCALONAMENTO = 8;
+
+    /**
      * Execute the console command.
      */
     public function handle(): int
@@ -31,7 +37,7 @@ class CheckSlaCommand extends Command
         $this->info('Iniciando verificação de SLA de documentos...');
         Log::info('docs:check-sla iniciado.');
 
-        $docs = DocumentoEntrada::with(['departamento.chefe'])
+        $docs = DocumentoEntrada::with(['departamento.chefe', 'departamento.gabinete.responsavel'])
             ->whereIn('status', ['registrado', 'recebido'])
             ->where('arquivado', false)
             ->get();
@@ -64,6 +70,29 @@ class CheckSlaCommand extends Command
                 $this->warn("Sem chefe definido para o departamento '{$departamento->nome}' (Doc ID: {$doc->id})");
 
                 continue;
+            }
+
+            // Escalonamento: documentos críticos há muito tempo sobem, uma única vez,
+            // para o responsável do gabinete (independentemente da notificação ao chefe).
+            if ($statusSla === 'critical' && $dias >= self::DIAS_ESCALONAMENTO && $doc->sla_escalado_em === null) {
+                $responsavel = optional($departamento->gabinete)->responsavel;
+                if ($responsavel && $responsavel->id !== $chefe->id) {
+                    try {
+                        $responsavel->notify(new SimpleBroadcastNotification(
+                            "Escalonamento de SLA: Documento #{$doc->numero_sequencial}/{$doc->ano_referencia}",
+                            "O documento '{$doc->assunto}' está crítico há {$dias} dias sem resolução no departamento '{$departamento->nome}'.",
+                            route('documentos-entradas.show', $doc->id),
+                            'urgent',
+                            'sla_critical',
+                        ));
+                        $doc->sla_escalado_em = now();
+                        $doc->save();
+                        $this->line("Escalonado ao responsável do gabinete: doc #{$doc->numero_sequencial}/{$doc->ano_referencia} ({$dias} dias)");
+                    } catch (\Throwable $e) {
+                        $this->error("Erro ao escalar documento ID {$doc->id}: ".$e->getMessage());
+                        Log::error('Erro escalonamento docs:check-sla: '.$e->getMessage());
+                    }
+                }
             }
 
             // Idempotência: não repetir a notificação enquanto o documento permanecer

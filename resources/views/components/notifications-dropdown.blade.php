@@ -123,8 +123,25 @@
             list.innerHTML = html;
         }
 
-        // Initial poll after 30s, relying on server-side render for first load
-        setInterval(fetchNotifications, POLL_INTERVAL);
+        // Tempo real via Laravel Echo (Reverb), quando configurado.
+        // Ao receber uma notificação no canal privado do utilizador, re-sincroniza
+        // imediatamente o sino. O polling mantém-se como fallback (Echo indisponível).
+        const notificationsUserId = {{ auth()->id() ?? 'null' }};
+        let echoConnected = false;
+        if (window.Echo && notificationsUserId) {
+            try {
+                window.Echo.private('App.Models.User.' + notificationsUserId)
+                    .notification(function() {
+                        fetchNotifications();
+                    });
+                echoConnected = true;
+            } catch (e) {
+                console.error('Falha ao subscrever notificações em tempo real:', e);
+            }
+        }
+
+        // Polling: rápido como único mecanismo; mais espaçado quando o Echo está ativo.
+        setInterval(fetchNotifications, echoConnected ? 120000 : POLL_INTERVAL);
 
         // Click Handler for "Mark as Read" behavior
         list.addEventListener('click', function(e) {
