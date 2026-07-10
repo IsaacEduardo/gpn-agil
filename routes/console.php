@@ -356,3 +356,6 @@ Schedule::job(new CheckRetentionPolicy)->dailyAt('02:00');
 
 // Agendamento da Verificação de SLA de Documentos
 Schedule::command('docs:check-sla')->dailyAt('08:00');
+
+// Resumo diário de notificações não lidas (apenas para quem optou por recebê-lo)
+Schedule::command('notifications:digest')->dailyAt('07:00');

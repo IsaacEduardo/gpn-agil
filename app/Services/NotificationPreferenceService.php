@@ -118,6 +118,19 @@ class NotificationPreferenceService
     }
 
     /**
+     * Desativa o canal de e-mail em todas as categorias (ex.: após um bounce).
+     */
+    public function disableEmailChannel(User $user): void
+    {
+        foreach (NotificationCategory::keys() as $category) {
+            NotificationPreference::updateOrCreate(
+                ['user_id' => $user->id, 'category' => $category, 'channel' => 'mail'],
+                ['enabled' => false],
+            );
+        }
+    }
+
+    /**
      * O momento indicado cai dentro do período de silêncio do utilizador?
      * Suporta janelas que atravessam a meia-noite (ex.: 22:00–07:00).
      */

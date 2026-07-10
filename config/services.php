@@ -39,6 +39,12 @@ return [
         'path' => env('OCR_BINARY_PATH'),
     ],
 
+    // Webhook de bounces/reclamações de e-mail. Defina um token partilhado com o
+    // provedor de e-mail (SES/Mailgun/Postmark) para autenticar as chamadas.
+    'mail_webhook' => [
+        'token' => env('MAIL_WEBHOOK_TOKEN'),
+    ],
+
     'anthropic' => [
         // Driver do provedor de IA: 'anthropic' (produção) ou 'fake' (demonstração local, sem custos/rede).
         'driver' => env('ASSISTENTE_DRIVER', 'anthropic'),

@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\DocumentoTarefa;
 use App\Notifications\Concerns\CanonicalPayload;
+use App\Notifications\Concerns\QueuedRetryPolicy;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Log;
  */
 class TarefaDelegadaNotification extends Notification implements ShouldQueue
 {
-    use CanonicalPayload, Queueable;
+    use CanonicalPayload, Queueable, QueuedRetryPolicy;
 
     /**
      * A instância da tarefa associada.

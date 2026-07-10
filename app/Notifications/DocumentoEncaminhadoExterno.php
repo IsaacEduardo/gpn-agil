@@ -7,6 +7,7 @@ use App\Models\DocumentoEntrada;
 use App\Models\Gabinete;
 use App\Models\User;
 use App\Notifications\Concerns\CanonicalPayload;
+use App\Notifications\Concerns\QueuedRetryPolicy;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -14,7 +15,7 @@ use Illuminate\Notifications\Notification;
 
 class DocumentoEncaminhadoExterno extends Notification implements ShouldQueue
 {
-    use CanonicalPayload, Queueable;
+    use CanonicalPayload, Queueable, QueuedRetryPolicy;
 
     protected DocumentoEntrada $documento;
 

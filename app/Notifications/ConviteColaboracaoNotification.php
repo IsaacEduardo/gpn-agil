@@ -6,6 +6,7 @@ use App\Enums\NivelColaboracao;
 use App\Models\DocumentoInterno;
 use App\Models\User;
 use App\Notifications\Concerns\CanonicalPayload;
+use App\Notifications\Concerns\QueuedRetryPolicy;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ConviteColaboracaoNotification extends Notification implements ShouldQueue
 {
-    use CanonicalPayload, Queueable;
+    use CanonicalPayload, Queueable, QueuedRetryPolicy;
 
     public function __construct(
         public DocumentoInterno $documento,

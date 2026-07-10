@@ -211,6 +211,10 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/profile/certificate', [ProfileController::class, 'destroyCertificate'])->name('profile.certificate.destroy');
 });
 
+// Webhook de bounces/reclamações de e-mail (autenticado por token; isento de CSRF em bootstrap/app.php)
+Route::post('/webhooks/mail/bounce', [\App\Http\Controllers\MailBounceWebhookController::class, 'handle'])
+    ->name('webhooks.mail.bounce');
+
 // Rotas de Notificações e Web Push
 Route::middleware(['auth'])->group(function () {
     // Página dedicada de notificações
