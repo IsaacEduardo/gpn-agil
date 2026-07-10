@@ -2,13 +2,38 @@
 
 @section('styles')
 <style>
-    /* Editor Tiptap */
-    #collab-editor .ProseMirror {
-        min-height: 480px;
-        padding: 24px 28px;
-        background: #fff;
+    /* Folha A4 oficial em volta do editor */
+    .collab-paper-wrapper {
+        background: #eef1f5;
+        padding: 20px;
+        border-radius: 8px;
         border: 1px solid #dee2e6;
-        border-radius: 6px;
+        overflow-x: auto;
+    }
+    .collab-paper {
+        width: 210mm;
+        max-width: 100%;
+        min-height: 297mm;
+        margin: 0 auto;
+        background: #fff;
+        box-shadow: 0 1px 8px rgba(0, 0, 0, .15);
+        padding: 18mm 20mm 12mm 25mm;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        font-family: 'Times New Roman', Times, serif;
+        color: #000;
+    }
+    .collab-paper .doc-header { margin-bottom: 8mm; }
+    .collab-paper__footer { margin-top: 8mm; }
+
+    /* Editor Tiptap (transparente — a folha fornece o fundo/margens) */
+    #collab-editor { flex: 1 1 auto; }
+    #collab-editor .ProseMirror {
+        min-height: 400px;
+        padding: 0;
+        background: transparent;
+        border: none;
         font-family: 'Times New Roman', Times, serif;
         font-size: 12pt;
         line-height: 1.5;
@@ -126,7 +151,33 @@
                     </div>
                 </div>
             @endif
-            <div id="collab-editor" data-config='@json($collabConfig)'></div>
+            <div class="collab-paper-wrapper">
+                <div class="collab-paper">
+                    @include('partials.document-header', [
+                        'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->departamento?->gabinete),
+                    ])
+
+                    <div id="collab-editor" data-config='@json($collabConfig)'></div>
+
+                    @php
+                        $rodapeImg = $dadosInstituicao->rodape_url ?? null;
+                        if (! $rodapeImg) {
+                            foreach (['rodape_estacionario.png', 'rodape_estacionario.jpg', 'Estacionariodoc.jpg', 'Estacionariodoc.jpeg', 'estacionario.png', 'estacionario.jpg'] as $cand) {
+                                if (file_exists(public_path('images/'.$cand))) {
+                                    $rodapeImg = asset('images/'.$cand);
+                                    break;
+                                }
+                            }
+                        }
+                    @endphp
+                    @if ($rodapeImg)
+                        <div class="collab-paper__footer">
+                            <img src="{{ $rodapeImg }}" alt="Rodapé Oficial"
+                                 style="width: 100%; height: auto; max-height: 12mm; display: block; margin: 0 auto;">
+                        </div>
+                    @endif
+                </div>
+            </div>
 
             @if ($podeEditar)
                 <div class="card mt-3">
