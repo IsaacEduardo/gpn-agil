@@ -3,18 +3,22 @@
 namespace App\Notifications;
 
 use App\Models\DocumentoTarefa;
+use App\Notifications\Concerns\CanonicalPayload;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Notificação enviada por e-mail de forma assíncrona quando uma tarefa é delegada.
+ * Notificação de tarefa delegada, entregue de forma assíncrona in-app (database),
+ * em tempo real (broadcast) e por e-mail (apenas para destinatários com e-mail).
  */
 class TarefaDelegadaNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use CanonicalPayload, Queueable;
 
     /**
      * A instância da tarefa associada.
@@ -40,7 +44,45 @@ class TarefaDelegadaNotification extends Notification implements ShouldQueue
      */
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        $channels = ['database', 'broadcast'];
+        if (! empty($notifiable->email)) {
+            $channels[] = 'mail';
+        }
+
+        return $channels;
+    }
+
+    /**
+     * Representação canónica in-app da notificação.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(object $notifiable): array
+    {
+        $documento = $this->tarefa->documento;
+        $numero = sprintf('%03d/%d', $documento->numero_sequencial, $documento->ano_referencia);
+        $prazo = $this->tarefa->prazo_at ? Carbon::parse($this->tarefa->prazo_at)->format('d/m/Y') : null;
+
+        return $this->canonicalPayload(
+            title: 'Nova tarefa: '.$this->tarefa->titulo,
+            url: route('documentos-entradas.show', $documento->id),
+            body: 'No documento '.$numero.($prazo ? ' · prazo '.$prazo : ''),
+            priority: 'high',
+            type: 'tarefa_delegada',
+            icon: 'fas fa-tasks',
+            extra: [
+                'tarefa_id' => $this->tarefa->id,
+                'documento_id' => $documento->id,
+                'numero' => $numero,
+            ],
+        );
+    }
+
+    public function toBroadcast(object $notifiable): BroadcastMessage
+    {
+        return new BroadcastMessage($this->toArray($notifiable) + [
+            'broadcasted_at' => now()->toDateTimeString(),
+        ]);
     }
 
     /**

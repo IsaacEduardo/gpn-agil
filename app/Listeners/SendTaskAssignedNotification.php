@@ -28,10 +28,10 @@ class SendTaskAssignedNotification
         // Caso a tarefa seja atribuída a um utilizador individual
         if ($tarefa->assigned_to_user_id) {
             $user = User::find($tarefa->assigned_to_user_id);
-            if ($user && !empty($user->email)) {
+            if ($user) {
                 try {
                     $user->notify(new TarefaDelegadaNotification($tarefa));
-                    Log::info('Notificação de e-mail enfileirada para utilizador', [
+                    Log::info('Notificação de tarefa enfileirada para utilizador', [
                         'user_id' => $user->id,
                         'email' => $user->email,
                         'tarefa_id' => $tarefa->id,
@@ -67,16 +67,14 @@ class SendTaskAssignedNotification
                     $targets->push($dep->gabinete->responsavel);
                 }
 
-                // Filtrar apenas utilizadores únicos com e-mail preenchido
-                $targets = $targets->unique('id')->values()->filter(function ($u) {
-                    return !empty($u->email);
-                });
+                // Utilizadores únicos (o e-mail é opcional: quem não tiver recebe apenas in-app).
+                $targets = $targets->unique('id')->values();
 
                 if ($targets->count() > 0) {
                     foreach ($targets as $target) {
                         try {
                             $target->notify(new TarefaDelegadaNotification($tarefa));
-                            Log::info('Notificação de e-mail enfileirada para membro de departamento', [
+                            Log::info('Notificação de tarefa enfileirada para membro de departamento', [
                                 'user_id' => $target->id,
                                 'email' => $target->email,
                                 'tarefa_id' => $tarefa->id,

@@ -135,14 +135,18 @@ class TaskAssignedNotificationTest extends TestCase
 
         $tarefa = $service->createTask($this->documento, $data, $this->actor);
 
-        // Chefes e membros com e-mail devem receber
+        // Chefes e membros com e-mail recebem, incluindo o canal 'mail'
         Notification::assertSentTo($chefe, TarefaDelegadaNotification::class);
-        Notification::assertSentTo($membro1, TarefaDelegadaNotification::class);
+        Notification::assertSentTo($membro1, TarefaDelegadaNotification::class, function ($notification, $channels) {
+            return in_array('mail', $channels) && in_array('database', $channels);
+        });
         Notification::assertSentTo($membro2, TarefaDelegadaNotification::class);
         Notification::assertSentTo($responsavelGab, TarefaDelegadaNotification::class);
 
-        // Membro sem e-mail não deve receber
-        Notification::assertNotSentTo($membroSemEmail, TarefaDelegadaNotification::class);
+        // Membro sem e-mail recebe in-app/broadcast, mas NÃO por e-mail
+        Notification::assertSentTo($membroSemEmail, TarefaDelegadaNotification::class, function ($notification, $channels) {
+            return in_array('database', $channels) && ! in_array('mail', $channels);
+        });
     }
 
     public function test_email_notification_contains_correct_markdown_details(): void

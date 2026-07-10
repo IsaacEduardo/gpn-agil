@@ -385,42 +385,9 @@ class DocumentoEntradaService
             'grupo_tarefa_uuid' => $data['grupo_tarefa_uuid'] ?? null,
         ]);
 
-        $numero = sprintf('%03d/%d', $documento->numero_sequencial, $documento->ano_referencia);
-        $url = route('documentos-entradas.show', $documento->id);
-
-        if ($tarefa->assigned_to_user_id) {
-            $u = User::find($tarefa->assigned_to_user_id);
-            if ($u) {
-                $title = 'Nova tarefa no documento '.$numero;
-                $body = 'Destino: '.($u->name ?? 'usuário');
-                $u->notify(new SimpleBroadcastNotification($title, $body, $url));
-            }
-        }
-
-        if ($tarefa->assigned_to_departamento_id) {
-            $dep = Departamento::find($tarefa->assigned_to_departamento_id);
-            if ($dep) {
-                $title = 'Nova tarefa no documento '.$numero;
-                $body = 'Destino: '.($dep->nome ?? 'departamento');
-                $targets = collect();
-                if ($dep->chefe) {
-                    $targets->push($dep->chefe);
-                }
-                $dep->usuarios()->chunk(100, function ($users) use ($targets) {
-                    foreach ($users as $user) {
-                        $targets->push($user);
-                    }
-                });
-                if ($dep->gabinete && $dep->gabinete->responsavel) {
-                    $targets->push($dep->gabinete->responsavel);
-                }
-                $targets = $targets->unique('id')->values();
-                if ($targets->count()) {
-                    Notification::send($targets, new SimpleBroadcastNotification($title, $body, $url));
-                }
-            }
-        }
-
+        // A notificação de atribuição (in-app + broadcast + e-mail) é tratada de forma
+        // unificada pelo listener SendTaskAssignedNotification via TarefaDelegadaNotification,
+        // evitando o duplo caminho (in-app genérico + e-mail) que existia antes.
         event(new \App\Events\TaskAssigned($tarefa));
 
         return $tarefa;
