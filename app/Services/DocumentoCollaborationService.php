@@ -107,6 +107,15 @@ class DocumentoCollaborationService
     }
 
     /**
+     * Persiste o título/assunto sem criar versão (last-write-wins; baixa contenção).
+     */
+    public function salvarTitulo(DocumentoInterno $doc, string $titulo): void
+    {
+        $doc->titulo = $titulo;
+        $doc->saveQuietly();
+    }
+
+    /**
      * Checkpoint: materializa o HTML, cria uma versão (updateWithVersioning) e — quando fornecido
      * um snapshot Yjs completo — compacta o log num único registo. Dispara auditoria/reindex.
      */

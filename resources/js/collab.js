@@ -35,6 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // O título/assunto é editável independentemente do tempo real.
+    wireTitulo();
+
     // Fallback: sem Reverb/Echo configurado, direciona para o editor clássico.
     if (!window.Echo) {
         banner('Edição colaborativa indisponível (servidor de tempo real não configurado). Use o editor clássico.', 'warning');
@@ -208,6 +211,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }).finally(() => {
                 btn.disabled = false;
             });
+        });
+    }
+
+    // --- Campo de título/assunto (autosave debounced; não colaborativo — last-write-wins) ---
+    function wireTitulo() {
+        const input = document.getElementById('collab-titulo');
+        if (!input || !cfg.urls.titulo) return;
+        const header = document.getElementById('collab-doc-titulo');
+        let timer = null;
+        input.addEventListener('input', () => {
+            if (header) header.textContent = input.value;
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+                http.post(cfg.urls.titulo, { titulo: input.value }).catch(() => {/* re-tentado no próximo input */});
+            }, 800);
         });
     }
 

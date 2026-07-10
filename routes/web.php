@@ -276,6 +276,7 @@ if (config('app.feature_collab')) {
             Route::get('/state', [DocumentoColaboracaoController::class, 'state'])->name('state');
             Route::post('/sync', [DocumentoColaboracaoController::class, 'sync'])->name('sync');
             Route::post('/checkpoint', [DocumentoColaboracaoController::class, 'checkpoint'])->name('checkpoint');
+            Route::post('/titulo', [DocumentoColaboracaoController::class, 'salvarTitulo'])->name('titulo');
             Route::get('/colaboradores', [DocumentoColaboracaoController::class, 'colaboradores'])->name('colaboradores');
             Route::post('/colaboradores', [DocumentoColaboracaoController::class, 'convidar'])->name('convidar');
             Route::patch('/colaboradores/{user}', [DocumentoColaboracaoController::class, 'atualizarColaborador'])->name('colaborador.update');

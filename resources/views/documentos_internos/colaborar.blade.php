@@ -77,7 +77,7 @@
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
-            <h5 class="mb-0">{{ $documentoInterno->titulo }}</h5>
+            <h5 class="mb-0" id="collab-doc-titulo">{{ $documentoInterno->titulo }}</h5>
             <small class="text-muted">
                 {{ $documentoInterno->numero_referencia }} ·
                 <span class="badge bg-{{ $documentoInterno->status->color() }}">{{ $documentoInterno->status->label() }}</span>
@@ -114,9 +114,19 @@
                         'state' => route('documentos-internos.collab.state', $documentoInterno),
                         'sync' => route('documentos-internos.collab.sync', $documentoInterno),
                         'checkpoint' => route('documentos-internos.collab.checkpoint', $documentoInterno),
+                        'titulo' => route('documentos-internos.collab.titulo', $documentoInterno),
                     ],
                 ];
             @endphp
+            @if ($podeEditar)
+                <div class="mb-2">
+                    <label for="collab-titulo" class="form-label small mb-1">Título / Assunto</label>
+                    <input id="collab-titulo" type="text" class="form-control"
+                           value="{{ $documentoInterno->titulo }}" maxlength="255"
+                           placeholder="Assunto do documento">
+                </div>
+            @endif
+
             @if ($podeEditar)
                 <div id="collab-toolbar" class="btn-toolbar gap-1 mb-2" role="toolbar" aria-label="Formatação">
                     <div class="btn-group btn-group-sm">

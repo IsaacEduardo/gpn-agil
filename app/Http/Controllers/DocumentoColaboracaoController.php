@@ -118,6 +118,20 @@ class DocumentoColaboracaoController extends Controller
         ]);
     }
 
+    /**
+     * Guarda o título/assunto (autosave, sem criar versão).
+     */
+    public function salvarTitulo(Request $request, DocumentoInterno $documentoInterno): JsonResponse
+    {
+        abort_unless($this->service->podeEditar(Auth::user(), $documentoInterno), 403);
+
+        $validated = $request->validate(['titulo' => 'required|string|max:255']);
+
+        $this->service->salvarTitulo($documentoInterno, $validated['titulo']);
+
+        return response()->json(['ok' => true]);
+    }
+
     public function colaboradores(DocumentoInterno $documentoInterno): JsonResponse
     {
         $this->authorize('collaborate', $documentoInterno);

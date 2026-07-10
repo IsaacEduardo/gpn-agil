@@ -202,4 +202,32 @@ class ColaboracaoDocumentoTest extends TestCase
             ->getJson(route('documentos-internos.collab.state', $this->doc))
             ->assertForbidden();
     }
+
+    public function test_editor_pode_guardar_titulo_sem_criar_versao(): void
+    {
+        $this->actingAs($this->autor)
+            ->postJson(route('documentos-internos.collab.titulo', $this->doc), [
+                'titulo' => 'Novo Assunto QA',
+            ])
+            ->assertOk();
+
+        $this->assertSame('Novo Assunto QA', $this->doc->fresh()->titulo);
+        $this->assertDatabaseCount('documento_versaos', 0);
+    }
+
+    public function test_visualizador_nao_pode_guardar_titulo(): void
+    {
+        DocumentoColaborador::create([
+            'documento_interno_id' => $this->doc->id,
+            'user_id' => $this->colegaA->id,
+            'nivel' => 'visualizar',
+            'convidado_por' => $this->autor->id,
+        ]);
+
+        $this->actingAs($this->colegaA)
+            ->postJson(route('documentos-internos.collab.titulo', $this->doc), [
+                'titulo' => 'Tentativa',
+            ])
+            ->assertForbidden();
+    }
 }
