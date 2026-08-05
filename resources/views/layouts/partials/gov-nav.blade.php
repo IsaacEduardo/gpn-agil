@@ -7,6 +7,8 @@
 @php
     $isExec = Auth::user()->isChefeGabinete() || Auth::user()->isSuperChefeGabinete() || Auth::user()->hasPermissionTo('gabinete.view_all') || Auth::user()->isAdmin() || Auth::user()->hasRole('chefe-departamento') || Auth::user()->hasRole('chefe_departamento');
     $canServicos = Auth::user()->can('viewAny', App\Models\Viatura::class) || Auth::user()->can('viewAny', App\Models\Requisicao::class);
+    $canTerritorio = Auth::user()->can('viewAny', App\Models\Lote::class) || Auth::user()->can('viewAny', App\Models\SolicitacaoAtribuicao::class) || Auth::user()->can('viewAny', App\Models\Requerente::class);
+    $territorioActive = request()->routeIs('lotes.*') || request()->routeIs('solicitacoes.*') || request()->routeIs('requerentes.*') || request()->routeIs('analises-tecnicas.*');
     $canConfig = Auth::user()->canAny(['configuracoes.editar', 'usuarios.gerir', 'departamentos.gerir', 'permissoes.gerir']) || Auth::user()->isAdmin();
     $docsActive = request()->routeIs('tarefas.*') || request()->routeIs('documentos-entradas.*') || request()->routeIs('edms.*') || request()->routeIs('documentos-internos.*') || request()->routeIs('pastas.*') || request()->routeIs('modelos.*');
     $adminActive = request()->routeIs('reservas.*') || request()->routeIs('credenciais.*') || request()->routeIs('termos.*');
@@ -75,6 +77,26 @@
                         <li><a class="dropdown-item {{ request()->routeIs('requisicoes.oficina.index') ? 'active' : '' }}" href="{{ route('requisicoes.oficina.index') }}">Oficina</a></li>
                         <li><a class="dropdown-item {{ request()->routeIs('requisicoes.servico.index') ? 'active' : '' }}" href="{{ route('requisicoes.servico.index') }}">Serviços</a></li>
                         <li><a class="dropdown-item {{ request()->routeIs('requisicoes.passagem.index') ? 'active' : '' }}" href="{{ route('requisicoes.passagem.index') }}">Passagem</a></li>
+                    @endcan
+                </ul>
+            </li>
+        @endif
+
+        {{-- GESTÃO TERRITORIAL --}}
+        @if ($canTerritorio)
+            <li class="gov-nav__item dropdown">
+                <a href="#" class="gov-nav__link {{ $territorioActive ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-map-marked-alt"></i> Território <i class="fas fa-chevron-down gov-nav__caret"></i>
+                </a>
+                <ul class="dropdown-menu">
+                    @can('viewAny', App\Models\Lote::class)
+                        <li><a class="dropdown-item {{ request()->routeIs('lotes.*') ? 'active' : '' }}" href="{{ route('lotes.index') }}"><i class="fas fa-map-marked-alt me-2 text-muted"></i>Inventário de Lotes</a></li>
+                    @endcan
+                    @can('viewAny', App\Models\SolicitacaoAtribuicao::class)
+                        <li><a class="dropdown-item {{ request()->routeIs('solicitacoes.*') || request()->routeIs('analises-tecnicas.*') ? 'active' : '' }}" href="{{ route('solicitacoes.index') }}"><i class="fas fa-file-signature me-2 text-muted"></i>Solicitações de Atribuição</a></li>
+                    @endcan
+                    @can('viewAny', App\Models\Requerente::class)
+                        <li><a class="dropdown-item {{ request()->routeIs('requerentes.*') ? 'active' : '' }}" href="{{ route('requerentes.index') }}"><i class="fas fa-users me-2 text-muted"></i>Requerentes</a></li>
                     @endcan
                 </ul>
             </li>

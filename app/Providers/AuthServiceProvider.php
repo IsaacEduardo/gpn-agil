@@ -18,6 +18,9 @@ class AuthServiceProvider extends ServiceProvider
         \App\Models\Viatura::class => \App\Policies\ViaturaPolicy::class,
         \App\Models\TermoEntrega::class => \App\Policies\TermoEntregaPolicy::class,
         \App\Models\DocumentoInterno::class => \App\Policies\DocumentoInternoPolicy::class,
+        \App\Models\Lote::class => \App\Policies\LotePolicy::class,
+        \App\Models\Requerente::class => \App\Policies\RequerentePolicy::class,
+        \App\Models\SolicitacaoAtribuicao::class => \App\Policies\SolicitacaoAtribuicaoPolicy::class,
     ];
 
     /**

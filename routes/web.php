@@ -30,6 +30,10 @@ use App\Http\Controllers\TarefaController;
 use App\Http\Controllers\TermoEntregaController;
 use App\Http\Controllers\ViaturaController;
 use App\Http\Controllers\ViaturaReportController;
+use App\Http\Controllers\AnaliseTecnicaController;
+use App\Http\Controllers\LoteController;
+use App\Http\Controllers\RequerenteController;
+use App\Http\Controllers\SolicitacaoAtribuicaoController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
@@ -65,6 +69,23 @@ Route::middleware(['auth'])->group(function () {
     // Rotas para o módulo de Departamentos
     Route::resource('departamentos', DepartamentoController::class);
     Route::resource('gabinetes', GabineteController::class);
+
+    // Rotas para o Módulo de Gestão de Lotes de Terra e Atribuição
+    Route::resource('requerentes', RequerenteController::class);
+    Route::get('lotes/geojson', [LoteController::class, 'geoJson'])->name('lotes.geojson');
+    Route::resource('lotes', LoteController::class);
+    Route::post('solicitacoes/{solicitacao}/vincular-lote', [SolicitacaoAtribuicaoController::class, 'vincularLote'])->name('solicitacoes.vincular-lote');
+    Route::patch('solicitacoes/{solicitacao}/transicionar', [SolicitacaoAtribuicaoController::class, 'transicionarStatus'])->name('solicitacoes.transicionar');
+    Route::post('solicitacoes/{solicitacao}/emitir-termo', [SolicitacaoAtribuicaoController::class, 'emitirTermo'])->name('solicitacoes.emitir-termo');
+    // A solicitação não tem edição livre: evolui pelos endpoints de workflow
+    // acima (vincular-lote, transicionar, emitir-termo), pelo que edit/update/
+    // destroy não são registados — não existem no controller.
+    Route::resource('solicitacoes', SolicitacaoAtribuicaoController::class)
+        ->only(['index', 'create', 'store', 'show'])
+        ->parameters(['solicitacoes' => 'solicitacao'])
+        ->names('solicitacoes');
+    Route::get('solicitacoes/{solicitacao}/analise-tecnica/create', [AnaliseTecnicaController::class, 'create'])->name('analises-tecnicas.create');
+    Route::post('solicitacoes/{solicitacao}/analise-tecnica', [AnaliseTecnicaController::class, 'store'])->name('analises-tecnicas.store');
 });
 Route::middleware(['auth'])->group(function () {
     Route::post('documentos-entradas/batch/receber', [DocumentoEntradaEncaminhamentoController::class, 'batchReceber'])

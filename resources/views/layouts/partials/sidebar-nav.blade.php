@@ -53,6 +53,39 @@
         @endif
     @endif
 
+    {{-- GESTÃO TERRITORIAL --}}
+    @if (Auth::user()->can('viewAny', App\Models\Lote::class) || Auth::user()->can('viewAny', App\Models\SolicitacaoAtribuicao::class) || Auth::user()->can('viewAny', App\Models\Requerente::class))
+        <hr class="sidebar-divider">
+        <div class="nav-group-label">Gestão Territorial &amp; Infraestrutura</div>
+
+        <div class="nav-item-wrapper">
+            <a href="#{{ $p }}menuLotes" data-bs-toggle="collapse" title="Gestão de Terras"
+                class="nav-link {{ request()->routeIs('lotes.*') || request()->routeIs('solicitacoes.*') || request()->routeIs('requerentes.*') ? 'active' : '' }}"
+                aria-expanded="{{ request()->routeIs('lotes.*') || request()->routeIs('solicitacoes.*') || request()->routeIs('requerentes.*') ? 'true' : 'false' }}"
+                aria-controls="{{ $p }}menuLotes">
+                <i class="fas fa-map-marked-alt nav-icon"></i>
+                <span>Gestão de Terras</span>
+                <i class="fas fa-chevron-down nav-arrow"></i>
+            </a>
+            <div class="collapse {{ request()->routeIs('lotes.*') || request()->routeIs('solicitacoes.*') || request()->routeIs('requerentes.*') ? 'show' : '' }}" id="{{ $p }}menuLotes">
+                <div class="submenu">
+                    @can('viewAny', App\Models\Lote::class)
+                        <a href="{{ route('lotes.index') }}"
+                            class="nav-link {{ request()->routeIs('lotes.*') ? 'active' : '' }}">Inventário de Lotes</a>
+                    @endcan
+                    @can('viewAny', App\Models\SolicitacaoAtribuicao::class)
+                        <a href="{{ route('solicitacoes.index') }}"
+                            class="nav-link {{ request()->routeIs('solicitacoes.*') ? 'active' : '' }}">Solicitações de Atribuição</a>
+                    @endcan
+                    @can('viewAny', App\Models\Requerente::class)
+                        <a href="{{ route('requerentes.index') }}"
+                            class="nav-link {{ request()->routeIs('requerentes.*') ? 'active' : '' }}">Requerentes</a>
+                    @endcan
+                </div>
+            </div>
+        </div>
+    @endif
+
     {{-- SERVIÇOS OPERACIONAIS --}}
     @if (Auth::user()->can('viewAny', App\Models\Viatura::class) || Auth::user()->can('viewAny', App\Models\Requisicao::class))
         <hr class="sidebar-divider">
