@@ -72,7 +72,9 @@ class PastaController extends Controller
                     $queryEntrada->whereDate('arquivado_em', '<=', $dateEnd);
                 }
 
-                $documentosEntrada = $queryEntrada->orderBy('arquivado_em', 'desc')->get();
+                $documentosEntrada = $queryEntrada->orderBy('arquivado_em', 'desc')
+                    ->paginate(24, ['*'], 'page_ent')
+                    ->withQueryString();
             }
 
             // --- Documentos Internos ---
@@ -94,7 +96,9 @@ class PastaController extends Controller
                     $queryInterno->whereDate('arquivado_em', '<=', $dateEnd);
                 }
 
-                $documentosInternos = $queryInterno->orderBy('arquivado_em', 'desc')->get();
+                $documentosInternos = $queryInterno->orderBy('arquivado_em', 'desc')
+                    ->paginate(24, ['*'], 'page_int')
+                    ->withQueryString();
             }
         } else {
             $currentFolder = null;
@@ -240,7 +244,8 @@ class PastaController extends Controller
             })
             ->with(['pasta.departamento.gabinete'])
             ->orderBy('arquivado_em', 'desc')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
         return view('pastas.search', compact('documentos', 'query'));
     }

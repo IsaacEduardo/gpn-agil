@@ -208,6 +208,13 @@
                         </div>
                     </div>
                 @endforeach
+
+                {{-- Só é paginador dentro de uma pasta; na raiz é uma coleção vazia. --}}
+                @if ($documentosEntrada instanceof \Illuminate\Contracts\Pagination\Paginator && $documentosEntrada->hasPages())
+                    <div class="col-12 d-flex justify-content-center mt-3">
+                        {{ $documentosEntrada->links() }}
+                    </div>
+                @endif
             @endif
 
             @if (isset($documentosInternos))
@@ -236,6 +243,12 @@
                         </div>
                     </div>
                 @endforeach
+
+                @if ($documentosInternos instanceof \Illuminate\Contracts\Pagination\Paginator && $documentosInternos->hasPages())
+                    <div class="col-12 d-flex justify-content-center mt-3">
+                        {{ $documentosInternos->links() }}
+                    </div>
+                @endif
             @endif
         </div>
     </div>

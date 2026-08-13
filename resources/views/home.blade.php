@@ -479,6 +479,11 @@
                             @endif
                         </table>
                     </div>
+                    @if (isset($deptStats) && $deptStats instanceof \Illuminate\Contracts\Pagination\Paginator && $deptStats->hasPages())
+                        <div class="d-flex justify-content-center py-3">
+                            {{ $deptStats->links() }}
+                        </div>
+                    @endif
                 </div>
             </div>
 

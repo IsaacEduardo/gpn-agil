@@ -135,7 +135,9 @@ class HomeController extends Controller
         if ($isAdmin) {
             $deptStats = Departamento::select('id', 'sigla', 'nome')
                 ->withCount(['documentosEntrada as total_entrada', 'documentosInternos as total_internos'])
-                ->get();
+                ->orderBy('sigla')
+                ->paginate(8, ['*'], 'page_dept')
+                ->withQueryString();
         }
 
         // Actividade recente

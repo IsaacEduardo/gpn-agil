@@ -81,6 +81,12 @@
                         </tbody>
                     </table>
                 </div>
+
+                @if ($documentos->hasPages())
+                    <div class="d-flex justify-content-center mt-3">
+                        {{ $documentos->links() }}
+                    </div>
+                @endif
             @endif
         </div>
     </div>

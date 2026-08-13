@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Viatura;
 use App\Observers\RequisicaoObserver;
 use App\Support\CatalogCache;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -41,6 +42,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // O Laravel gera a paginação com marcação Tailwind por omissão, mas o
+        // portal é servido apenas por Bootstrap 5 (resources/sass/app.scss não
+        // importa Tailwind e o plugin não está no vite.config.js). Sem isto, os
+        // controlos de paginação saem com classes sem CSS — legíveis no DOM mas
+        // invisíveis no ecrã, o que faz as listagens parecerem não paginadas.
+        Paginator::useBootstrapFive();
+
         // Compartilhar dados da instituição com todas as views
         try {
             $dados = Schema::hasTable('dados_instituicao')
