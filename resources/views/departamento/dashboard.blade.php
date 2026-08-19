@@ -238,9 +238,14 @@
                                         </tbody>
                                     </table>
                                 </div>
-                                <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm" id="btnApproveDocs" disabled>
-                                    <i class="fas fa-check-double me-2"></i>Aprovar Selecionados
-                                </button>
+                                 <div class="d-flex justify-content-between align-items-center mt-3">
+                                     <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm" id="btnApproveDocs" disabled>
+                                         <i class="fas fa-check-double me-2"></i>Aprovar Selecionados
+                                     </button>
+                                     <div>
+                                         {{ $docsParaAprovar->links() }}
+                                     </div>
+                                 </div>
                             </form>
                         @endif
                     </div>
@@ -288,9 +293,14 @@
                                         </tbody>
                                     </table>
                                 </div>
-                                <button type="submit" class="btn btn-success rounded-pill px-4 shadow-sm" id="btnApproveReqs" disabled>
-                                    <i class="fas fa-check-double me-2"></i>Aprovar Selecionados
-                                </button>
+                                 <div class="d-flex justify-content-between align-items-center mt-3">
+                                     <button type="submit" class="btn btn-success rounded-pill px-4 shadow-sm" id="btnApproveReqs" disabled>
+                                         <i class="fas fa-check-double me-2"></i>Aprovar Selecionados
+                                     </button>
+                                     <div>
+                                         {{ $reqsPendentes->links() }}
+                                     </div>
+                                 </div>
                             </form>
                         @endif
                     </div>
@@ -332,6 +342,9 @@
                                                         @endforeach
                                                     </tbody>
                                                 </table>
+                                            </div>
+                                            <div class="d-flex justify-content-center mb-2">
+                                                {{ $docsParaAssinar->links() }}
                                             </div>
                                             <div class="d-grid">
                                                 <button type="button" class="btn btn-danger btn-sm rounded-pill fw-bold" data-bs-toggle="modal" data-bs-target="#modalSignDocs" id="btnSignDocs" disabled>
@@ -399,6 +412,9 @@
                                                         @endforeach
                                                     </tbody>
                                                 </table>
+                                            </div>
+                                            <div class="d-flex justify-content-center mb-2">
+                                                {{ $reqsParaAssinar->links() }}
                                             </div>
                                             <div class="d-grid">
                                                 <button type="button" class="btn btn-danger btn-sm rounded-pill fw-bold" data-bs-toggle="modal" data-bs-target="#modalSignReqs" id="btnSignReqs" disabled>

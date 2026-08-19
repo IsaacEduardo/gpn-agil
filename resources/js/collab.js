@@ -46,6 +46,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    // Reflete o estado REAL da ligação WebSocket (o Reverb tem de estar a correr).
+    wireConnectionStatus();
+
     const ydoc = new Y.Doc();
     const provider = new YReverbProvider(
         ydoc,
@@ -95,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
         wireToolbar(editor);
         wireDurability(editor);
         wireCheckpoint(editor);
-        banner('Ligado. Edição em tempo real ativa.', 'success');
+        // NÃO afirmamos "ligado" aqui: o estado real vem de wireConnectionStatus()/renderPresence().
     }
 
     // --- Barra de ferramentas de formatação (negrito, títulos, listas, alinhamento, tabela) ---
@@ -229,6 +232,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- Estado REAL da ligação em tempo real (o Reverb tem de estar a correr) ---
+    let jaLigou = false;
+    function wireConnectionStatus() {
+        const conn = window.Echo?.connector?.pusher?.connection;
+        if (!conn) return;
+        const showFallback = () => {
+            const link = document.getElementById('collab-fallback-link');
+            if (link) link.classList.remove('d-none');
+        };
+        conn.bind('connecting', () => banner('A ligar ao servidor de tempo real…', 'secondary'));
+        conn.bind('connected', () => { jaLigou = true; banner('Ligado ao servidor de tempo real.', 'success'); });
+        conn.bind('unavailable', () => {
+            banner('Servidor de tempo real indisponível. As suas alterações são guardadas, mas não vê as dos outros em direto — recarregue para sincronizar. (O servidor Reverb tem de estar a correr.)', 'warning');
+            showFallback();
+        });
+        conn.bind('failed', () => {
+            banner('Falha na ligação em tempo real. As alterações continuam a ser guardadas no servidor; recarregue para ver as dos outros.', 'danger');
+            showFallback();
+        });
+        conn.bind('disconnected', () => {
+            if (jaLigou) banner('Ligação em tempo real perdida — a tentar reconectar…', 'warning');
+        });
+    }
+
     function renderPresence(users) {
         const el = document.getElementById('collab-presence');
         if (!el) return;
@@ -242,6 +269,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const count = document.getElementById('collab-presence-count');
         if (count) count.textContent = users.length;
+        // A presença só popula quando o canal liga de facto → banner honesto com o total online.
+        if (users.length > 0) {
+            const n = users.length;
+            banner(`Edição em tempo real ativa — ${n} ${n === 1 ? 'pessoa' : 'pessoas'} online.`, 'success');
+        }
     }
 
     function toBase64(bytes) {

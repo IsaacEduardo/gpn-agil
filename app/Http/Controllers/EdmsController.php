@@ -67,8 +67,8 @@ class EdmsController extends Controller
             ->get();
 
         // --- 2. Buscar Documentos Arquivados (Filtros e busca) ---
-        $documentosInternos = collect([]);
-        $documentosEntrada = collect([]);
+        $documentosInternos = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 12);
+        $documentosEntrada = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 12);
 
         $searchActive = $request->filled('search') || $request->filled('type') || $request->filled('date_start') || $request->filled('date_end');
 
@@ -110,7 +110,7 @@ class EdmsController extends Controller
                     $internoQuery->whereDate('arquivado_em', '<=', $dateEnd);
                 }
 
-                $documentosInternos = $internoQuery->latest('arquivado_em')->get();
+                $documentosInternos = $internoQuery->latest('arquivado_em')->paginate(12, ['*'], 'page_int')->withQueryString();
             }
 
             // --- Query Documentos Entrada ---
@@ -145,13 +145,13 @@ class EdmsController extends Controller
                     $entradaQuery->whereDate('arquivado_em', '<=', $dateEnd);
                 }
 
-                $documentosEntrada = $entradaQuery->latest('arquivado_em')->get();
+                $documentosEntrada = $entradaQuery->latest('arquivado_em')->paginate(12, ['*'], 'page_ent')->withQueryString();
             }
         }
 
         // --- 3. Buscar Documentos Pendentes de Arquivamento (Apenas no Painel Geral / Raiz) ---
-        $pendentesInternos = collect([]);
-        $pendentesEntrada = collect([]);
+        $pendentesInternos = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 10);
+        $pendentesEntrada = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 10);
 
         if (! $currentFolder && $user->departamento_id) {
             $pendentesInternos = DocumentoInterno::where('arquivado', false)
@@ -159,12 +159,14 @@ class EdmsController extends Controller
                 ->where('departamento_id', $user->departamento_id)
                 ->with(['autor'])
                 ->latest()
-                ->get();
+                ->paginate(10, ['*'], 'page_pend_int')
+                ->withQueryString();
 
             $pendentesEntrada = DocumentoEntrada::naoArquivados()
                 ->where('departamento_id', $user->departamento_id)
                 ->latest()
-                ->get();
+                ->paginate(10, ['*'], 'page_pend_ent')
+                ->withQueryString();
         }
 
         // Departamentos para fins de Partilha

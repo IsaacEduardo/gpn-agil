@@ -35,14 +35,20 @@ class HtmlSanitizer
         libxml_use_internal_errors(true);
 
         $dom = new DOMDocument;
-        // Hack para UTF-8
-        $dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'), LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        // Envolve em container <div> para evitar aninhamento incorreto de elementos irmãos pelo DOMDocument
+        $wrappedHtml = '<div>'.mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8').'</div>';
+        $dom->loadHTML($wrappedHtml, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
 
         $this->cleanNode($dom);
 
         libxml_clear_errors();
 
-        return $dom->saveHTML();
+        $saved = trim($dom->saveHTML());
+        if (str_starts_with($saved, '<div>') && str_ends_with($saved, '</div>')) {
+            $saved = substr($saved, 5, -6);
+        }
+
+        return trim($saved);
     }
 
     protected function cleanNode($node)
@@ -77,6 +83,16 @@ class HtmlSanitizer
                             $attributesToRemove[] = $attr->name;
                         }
                     }
+
+                    // Sanitização de estilos inline estáticos que corrompem o layout A4
+                    if (strtolower($attr->name) === 'style') {
+                        $cleanedStyle = $this->sanitizeInlineStyle($attr->value);
+                        if (empty($cleanedStyle)) {
+                            $attributesToRemove[] = $attr->name;
+                        } else {
+                            $attr->value = $cleanedStyle;
+                        }
+                    }
                 }
                 foreach ($attributesToRemove as $attrName) {
                     $node->removeAttribute($attrName);
@@ -91,5 +107,34 @@ class HtmlSanitizer
                 $this->cleanNode($node->childNodes->item($i));
             }
         }
+    }
+
+    /**
+     * Remove propriedades de estilo inline que corrompem o layout de impressão A4
+     */
+    public function sanitizeInlineStyle(string $style): string
+    {
+        $rules = explode(';', $style);
+        $cleanRules = [];
+        $disallowedProps = [
+            'height', 'min-height', 'max-height',
+            'position', 'top', 'bottom', 'left', 'right',
+            'margin-top', 'margin-bottom',
+        ];
+
+        foreach ($rules as $rule) {
+            $parts = explode(':', $rule, 2);
+            if (count($parts) === 2) {
+                $prop = strtolower(trim($parts[0]));
+                $val = trim($parts[1]);
+
+                if (in_array($prop, $disallowedProps)) {
+                    continue;
+                }
+                $cleanRules[] = "{$prop}: {$val}";
+            }
+        }
+
+        return implode('; ', $cleanRules);
     }
 }

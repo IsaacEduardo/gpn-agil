@@ -95,6 +95,8 @@ class InstituicaoController extends Controller
 
         $dados->save();
 
+        \Illuminate\Support\Facades\Cache::forget('dados_instituicao_global');
+
         return redirect()->route('admin.instituicao.edit')->with('success', 'Configurações da instituição salvas com sucesso.');
     }
 }

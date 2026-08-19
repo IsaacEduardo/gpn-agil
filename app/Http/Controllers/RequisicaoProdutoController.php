@@ -305,17 +305,17 @@ class RequisicaoProdutoController extends Controller
             ]);
         }
 
-        $pdf = Pdf::loadView('requisicoes.produtos.pdf', [
+        $html = view('requisicoes.produtos.pdf', [
             'requisicao' => $requisicao,
             'empresa' => $empresa,
             'produtos' => $produtos,
-        ])->setPaper('a4');
+        ])->render();
 
         $codigo = $requisicao->codigo_sequencial ?? 'PRO-XXXX-000';
         $codigoSeguro = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $codigo);
         $nomeArquivo = 'Oficio_Requisicao_Produtos_'.$codigoSeguro.'.pdf';
 
-        return $pdf->stream($nomeArquivo);
+        return app(\App\Services\PdfRenderService::class)->createPdfResponse($html, $nomeArquivo);
     }
 
     public function print(?int $requisicaoId = null)

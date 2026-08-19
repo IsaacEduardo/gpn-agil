@@ -3,14 +3,16 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use HasFactory, HasRoles, Notifiable {
         hasPermissionTo as spatieHasPermissionTo;
     }
@@ -170,16 +172,51 @@ class User extends Authenticatable
     }
 
     /**
-     * Sobrescreve hasPermissionTo para incluir herança temporária de delegação e compatibilidade híbrida
+     * Ponte de migração para Spatie: mantém o papel Spatie sincronizado com o
+     * legado role_id na criação e sempre que role_id muda. Escritas Spatie
+     * diretas (assignRole/syncRoles) não são afetadas.
+     */
+    protected static function booted(): void
+    {
+        static::saved(function (self $user) {
+            $roleChanged = $user->wasRecentlyCreated
+                ? (bool) $user->role_id
+                : $user->wasChanged('role_id');
+
+            if (! $roleChanged) {
+                return;
+            }
+
+            $newName = $user->role_id ? Role::whereKey($user->role_id)->value('name') : null;
+
+            if (! $user->wasRecentlyCreated) {
+                $oldId = $user->getOriginal('role_id');
+                $oldName = $oldId ? Role::whereKey($oldId)->value('name') : null;
+                if ($oldName && $oldName !== $newName && $user->hasRole($oldName)) {
+                    $user->removeRole($oldName);
+                }
+            }
+
+            if ($newName) {
+                $spatieRole = \Spatie\Permission\Models\Role::findOrCreate($newName, 'web');
+                if (! $user->hasRole($spatieRole)) {
+                    $user->assignRole($spatieRole);
+                }
+            }
+        });
+    }
+
+    /**
+     * Sobrescreve hasPermissionTo para incluir herança temporária de delegação.
      */
     public function hasPermissionTo($permission, $guardName = null): bool
     {
-        // 1. Tenta verificar permissões diretas ou por cargos do próprio utilizador
+        // 1. Permissões diretas ou por papéis do próprio utilizador
         if ($this->hasDirectOrRolePermissionTo($permission, $guardName)) {
             return true;
         }
 
-        // 2. Tenta verificar via delegação ativa (herança de poderes de chefia)
+        // 2. Delegação ativa (herança temporária de poderes de chefia)
         $delegadoresAtivos = $this->delegadores()
             ->where('delegacao_inicio', '<=', now())
             ->where('delegacao_fim', '>=', now())
@@ -195,57 +232,20 @@ class User extends Authenticatable
     }
 
     /**
-     * Helper interno para verificação base de permissões (Spatie + legado)
+     * Verificação base de permissões (Spatie puro). O papel 'admin' passa em
+     * todas as verificações, preservando a semântica do sistema anterior.
      */
     public function hasDirectOrRolePermissionTo($permission, $guardName = null): bool
     {
-        // 1. Tenta verificar via Spatie
+        if ($this->hasRole('admin')) {
+            return true;
+        }
+
         try {
-            if ($this->spatieHasPermissionTo($permission, $guardName)) {
-                return true;
-            }
-        } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist $e) {
-            // Permissão não existe no Spatie, continua para a checagem legada
+            return $this->spatieHasPermissionTo($permission, $guardName);
+        } catch (PermissionDoesNotExist $e) {
+            return false;
         }
-
-        // 2. Fallback para checagem legada (compatibilidade de testes)
-        $role = $this->role;
-        if ($role) {
-            if ($role->name === 'admin') {
-                return true;
-            }
-            if (method_exists($role, 'permissions')) {
-                $permissionName = is_string($permission) ? $permission : ($permission->name ?? null);
-                if ($permissionName) {
-                    // Mapeamento de compatibilidade de nomes antigos/novos
-                    $aliases = [
-                        'reservas.aprovar' => ['aprovar_reservas'],
-                        'requisicoes.aprovar' => ['aprovar_requisicoes'],
-                        'requisicoes.listar_todas' => ['requisicoes.view_any'],
-                        'requisicoes.listar' => ['requisicoes.view'],
-                        'reservas.listar' => ['reservas.view', 'reservas.view_any'],
-                        'documentos_entrada.encaminhar' => ['encaminhar_documentos_entrada'],
-                        'documentos_entrada.listar' => ['listar_documentos_entrada'],
-                    ];
-
-                    $namesToCheck = [$permissionName];
-                    if (isset($aliases[$permissionName])) {
-                        $namesToCheck = array_merge($namesToCheck, $aliases[$permissionName]);
-                    }
-
-                    $perms = $role->permissions;
-                    if ($perms) {
-                        foreach ($namesToCheck as $name) {
-                            if ($perms->contains('name', $name)) {
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -305,6 +305,6 @@ class User extends Authenticatable
         $gabineteId = $gabinete instanceof Gabinete ? $gabinete->id : (int) $gabinete;
         $superGabinete = $this->gabineteSuperGerenciado;
 
-        return $superGabinete && (int)$superGabinete->id === $gabineteId;
+        return $superGabinete && (int) $superGabinete->id === $gabineteId;
     }
 }

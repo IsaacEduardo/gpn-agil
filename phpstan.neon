@@ -1,0 +1,17 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 8
+    paths:
+        - app/Services
+        - app/Support
+        - app/Models
+
+    excludePaths:
+        - storage/*
+        - bootstrap/*
+        - vendor/*
+
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false

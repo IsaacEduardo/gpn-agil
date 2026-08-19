@@ -170,6 +170,44 @@ class RequisicaoService
     }
 
     /**
+     * Emite visto de aprovação do departamento
+     */
+    public function emitirVistoAprovado(Requisicao $requisicao, User $user, ?string $observacao = null): void
+    {
+        if ($requisicao->status !== StatusRequisicao::PENDENTE) {
+            throw new \DomainException('Visto só pode ser emitido enquanto a requisição está pendente.');
+        }
+
+        if ($requisicao->vistoDepartamentoAprovado()) {
+            throw new \DomainException('O visto do departamento já foi aprovado.');
+        }
+
+        $requisicao->update([
+            'visto_departamento_status' => 'aprovado',
+            'visto_departamento_por' => $user->id,
+            'visto_departamento_data' => now(),
+            'visto_departamento_observacao' => $observacao,
+        ]);
+    }
+
+    /**
+     * Emite visto de rejeição do departamento
+     */
+    public function emitirVistoRejeitado(Requisicao $requisicao, User $user, string $observacao): void
+    {
+        if ($requisicao->status !== StatusRequisicao::PENDENTE) {
+            throw new \DomainException('Visto só pode ser emitido enquanto a requisição está pendente.');
+        }
+
+        $requisicao->update([
+            'visto_departamento_status' => 'rejeitado',
+            'visto_departamento_por' => $user->id,
+            'visto_departamento_data' => now(),
+            'visto_departamento_observacao' => $observacao,
+        ]);
+    }
+
+    /**
      * Obtém a rota de redirecionamento para o tipo
      */
     public function getRedirectRoute(string $tipo): string

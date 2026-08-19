@@ -183,7 +183,8 @@ class DepartamentoDashboardController extends Controller
             ->where('status', DocumentoStatus::EM_ANALISE)
             ->with(['autor', 'especie'])
             ->orderBy('created_at')
-            ->get();
+            ->paginate(10, ['*'], 'page_docs_aprov')
+            ->withQueryString();
 
         // Requisições Pendentes (Status Pendente)
         $reqsPendentes = Requisicao::with(['usuario'])
@@ -192,22 +193,31 @@ class DepartamentoDashboardController extends Controller
             })
             ->where('status', StatusRequisicao::PENDENTE)
             ->orderBy('created_at')
-            ->get();
+            ->paginate(10, ['*'], 'page_reqs_pend')
+            ->withQueryString();
 
         // Docs para Assinar (Aprovados e pendentes de assinatura)
         $signatureService = app(\App\Services\SignatureService::class);
         $user = Auth::user();
 
-        $docsParaAssinar = DocumentoInterno::where('departamento_id', $departamento->id)
+        $filteredDocsSign = DocumentoInterno::where('departamento_id', $departamento->id)
             ->where('status', DocumentoStatus::APROVADO)
             ->with(['especie', 'departamento.gabinete']) // canSign navega estas relações
             ->get()
             ->filter(function ($doc) use ($signatureService, $user) {
                 return $signatureService->canSign($doc, $user);
             });
+        $pageDocsSign = (int) $request->input('page_docs_sign', 1);
+        $docsParaAssinar = new \Illuminate\Pagination\LengthAwarePaginator(
+            $filteredDocsSign->forPage($pageDocsSign, 10)->values(),
+            $filteredDocsSign->count(),
+            10,
+            $pageDocsSign,
+            ['path' => $request->url(), 'query' => $request->query(), 'pageName' => 'page_docs_sign']
+        );
 
         // Requisicoes para Assinar (Aprovadas)
-        $reqsParaAssinar = Requisicao::whereHas('usuario', function ($q) use ($departamento) {
+        $filteredReqsSign = Requisicao::whereHas('usuario', function ($q) use ($departamento) {
             $q->where('departamento_id', $departamento->id);
         })
             ->where('status', StatusRequisicao::APROVADO)
@@ -217,6 +227,14 @@ class DepartamentoDashboardController extends Controller
             ->filter(function ($req) use ($signatureService, $user) {
                 return $signatureService->canSign($req, $user);
             });
+        $pageReqsSign = (int) $request->input('page_reqs_sign', 1);
+        $reqsParaAssinar = new \Illuminate\Pagination\LengthAwarePaginator(
+            $filteredReqsSign->forPage($pageReqsSign, 10)->values(),
+            $filteredReqsSign->count(),
+            10,
+            $pageReqsSign,
+            ['path' => $request->url(), 'query' => $request->query(), 'pageName' => 'page_reqs_sign']
+        );
 
         return view('departamento.dashboard', compact(
             'departamento',

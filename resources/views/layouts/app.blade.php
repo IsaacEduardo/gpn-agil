@@ -215,6 +215,53 @@
                     }, 500);
                 });
             }, 5000); // 5 seconds delay
+        // UX P4: Global Toast Notification Helper
+        window.showToast = function(message, type = 'success', duration = 4000) {
+            const container = document.querySelector('.toast-container');
+            if (!container) return;
+
+            const toastId = 'toast-' + Date.now();
+            const bgClass = type === 'success' ? 'bg-success' : (type === 'error' ? 'bg-danger' : 'bg-primary');
+            const iconClass = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-triangle' : 'fa-info-circle');
+
+            const toastHtml = `
+                <div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0 shadow-lg mb-2" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body d-flex align-items-center fs-6">
+                            <i class="fas ${iconClass} me-2"></i>
+                            ${message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            `;
+
+            container.insertAdjacentHTML('beforeend', toastHtml);
+            const toastEl = document.getElementById(toastId);
+            if (window.bootstrap && window.bootstrap.Toast) {
+                const toast = new window.bootstrap.Toast(toastEl, { delay: duration });
+                toast.show();
+            }
+        };
+
+        // UX P4: Global Keyboard Shortcuts (Ctrl+S / Ctrl+P)
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                const saveBtn = document.querySelector('button[type="submit"], #saveDraftBtn, #saveBtn');
+                if (saveBtn) {
+                    saveBtn.click();
+                    window.showToast('Guardado rápido acionado via teclado!', 'success');
+                }
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+                const pdfBtn = document.querySelector('#openPdfBtn, #printPdfBtn, .btn-print-pdf');
+                if (pdfBtn) {
+                    e.preventDefault();
+                    pdfBtn.click();
+                }
+            }
         });
     </script>
     @yield('scripts')

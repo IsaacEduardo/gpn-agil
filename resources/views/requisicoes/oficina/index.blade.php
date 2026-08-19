@@ -27,12 +27,12 @@
             <div class="card-body p-4">
                 <div class="bg-light p-3 rounded mb-4 border">
                     <form id="filtrosForm" method="GET" action="{{ route('requisicoes.oficina.index') }}" class="row g-3 align-items-end">
-                        <div class="col-md-3">
+                        <div class="col-lg-3 col-md-4">
                             <label for="q" class="form-label fw-bold text-muted small text-uppercase">Buscar</label>
                             <input type="text" id="q" name="q" value="{{ request('q') }}"
                                 class="form-control" placeholder="Código, empresa...">
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-lg-2 col-md-4">
                             <label for="status" class="form-label fw-bold text-muted small text-uppercase">Status</label>
                             <select id="status" name="status" class="form-select">
                                 <option value="">Todos</option>
@@ -46,26 +46,26 @@
                                     Concluído</option>
                             </select>
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-lg-2 col-md-4">
                             <label for="empresa" class="form-label fw-bold text-muted small text-uppercase">Empresa</label>
                             <input type="text" id="empresa" name="empresa" value="{{ request('empresa') }}"
                                 class="form-control" placeholder="Nome da empresa">
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-lg-2 col-md-4">
                             <label for="data_inicio" class="form-label fw-bold text-muted small text-uppercase">Data Início</label>
                             <input type="date" id="data_inicio" name="data_inicio"
                                 value="{{ request('data_inicio') }}" class="form-control">
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-lg-2 col-md-4">
                             <label for="data_fim" class="form-label fw-bold text-muted small text-uppercase">Data Fim</label>
                             <input type="date" id="data_fim" name="data_fim" value="{{ request('data_fim') }}"
                                 class="form-control">
                         </div>
-                        <div class="col-md-1 d-flex gap-2">
-                            <button type="submit" class="btn btn-primary w-100" title="Filtrar">
+                        <div class="col-lg-1 col-md-4 d-flex gap-1">
+                            <button type="submit" class="btn btn-primary flex-fill" title="Filtrar">
                                 <i class="fas fa-search"></i>
                             </button>
-                            <a href="{{ route('requisicoes.oficina.index') }}" class="btn btn-outline-secondary w-100" title="Limpar">
+                            <a href="{{ route('requisicoes.oficina.index') }}" class="btn btn-outline-secondary flex-fill" title="Limpar">
                                 <i class="fas fa-times"></i>
                             </a>
                         </div>

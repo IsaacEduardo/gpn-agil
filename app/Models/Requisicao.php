@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
+
 class Requisicao extends Model
 {
     use HasFactory;
@@ -38,11 +40,28 @@ class Requisicao extends Model
 
     protected $casts = [
         'tipo' => TipoRequisicao::class,
-        'status' => StatusRequisicao::class,
         'data_requisicao' => 'date',
         'visto_departamento_data' => 'datetime',
         'assinado_em' => 'datetime',
     ];
+
+    protected function status(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if ($value instanceof StatusRequisicao) {
+                    return $value;
+                }
+                return StatusRequisicao::tryFromValue($value);
+            },
+            set: function ($value) {
+                if ($value instanceof StatusRequisicao) {
+                    return $value->value;
+                }
+                return StatusRequisicao::tryFromValue($value)?->value ?? $value;
+            }
+        );
+    }
 
     // Constants for tipo values
     const TIPO_PRODUTO = TipoRequisicao::PRODUTO;

@@ -26,15 +26,34 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Provedor de IA do Assistente (isolado por interface para permitir troca por on-premise/fake).
+        // Provedor de IA do Assistente (isolado por interface para permitir troca por Kimi / Anthropic / Fake).
         $this->app->singleton(\App\Services\Ai\LlmClient::class, function () {
-            $config = config('services.anthropic', []);
-            if (($config['driver'] ?? 'anthropic') === 'fake') {
+            $driver = env('ASSISTENTE_DRIVER', config('services.anthropic.driver', 'anthropic'));
+            if (in_array(strtolower($driver), ['kimi', 'moonshot'])) {
+                return new \App\Services\Ai\KimiLlmClient(config('services.kimi', []));
+            }
+            if ($driver === 'fake') {
                 return new \App\Services\Ai\FakeLlmClient;
             }
 
-            return new \App\Services\Ai\AnthropicLlmClient($config);
+            return new \App\Services\Ai\AnthropicLlmClient(config('services.anthropic', []));
         });
+
+        // Ligação do Repositório de Domínio (DDD Clean Architecture)
+        $this->app->bind(
+            \App\Domain\DocumentManagement\Repositories\DocumentoEntradaRepositoryInterface::class,
+            \App\Infrastructure\Persistence\Eloquent\EloquentDocumentoEntradaRepository::class
+        );
+
+        $this->app->bind(
+            \App\Domain\LandManagement\Repositories\LoteRepositoryInterface::class,
+            \App\Infrastructure\Persistence\Eloquent\EloquentLoteRepository::class
+        );
+
+        $this->app->bind(
+            \App\Domain\RequisitionFleet\Repositories\ViaturaRepositoryInterface::class,
+            \App\Infrastructure\Persistence\Eloquent\EloquentViaturaRepository::class
+        );
     }
 
     /**
@@ -49,36 +68,54 @@ class AppServiceProvider extends ServiceProvider
         // invisíveis no ecrã, o que faz as listagens parecerem não paginadas.
         Paginator::useBootstrapFive();
 
-        // Compartilhar dados da instituição com todas as views
+        // Compartilhar dados da instituição com todas as views (com cache de alta performance)
         try {
-            $dados = Schema::hasTable('dados_instituicao')
-                ? (DadosInstituicao::first() ?? new DadosInstituicao)
-                : new DadosInstituicao;
+            $dados = Cache::rememberForever('dados_instituicao_global', function () {
+                $inst = Schema::hasTable('dados_instituicao')
+                    ? (DadosInstituicao::first() ?? new DadosInstituicao)
+                    : new DadosInstituicao;
+
+                // Fallbacks padrão para Namibe / Angola
+                if (empty($inst->nome_oficial)) {
+                    $inst->nome_oficial = 'Governo Provincial do Namibe';
+                }
+                if (empty($inst->sigla)) {
+                    $inst->sigla = 'GPN';
+                }
+                if (empty($inst->cidade)) {
+                    $inst->cidade = 'Moçâmedes';
+                }
+                if (empty($inst->cabecalho_linha1)) {
+                    $inst->cabecalho_linha1 = 'REPÚBLICA DE ANGOLA';
+                }
+                if (empty($inst->cabecalho_linha2)) {
+                    $inst->cabecalho_linha2 = 'GOVERNO PROVINCIAL DO NAMIBE';
+                }
+
+                return $inst;
+            });
         } catch (\Exception $e) {
             $dados = new DadosInstituicao;
-        }
-
-        // Fallbacks padrão para Namibe / Angola
-        if (empty($dados->nome_oficial)) {
             $dados->nome_oficial = 'Governo Provincial do Namibe';
-        }
-        if (empty($dados->sigla)) {
             $dados->sigla = 'GPN';
-        }
-        if (empty($dados->cidade)) {
             $dados->cidade = 'Moçâmedes';
-        }
-        if (empty($dados->cabecalho_linha1)) {
             $dados->cabecalho_linha1 = 'REPÚBLICA DE ANGOLA';
-        }
-        if (empty($dados->cabecalho_linha2)) {
             $dados->cabecalho_linha2 = 'GOVERNO PROVINCIAL DO NAMIBE';
         }
 
         View::share('dadosInstituicao', $dados);
 
+        // Invalidar o cache da instituição sempre que os dados forem alterados ou removidos
+        DadosInstituicao::saved(function () {
+            Cache::forget('dados_instituicao_global');
+        });
+        DadosInstituicao::deleted(function () {
+            Cache::forget('dados_instituicao_global');
+        });
+
         // Registrar Observers
         Requisicao::observe(RequisicaoObserver::class);
+        \App\Models\DocumentoInterno::observe(\App\Observers\DocumentoInternoObserver::class);
 
         // Limpar caches de permissões do utilizador
         User::saved(function ($user) {

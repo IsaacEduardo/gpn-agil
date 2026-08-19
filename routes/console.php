@@ -351,6 +351,9 @@ Artisan::command('docs:migrate-storage {--apply} {--from-disk=} {--to-disk=} {--
     return 0;
 })->purpose('Migrar arquivos entre discos (ex.: public → local) mantendo a hierarquia');
 
+// Agendamento do Expurgo de Rascunhos Obsoletos (Bloco A - Retenção)
+Schedule::command('documents:purge-drafts --days=30')->dailyAt('03:00');
+
 // Agendamento da Política de Retenção
 Schedule::job(new CheckRetentionPolicy)->dailyAt('02:00');
 
@@ -359,3 +362,6 @@ Schedule::command('docs:check-sla')->dailyAt('08:00');
 
 // Resumo diário de notificações não lidas (apenas para quem optou por recebê-lo)
 Schedule::command('notifications:digest')->dailyAt('07:00');
+
+// Expurgo semanal de auditoria e históricos de login (365 dias de retenção)
+Schedule::command('audit:prune --days=365')->weeklyOn(0, '04:00');

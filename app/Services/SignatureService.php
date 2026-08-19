@@ -139,6 +139,9 @@ class SignatureService
 
         if ($documento instanceof DocumentoInterno) {
             $updateData['status'] = DocumentoStatus::ASSINADO;
+            $updateData['arquivado'] = true;
+            $updateData['arquivado_em'] = $timestamp;
+            $updateData['arquivado_por'] = $user->id;
             $documento->versao_major += 1;
             $documento->versao_minor = 0;
             $documento->versao_patch = 0;
@@ -245,6 +248,9 @@ class SignatureService
 
         if ($documento instanceof DocumentoInterno) {
             $updateData['status'] = DocumentoStatus::ASSINADO;
+            $updateData['arquivado'] = true;
+            $updateData['arquivado_em'] = $timestamp;
+            $updateData['arquivado_por'] = $user->id;
             // Incrementa Major Version (x.x.x -> Y.0.0) ao assinar (publicar)
             $documento->versao_major += 1;
             $documento->versao_minor = 0;

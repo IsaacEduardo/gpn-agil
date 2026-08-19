@@ -2,13 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Enums\StatusRequisicao;
 use App\Models\Departamento;
 use App\Models\Gabinete;
-use App\Models\Permission;
 use App\Models\Requisicao;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class RequisicaoAuthorizationTest extends TestCase
@@ -24,9 +25,14 @@ class RequisicaoAuthorizationTest extends TestCase
         return compact('admin', 'user', 'chefe');
     }
 
-    private function perm(string $name, string $desc): Permission
+    /**
+     * Concede uma permissão Spatie ao papel (a linha de roles é partilhada
+     * entre o model legado e o Spatie).
+     */
+    private function grantToRole(Role $role, string $permission): void
     {
-        return Permission::firstOrCreate(['name' => $name], ['description' => $desc]);
+        $perm = Permission::findOrCreate($permission, 'web');
+        \Spatie\Permission\Models\Role::findByName($role->name, 'web')->givePermissionTo($perm);
     }
 
     private function requisicao(User $owner): Requisicao
@@ -55,7 +61,7 @@ class RequisicaoAuthorizationTest extends TestCase
             ->assertRedirect(route('requisicoes.show', $req->id));
 
         $req->refresh();
-        $this->assertEquals(\App\Enums\StatusRequisicao::APROVADO, $req->status);
+        $this->assertEquals(StatusRequisicao::APROVADO, $req->status);
     }
 
     public function test_usuario_com_permissao_pode_aprovar(): void
@@ -63,8 +69,7 @@ class RequisicaoAuthorizationTest extends TestCase
         $roles = $this->seedRoles();
         $gab = Gabinete::create(['nome' => 'Gab A']);
         $dep = Departamento::create(['nome' => 'A', 'gabinete_id' => $gab->id]);
-        $p = $this->perm('aprovar_requisicoes', 'aprovar');
-        $roles['user']->permissions()->syncWithoutDetaching([$p->id]);
+        $this->grantToRole($roles['user'], 'requisicoes.aprovar');
         $user = User::factory()->create(['role_id' => $roles['user']->id]);
         $owner = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $dep->id]);
         $req = $this->requisicao($owner);
@@ -107,8 +112,7 @@ class RequisicaoAuthorizationTest extends TestCase
     public function test_visto_chefe_mesmo_departamento_pode(): void
     {
         $roles = $this->seedRoles();
-        $pv = $this->perm('visto_departamento_requisicoes', 'visto');
-        $roles['chefe']->permissions()->syncWithoutDetaching([$pv->id]);
+        $this->grantToRole($roles['chefe'], 'visto_departamento_requisicoes');
         $gab = Gabinete::create(['nome' => 'Gab A']);
         $dep = Departamento::create(['nome' => 'A', 'gabinete_id' => $gab->id]);
         $chefe = User::factory()->create(['role_id' => $roles['chefe']->id, 'departamento_id' => $dep->id]);
@@ -123,8 +127,7 @@ class RequisicaoAuthorizationTest extends TestCase
     public function test_visto_chefe_outro_departamento_forbidden(): void
     {
         $roles = $this->seedRoles();
-        $pv = $this->perm('visto_departamento_requisicoes', 'visto');
-        $roles['chefe']->permissions()->syncWithoutDetaching([$pv->id]);
+        $this->grantToRole($roles['chefe'], 'visto_departamento_requisicoes');
         $gabA = Gabinete::create(['nome' => 'Gab A']);
         $gabB = Gabinete::create(['nome' => 'Gab B']);
         $depA = Departamento::create(['nome' => 'A', 'gabinete_id' => $gabA->id]);

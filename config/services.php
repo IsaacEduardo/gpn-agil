@@ -46,18 +46,24 @@ return [
     ],
 
     'anthropic' => [
-        // Driver do provedor de IA: 'anthropic' (produção) ou 'fake' (demonstração local, sem custos/rede).
+        // Driver do provedor de IA: 'anthropic' (produção), 'kimi' (Kimi AI / Moonshot) ou 'fake'.
         'driver' => env('ASSISTENTE_DRIVER', 'anthropic'),
         'key' => env('ANTHROPIC_API_KEY'),
         'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
         'version' => env('ANTHROPIC_VERSION', '2023-06-01'),
-        // Modelo padrão (respostas fundamentadas) e modelo rápido/barato.
-        // Confirmar IDs/preços atuais na documentação da Anthropic antes de produção.
         'model' => env('ASSISTENTE_MODEL', 'claude-sonnet-4-6'),
         'model_fast' => env('ASSISTENTE_MODEL_FAST', 'claude-haiku-4-5-20251001'),
         'max_tokens' => (int) env('ASSISTENTE_MAX_TOKENS', 1024),
-        // Orçamento de caracteres do contexto enviado ao modelo (proxy de tokens).
         'context_char_budget' => (int) env('ASSISTENTE_CONTEXT_CHARS', 24000),
+        'timeout' => (int) env('ASSISTENTE_TIMEOUT', 60),
+    ],
+
+    'kimi' => [
+        'driver' => 'kimi',
+        'key' => env('KIMI_API_KEY', env('MOONSHOT_API_KEY')),
+        'base_url' => env('KIMI_BASE_URL', 'https://api.moonshot.ai/v1'),
+        'model' => env('ASSISTENTE_MODEL', 'kimi-k2.6'),
+        'max_tokens' => (int) env('ASSISTENTE_MAX_TOKENS', 1024),
         'timeout' => (int) env('ASSISTENTE_TIMEOUT', 60),
     ],
 

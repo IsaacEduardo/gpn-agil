@@ -238,6 +238,9 @@
                                         </tbody>
                                     </table>
                                 </div>
+                                <div class="d-flex justify-content-center mt-3">
+                                    {{ $docsParaAssinar->links() }}
+                                </div>
                                 
                                 @if(!auth()->user()->isSuperChefeGabinete())
                                 {{-- Sticky Action Bar --}}
@@ -342,6 +345,9 @@
                                             @endforeach
                                         </tbody>
                                     </table>
+                                </div>
+                                <div class="d-flex justify-content-center mt-3">
+                                    {{ $docsParaAprovar->links() }}
                                 </div>
 
                                 @if(!auth()->user()->isSuperChefeGabinete())

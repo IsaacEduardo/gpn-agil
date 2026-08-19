@@ -110,4 +110,17 @@ class EmpresaController extends Controller
 
         return redirect()->route('empresas.index')->with('status', 'Empresa excluída com sucesso.');
     }
+
+    public function apiDetails(Empresa $empresa)
+    {
+        return response()->json([
+            'id' => $empresa->id,
+            'nome' => $empresa->nome,
+            'contacto' => $empresa->contacto,
+            'nif' => $empresa->nif,
+            'telefone_principal' => $empresa->telefone_principal,
+            'email_institucional' => $empresa->email_institucional,
+            'endereco' => $empresa->endereco,
+        ]);
+    }
 }

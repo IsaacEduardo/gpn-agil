@@ -260,7 +260,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('documentos-internos/preview', [DocumentoInternoController::class, 'preview'])->name('documentos-internos.preview');
     Route::post('documentos-internos/{documentoInterno}/sign', [DocumentoInternoController::class, 'sign'])->name('documentos-internos.sign');
     Route::post('documentos-internos/{documentoInterno}/restore/{version}', [DocumentoInternoController::class, 'restore'])->name('documentos-internos.restore');
-    Route::post('documentos-internos/{documentoInterno}/favorite', [DocumentoInternoController::class, 'toggleFavorite'])->name('documentos-internos.favorite');
+    Route::post('documentos-internos/batch-zip', [DocumentoInternoController::class, 'batchDownloadZip'])->name('documentos-internos.batch-zip');
+    Route::post('documentos-internos/auto-save/{documentoInterno?}', [DocumentoInternoController::class, 'autoSave'])->name('documentos-internos.auto-save');
+    Route::get('/empresas/{empresa}/json', [EmpresaController::class, 'apiDetails'])->name('empresas.json');
     Route::get('documentos-internos/{documentoInterno}/pdf', [DocumentoInternoController::class, 'downloadPdf'])->name('documentos-internos.pdf');
 
     // Workflow Routes

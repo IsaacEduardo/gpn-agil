@@ -1,0 +1,153 @@
+openapi: 3.0.3
+info:
+  title: API GPN-AGIL - Gestão de Documentos, Lotes e Requisições
+  description: |
+    Especificação formal OpenAPI 3.0 das APIs RESTful do sistema GPN-AGIL (Governo Provincial do Namibe).
+    Contempla os domínios de Gestão Documental, Gestão Territorial (Lotes), Requisições Logísticas e Assinaturas Digitais.
+  version: 1.0.0
+  contact:
+    name: Equipe de Engenharia GPN-AGIL
+    email: suporte@gpn.gov.ao
+
+servers:
+  - url: http://127.0.0.1:8000/api/v1
+    description: Servidor de Desenvolvimento Local
+  - url: https://agil.gpn.gov.ao/api/v1
+    description: Ambientes de Produção
+
+paths:
+  /documentos-entradas:
+    get:
+      summary: Listar Documentos de Entrada
+      description: Retorna listagem paginada de documentos de entrada com filtros por status, gabinete e departamento.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pendente, recebido, em_analise, arquivado]
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de documentos retornada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DocumentoEntrada'
+    post:
+      summary: Criar Documento de Entrada
+      description: Registra um novo documento de entrada no sistema.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CriarDocumentoEntradaInput'
+      responses:
+        '201':
+          description: Documento criado com sucesso
+
+  /documentos-entradas/{id}/assinar:
+    post:
+      summary: Assinar Documento Digitalmente
+      description: Aplica assinatura digital PKCS#12 (.p12) ao documento.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  description: Senha do utilizador
+                certificate_password:
+                  type: string
+                  description: Senha do certificado P12 (opcional se não protegido por senha individual)
+      responses:
+        '200':
+          description: Documento assinado com sucesso
+
+  /lotes:
+    get:
+      summary: Listar Lotes Territoriais
+      description: Retorna a lista de lotes cadastrados e suas áreas/status.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Sucesso
+
+  /requisicoes:
+    get:
+      summary: Listar Requisições Logísticas
+      description: Retorna requisições de viaturas, serviços, materiais e passagens.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Sucesso
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    DocumentoEntrada:
+      type: object
+      properties:
+        id:
+          type: integer
+        numero_protocolo:
+          type: string
+        assunto:
+          type: string
+        origem:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CriarDocumentoEntradaInput:
+      type: object
+      required:
+        - assunto
+        - origem
+      properties:
+        numero_protocolo:
+          type: string
+        assunto:
+          type: string
+        origem:
+          type: string
+        departamento_id:
+          type: integer

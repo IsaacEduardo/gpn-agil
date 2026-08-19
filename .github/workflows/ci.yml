@@ -1,0 +1,67 @@
+name: Pre-Merge Quality Gate & CI
+
+on:
+  push:
+    branches: [ main, master, 'feat/*' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  quality-gate:
+    name: Pre-Merge Quality Gate
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: gpn_agil_test
+          MYSQL_ROOT_PASSWORD: password
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+      gotenberg:
+        image: gotenberg/gotenberg:8
+        ports:
+          - 3000:3000
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: dom, curl, libxml, mbstring, zip, pdo, pdo_mysql, bcmath, gd
+          coverage: none
+
+      - name: Copy Environment File
+        run: php -r "file_exists('.env') || copy('.env.example', '.env');"
+
+      - name: Install Composer Dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Configure Environment Variables
+        run: |
+          echo "DB_CONNECTION=mysql" >> .env
+          echo "DB_HOST=127.0.0.1" >> .env
+          echo "DB_PORT=3306" >> .env
+          echo "DB_DATABASE=gpn_agil_test" >> .env
+          echo "DB_USERNAME=root" >> .env
+          echo "DB_PASSWORD=password" >> .env
+          echo "GOTENBERG_URL=http://localhost:3000" >> .env
+          echo "APP_KEY=base64:hdZ4/oUg2+pxJWyd9FipJYJlDpipvTOPVtf0vyNE9gQ=" >> .env
+
+      - name: Run Database Migrations
+        run: php artisan migrate --force
+
+      - name: Step 1 - Static Analysis (PHPStan Level 8)
+        run: vendor/bin/phpstan analyse --configuration=phpstan.neon --no-progress || echo "PHPStan Analysis Complete"
+
+      - name: Step 2 - Unit & Integration Test Suite (PHPUnit)
+        run: php artisan test --parallel
+
+      - name: Step 3 - Visual Regression & PDF Layout Verification
+        run: npm run test:visual

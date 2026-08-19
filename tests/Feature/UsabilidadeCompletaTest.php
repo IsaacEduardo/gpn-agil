@@ -7,13 +7,14 @@ use App\Enums\StatusRequisicao;
 use App\Models\Departamento;
 use App\Models\DocumentoEntrada;
 use App\Models\Gabinete;
-use App\Models\Permission;
 use App\Models\Requisicao;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\DocumentoEspeciesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class UsabilidadeCompletaTest extends TestCase
@@ -39,7 +40,7 @@ class UsabilidadeCompletaTest extends TestCase
         parent::setUp();
 
         // Seed species
-        $this->seed(\Database\Seeders\DocumentoEspeciesSeeder::class);
+        $this->seed(DocumentoEspeciesSeeder::class);
 
         // 1. Setup Basic Structure (Gabinetes & Departamentos)
         $this->gabinete = Gabinete::create([
@@ -64,14 +65,12 @@ class UsabilidadeCompletaTest extends TestCase
         $roleChefe = Role::firstOrCreate(['name' => 'chefe-departamento']);
         $roleUser = Role::firstOrCreate(['name' => 'user']); // Normal user
 
-        // Create Permissions if they don't exist
-        $permVisto = Permission::firstOrCreate(['name' => 'visto_departamento_requisicoes']);
-        $permAprovarReq = Permission::firstOrCreate(['name' => 'aprovar_requisicoes']);
-
-        // Assign permissions to roles
-        if (method_exists($roleChefe, 'permissions')) {
-            $roleChefe->permissions()->syncWithoutDetaching([$permVisto->id, $permAprovarReq->id]);
-        }
+        // Conceder permissões Spatie ao papel de chefe (linha de roles partilhada)
+        $spatieChefe = \Spatie\Permission\Models\Role::findByName($roleChefe->name, 'web');
+        $spatieChefe->givePermissionTo(
+            Permission::findOrCreate('visto_departamento_requisicoes', 'web'),
+            Permission::findOrCreate('requisicoes.aprovar', 'web'),
+        );
 
         // 3. Create Users
         $this->admin = User::factory()->create([

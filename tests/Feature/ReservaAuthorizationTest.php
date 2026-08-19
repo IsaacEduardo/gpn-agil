@@ -4,11 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Departamento;
 use App\Models\Gabinete;
-use App\Models\Permission;
 use App\Models\ReservaEspaco;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class ReservaAuthorizationTest extends TestCase
@@ -24,9 +24,14 @@ class ReservaAuthorizationTest extends TestCase
         return compact('admin', 'user', 'chefe');
     }
 
-    private function perm(string $name, string $desc): Permission
+    /**
+     * Concede uma permissão Spatie ao papel (a linha de roles é partilhada
+     * entre o model legado e o Spatie).
+     */
+    private function grantToRole(Role $role, string $permission): void
     {
-        return Permission::firstOrCreate(['name' => $name], ['description' => $desc]);
+        $perm = Permission::findOrCreate($permission, 'web');
+        \Spatie\Permission\Models\Role::findByName($role->name, 'web')->givePermissionTo($perm);
     }
 
     private function reserva(User $owner): ReservaEspaco
@@ -67,8 +72,7 @@ class ReservaAuthorizationTest extends TestCase
         $roles = $this->seedRoles();
         $gab = Gabinete::create(['nome' => 'Gab A']);
         $dep = Departamento::create(['nome' => 'A', 'gabinete_id' => $gab->id]);
-        $p = $this->perm('aprovar_reservas', 'aprovar');
-        $roles['user']->permissions()->syncWithoutDetaching([$p->id]);
+        $this->grantToRole($roles['user'], 'reservas.aprovar');
         $user = User::factory()->create(['role_id' => $roles['user']->id]);
         $owner = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $dep->id]);
         $reserva = $this->reserva($owner);
@@ -95,8 +99,7 @@ class ReservaAuthorizationTest extends TestCase
     public function test_visto_usuario_com_permissao_pode(): void
     {
         $roles = $this->seedRoles();
-        $pv = $this->perm('visto_departamento_reservas', 'visto');
-        $roles['user']->permissions()->syncWithoutDetaching([$pv->id]);
+        $this->grantToRole($roles['user'], 'visto_departamento_reservas');
         $gab = Gabinete::create(['nome' => 'Gab A']);
         $dep = Departamento::create(['nome' => 'A', 'gabinete_id' => $gab->id]);
         $user = User::factory()->create(['role_id' => $roles['user']->id]);
@@ -111,8 +114,7 @@ class ReservaAuthorizationTest extends TestCase
     public function test_visto_chefe_mesmo_dep_com_permissao_pode(): void
     {
         $roles = $this->seedRoles();
-        $pv = $this->perm('visto_departamento_reservas', 'visto');
-        $roles['chefe']->permissions()->syncWithoutDetaching([$pv->id]);
+        $this->grantToRole($roles['chefe'], 'visto_departamento_reservas');
         $gab = Gabinete::create(['nome' => 'Gab A']);
         $dep = Departamento::create(['nome' => 'A', 'gabinete_id' => $gab->id]);
         $chefe = User::factory()->create(['role_id' => $roles['chefe']->id, 'departamento_id' => $dep->id]);
@@ -127,8 +129,7 @@ class ReservaAuthorizationTest extends TestCase
     public function test_visto_chefe_outro_dep_forbidden(): void
     {
         $roles = $this->seedRoles();
-        $pv = $this->perm('visto_departamento_reservas', 'visto');
-        $roles['chefe']->permissions()->syncWithoutDetaching([$pv->id]);
+        $this->grantToRole($roles['chefe'], 'visto_departamento_reservas');
         $gabA = Gabinete::create(['nome' => 'Gab A']);
         $gabB = Gabinete::create(['nome' => 'Gab B']);
         $depA = Departamento::create(['nome' => 'A', 'gabinete_id' => $gabA->id]);
@@ -147,8 +148,7 @@ class ReservaAuthorizationTest extends TestCase
         $roles = $this->seedRoles();
         $gab = Gabinete::create(['nome' => 'Gab A']);
         $dep = Departamento::create(['nome' => 'A', 'gabinete_id' => $gab->id]);
-        $p = $this->perm('aprovar_reservas', 'aprovar');
-        $roles['user']->permissions()->syncWithoutDetaching([$p->id]);
+        $this->grantToRole($roles['user'], 'reservas.aprovar');
         $user = User::factory()->create(['role_id' => $roles['user']->id]);
         $owner = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $dep->id]);
         $reserva = $this->reserva($owner);

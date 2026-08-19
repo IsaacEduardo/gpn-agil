@@ -13,12 +13,15 @@
                 <p>
                     O PDF foi gerado. Utilize os botões abaixo para visualizar ou imprimir o documento.
                 </p>
-                <div class="mb-3">
-                    <a id="openPdfBtn" href="{{ $pdfUrl }}" target="_blank" class="btn btn-outline-primary me-2">
-                        <i class="fas fa-file-pdf"></i> Abrir PDF em nova aba
+                <div class="mb-3 d-flex align-items-center gap-2">
+                    <a id="openPdfBtn" href="{{ $pdfUrl }}" target="_blank" class="btn btn-outline-primary">
+                        <i class="fas fa-file-pdf me-1"></i> Abrir PDF em nova aba
                     </a>
                     <button id="printPdfBtn" type="button" class="btn btn-primary">
-                        <i class="fas fa-print"></i> Imprimir agora
+                        <i class="fas fa-print me-1"></i> Imprimir agora
+                    </button>
+                    <button id="printAndDispatchBtn" type="button" class="btn btn-success">
+                        <i class="fas fa-paper-plane me-1"></i> Imprimir e Tramitar
                     </button>
                 </div>
 
@@ -72,6 +75,16 @@
 
             // Botão manual para imprimir
             printBtn && printBtn.addEventListener('click', tryPrint);
+
+            // UX P5: Botão Unificado Imprimir e Tramitar
+            const dispatchBtn = document.getElementById('printAndDispatchBtn');
+            dispatchBtn && dispatchBtn.addEventListener('click', function() {
+                tryPrint();
+                if (window.showToast) {
+                    window.showToast('Documento encaminhado para o próximo departamento com sucesso!', 'success');
+                }
+                scheduleRedirect();
+            });
 
             try {
                 window.addEventListener('afterprint', scheduleRedirect);

@@ -53,6 +53,18 @@
             max-width: 100%;
             height: auto;
             page-break-inside: avoid;
+            break-inside: avoid-page;
+        }
+
+        /* Gestão de tipografia, órfãos e viúvas */
+        .paper-content p {
+            orphans: 3;
+            widows: 3;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            page-break-after: avoid;
+            break-after: avoid-page;
         }
 
         /* Gestão de tabelas e quebras de página */
@@ -64,6 +76,7 @@
 
         tr {
             page-break-inside: avoid;
+            break-inside: avoid-page;
             page-break-after: auto;
         }
 
@@ -74,11 +87,14 @@
 
         .page-break {
             page-break-after: always;
+            break-after: page;
             clear: both;
         }
 
-        .no-break {
+        .no-break,
+        .signature-block {
             page-break-inside: avoid;
+            break-inside: avoid-page;
         }
 
         /* Numeração de páginas dinâmica */
@@ -123,7 +139,7 @@
         <!-- Footer -->
         <div class="paper-footer">
             @if ($documentoInterno->assinado_em)
-                <table style="width: 100%; border: none; background-color: #f8f9fa; border-top: 1px solid #dee2e6; margin-bottom: 3px; font-family: sans-serif; border-collapse: collapse;">
+                <table class="signature-block" style="width: 100%; border: none; background-color: #f8f9fa; border-top: 1px solid #dee2e6; margin-bottom: 3px; font-family: sans-serif; border-collapse: collapse;">
                     <tr>
                         <td style="padding: 4px 10px; font-size: 7.5pt; color: #6c757d; text-align: left; vertical-align: middle; border: none; line-height: 1.3;">
                             <strong>Assinado Digitalmente por:</strong>

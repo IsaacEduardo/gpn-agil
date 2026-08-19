@@ -4,12 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Departamento;
 use App\Models\Gabinete;
-use App\Models\Permission;
 use App\Models\ReservaEspaco;
 use App\Models\Role;
 use App\Models\User;
 use App\Policies\ReservaEspacoPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class ReservaEspacoPolicyTest extends TestCase
@@ -26,12 +26,14 @@ class ReservaEspacoPolicyTest extends TestCase
         return compact('admin', 'user', 'userNoPermRole', 'chefe');
     }
 
-    private function seedPermissions(): array
+    /**
+     * Concede uma permissão Spatie ao papel (a linha de roles é partilhada
+     * entre o model legado e o Spatie).
+     */
+    private function grantToRole(Role $role, string $permission): void
     {
-        $aprovar = Permission::firstOrCreate(['name' => 'aprovar_reservas'], ['description' => 'Aprovar reservas']);
-        $visto = Permission::firstOrCreate(['name' => 'visto_departamento_reservas'], ['description' => 'Visto departamento reservas']);
-
-        return compact('aprovar', 'visto');
+        $perm = Permission::findOrCreate($permission, 'web');
+        \Spatie\Permission\Models\Role::findByName($role->name, 'web')->givePermissionTo($perm);
     }
 
     private function makeReserva(User $owner): ReservaEspaco
@@ -53,7 +55,6 @@ class ReservaEspacoPolicyTest extends TestCase
     public function test_approve_reject_policy(): void
     {
         $roles = $this->seedRoles();
-        $perms = $this->seedPermissions();
 
         $gabA = Gabinete::create(['nome' => 'Gab A']);
         $depA = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gabA->id]);
@@ -63,8 +64,7 @@ class ReservaEspacoPolicyTest extends TestCase
         $userNoPerm = User::factory()->create(['role_id' => $roles['userNoPermRole']->id]);
 
         // Permissão aprovar para role 'user'
-        $roles['user']->permissions()->syncWithoutDetaching([$perms['aprovar']->id]);
-        $roles['user']->refresh();
+        $this->grantToRole($roles['user'], 'reservas.aprovar');
 
         $owner = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
         $reserva = $this->makeReserva($owner);
@@ -86,7 +86,6 @@ class ReservaEspacoPolicyTest extends TestCase
     public function test_visto_policies(): void
     {
         $roles = $this->seedRoles();
-        $perms = $this->seedPermissions();
 
         $gabA = Gabinete::create(['nome' => 'Gab A']);
         $gabB = Gabinete::create(['nome' => 'Gab B']);
@@ -99,8 +98,7 @@ class ReservaEspacoPolicyTest extends TestCase
         $userNoPerm = User::factory()->create(['role_id' => $roles['userNoPermRole']->id]);
 
         // Permissão visto para role 'user'
-        $roles['user']->permissions()->syncWithoutDetaching([$perms['visto']->id]);
-        $roles['user']->refresh();
+        $this->grantToRole($roles['user'], 'visto_departamento_reservas');
 
         $owner = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
         $reserva = $this->makeReserva($owner);

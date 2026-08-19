@@ -285,13 +285,13 @@ class RequisicaoOficinaController extends Controller
             'empresa' => $requisicao->empresa ?? ($requisicao->empresa_destinataria ? new Empresa(['nome' => $requisicao->empresa_destinataria]) : null),
         ];
 
-        $pdf = Pdf::loadView('requisicoes.oficina.pdf', $data)->setPaper('A4');
+        $html = view('requisicoes.oficina.pdf', $data)->render();
         // Sanitizar o nome do arquivo para evitar caracteres inválidos (ex.: "/" e "\\")
         $codigo = $requisicao->codigo_sequencial ?? 'demo';
         $codigoSeguro = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $codigo);
         $nomeArquivo = 'Oficio_Requisicao_Oficina_'.$codigoSeguro.'.pdf';
 
-        return $pdf->stream($nomeArquivo);
+        return app(\App\Services\PdfRenderService::class)->createPdfResponse($html, $nomeArquivo);
     }
 
     public function print(?int $requisicaoId = null)

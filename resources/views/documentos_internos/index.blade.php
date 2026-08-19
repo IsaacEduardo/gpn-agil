@@ -216,7 +216,10 @@
                                 };
                             @endphp
 
-                            <th class="ps-4 py-3 border-bottom text-uppercase small fw-bold text-muted">
+                            <th class="ps-3 border-bottom" style="width: 40px;">
+                                <input type="checkbox" id="selectAllDocs" class="form-check-input" title="Selecionar Todos">
+                            </th>
+                            <th class="ps-3 py-3 border-bottom text-uppercase small fw-bold text-muted">
                                 {!! $sortLink('numero_referencia', 'Referência') !!}</th>
                             <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">
                                 {!! $sortLink('titulo', 'Título') !!}</th>
@@ -233,16 +236,18 @@
                     <tbody>
                         @forelse($documentos as $doc)
                             <tr class="clickable-row" data-href="{{ route('documentos-internos.show', $doc) }}" data-preview-url="{{ route('documentos-internos.show', $doc) }}" data-doc-id="{{ $doc->id }}" data-doc-type="interno" tabindex="0" draggable="true">
-                                <td class="ps-4">
+                                <td class="ps-3 text-center" onclick="event.stopPropagation()">
+                                    <input type="checkbox" class="form-check-input archive-select"
+                                        data-doc-id="{{ $doc->id }}" data-doc-type="interno"
+                                        title="Selecionar para arquivar em lote">
+                                </td>
+                                <td class="ps-3">
                                     <div class="d-flex align-items-center">
-                                        <input type="checkbox" class="form-check-input archive-select me-3"
-                                            data-doc-id="{{ $doc->id }}" data-doc-type="interno"
-                                            title="Selecionar para arquivar em lote" onclick="event.stopPropagation()">
-                                        <div class="bg-white border rounded-circle d-flex align-items-center justify-content-center me-3 shadow-sm"
-                                            style="width: 40px; height: 40px;">
-                                            <i class="fas fa-file-lines text-primary"></i>
+                                        <div class="bg-white border rounded-circle d-flex align-items-center justify-content-center me-2 flex-shrink-0 shadow-sm"
+                                            style="width: 34px; height: 34px;">
+                                            <i class="fas fa-file-lines text-primary small"></i>
                                         </div>
-                                        <div class="fw-bold text-dark">{{ $doc->numero_referencia }}</div>
+                                        <div class="fw-bold text-dark text-break" style="max-width: 220px;">{{ $doc->numero_referencia }}</div>
                                     </div>
                                 </td>
 
@@ -639,5 +644,103 @@
                 console.warn('Error rendering history:', e);
             }
         }
+    </script>
+
+    {{-- Barra Flutuante de Ações em Lote (UX P1) --}}
+    <div id="batchActionBar" class="card shadow-lg border-0 rounded-4 position-fixed bottom-0 start-50 translate-middle-x mb-4 px-4 py-3 bg-dark text-white d-none" style="z-index: 1050; min-width: 480px;">
+        <div class="d-flex align-items-center justify-content-between">
+            <div>
+                <i class="fas fa-tasks text-warning me-2"></i>
+                <span class="fw-bold" id="selectedDocsCount">0</span> selecionados
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <button id="batchDownloadZipBtn" type="button" class="btn btn-sm btn-outline-light">
+                    <i class="fas fa-file-archive me-1"></i> Descarregar ZIP
+                </button>
+                <button id="batchApproveBtn" type="button" class="btn btn-sm btn-success">
+                    <i class="fas fa-check-circle me-1"></i> Aprovar Lote
+                </button>
+                <button id="batchSignBtn" type="button" class="btn btn-sm btn-primary">
+                    <i class="fas fa-signature me-1"></i> Assinar Lote
+                </button>
+                <button id="batchCancelBtn" type="button" class="btn btn-sm btn-link text-white-50 text-decoration-none">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <form id="batchActionForm" method="POST" class="d-none">
+        @csrf
+        <div id="batchInputsContainer"></div>
+    </form>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const selectAll = document.getElementById('selectAllDocs');
+            const checkboxes = document.querySelectorAll('.archive-select');
+            const batchBar = document.getElementById('batchActionBar');
+            const selectedCount = document.getElementById('selectedDocsCount');
+            const batchForm = document.getElementById('batchActionForm');
+            const batchInputsContainer = document.getElementById('batchInputsContainer');
+
+            function updateBatchBar() {
+                const checked = document.querySelectorAll('.archive-select:checked');
+                if (checked.length > 0) {
+                    if (selectedCount) selectedCount.textContent = checked.length;
+                    if (batchBar) batchBar.classList.remove('d-none');
+                } else {
+                    if (batchBar) batchBar.classList.add('d-none');
+                }
+            }
+
+            if (selectAll) {
+                selectAll.addEventListener('change', function() {
+                    checkboxes.forEach(cb => cb.checked = selectAll.checked);
+                    updateBatchBar();
+                });
+            }
+
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', updateBatchBar);
+            });
+
+            document.getElementById('batchCancelBtn')?.addEventListener('click', function() {
+                checkboxes.forEach(cb => cb.checked = false);
+                if (selectAll) selectAll.checked = false;
+                updateBatchBar();
+            });
+
+            function submitBatchForm(url) {
+                const checked = document.querySelectorAll('.archive-select:checked');
+                if (checked.length === 0) return;
+
+                batchInputsContainer.innerHTML = '';
+                checked.forEach(cb => {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'documento_ids[]';
+                    input.value = cb.getAttribute('data-doc-id');
+                    batchInputsContainer.appendChild(input);
+                });
+
+                batchForm.action = url;
+                batchForm.submit();
+            }
+
+            document.getElementById('batchDownloadZipBtn')?.addEventListener('click', function() {
+                submitBatchForm("{{ route('documentos-internos.batch-zip') }}");
+            });
+
+            document.getElementById('batchApproveBtn')?.addEventListener('click', function() {
+                if (confirm('Deseja aprovar todos os documentos selecionados?')) {
+                    submitBatchForm("{{ route('gabinete.batch-approve') }}");
+                }
+            });
+
+            document.getElementById('batchSignBtn')?.addEventListener('click', function() {
+                submitBatchForm("{{ route('gabinete.batch-sign') }}");
+            });
+        });
     </script>
 @endpush

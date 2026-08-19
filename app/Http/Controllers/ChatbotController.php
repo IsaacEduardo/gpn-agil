@@ -26,7 +26,13 @@ class ChatbotController extends Controller
         private ChatbotService $chatbot,
         private DocumentoPermissionService $permissions,
     ) {
-        abort_unless(config('chatbot.enabled'), 404, 'Chatbot desativado.');
+        // Middleware (e não abort no construtor) para não rebentar comandos
+        // que instanciam controllers, como `php artisan route:list`.
+        $this->middleware(function ($request, $next) {
+            abort_unless(config('chatbot.enabled'), 404, 'Chatbot desativado.');
+
+            return $next($request);
+        });
     }
 
     public function perguntar(Request $request)

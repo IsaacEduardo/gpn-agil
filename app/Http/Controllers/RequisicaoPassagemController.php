@@ -205,7 +205,7 @@ class RequisicaoPassagemController extends Controller
 
         $passagem = $requisicao && $requisicao->passagem ? $requisicao->passagem : new RequisicaoPassagem;
 
-        $pdf = Pdf::loadView('requisicoes.passagem.pdf', [
+        $html = view('requisicoes.passagem.pdf', [
             'requisicao' => $requisicao ?? new Requisicao([
                 'tipo' => Requisicao::TIPO_PASSAGEM,
                 'codigo_sequencial' => 'BIL-12/2025-001',
@@ -214,13 +214,13 @@ class RequisicaoPassagemController extends Controller
             ]),
             'empresa' => $empresa,
             'passagem' => $passagem,
-        ])->setPaper('a4');
+        ])->render();
 
         $codigo = $requisicao->codigo_sequencial ?? 'BIL-XXXX-000';
         $codigoSeguro = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $codigo);
-        $nomeArquivo = 'Oficio_Requisicao_Passagem_'.$codigoSeguro.'.pdf';
+        $nomeArquivo = 'Oficio_Requisicao_Passagens_'.$codigoSeguro.'.pdf';
 
-        return $pdf->stream($nomeArquivo);
+        return app(\App\Services\PdfRenderService::class)->createPdfResponse($html, $nomeArquivo);
     }
 
     public function print(?int $requisicaoId = null)

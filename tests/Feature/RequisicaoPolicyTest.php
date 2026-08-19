@@ -4,12 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Departamento;
 use App\Models\Gabinete;
-use App\Models\Permission;
 use App\Models\Requisicao;
 use App\Models\Role;
 use App\Models\User;
 use App\Policies\RequisicaoPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class RequisicaoPolicyTest extends TestCase
@@ -26,12 +26,14 @@ class RequisicaoPolicyTest extends TestCase
         return compact('admin', 'user', 'userNoPermRole', 'chefe');
     }
 
-    private function seedPermissions(): array
+    /**
+     * Concede uma permissão Spatie ao papel (mesma linha (roles) partilhada
+     * entre o model legado e o Spatie).
+     */
+    private function grantToRole(Role $role, string $permission): void
     {
-        $aprovar = Permission::firstOrCreate(['name' => 'aprovar_requisicoes'], ['description' => 'Aprovar requisicoes']);
-        $visto = Permission::firstOrCreate(['name' => 'visto_departamento_requisicoes'], ['description' => 'Visto departamento requisicoes']);
-
-        return compact('aprovar', 'visto');
+        $perm = Permission::findOrCreate($permission, 'web');
+        \Spatie\Permission\Models\Role::findByName($role->name, 'web')->givePermissionTo($perm);
     }
 
     private function makeReq(User $owner): Requisicao
@@ -49,7 +51,6 @@ class RequisicaoPolicyTest extends TestCase
     public function test_approve_reject_policy(): void
     {
         $roles = $this->seedRoles();
-        $perms = $this->seedPermissions();
 
         $gabA = Gabinete::create(['nome' => 'Gab A']);
         $gabB = Gabinete::create(['nome' => 'Gab B']);
@@ -63,8 +64,7 @@ class RequisicaoPolicyTest extends TestCase
         $userNoPerm = User::factory()->create(['role_id' => $roles['userNoPermRole']->id]);
 
         // Conceder permissão aprovar para role do usuário
-        $roles['user']->permissions()->syncWithoutDetaching([$perms['aprovar']->id]);
-        $roles['user']->refresh();
+        $this->grantToRole($roles['user'], 'requisicoes.aprovar');
 
         $owner = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
         $req = $this->makeReq($owner);
@@ -89,7 +89,6 @@ class RequisicaoPolicyTest extends TestCase
     public function test_visto_policies(): void
     {
         $roles = $this->seedRoles();
-        $perms = $this->seedPermissions();
 
         $gabA = Gabinete::create(['nome' => 'Gab A']);
         $gabB = Gabinete::create(['nome' => 'Gab B']);
@@ -102,8 +101,7 @@ class RequisicaoPolicyTest extends TestCase
         $userNoPerm = User::factory()->create(['role_id' => $roles['userNoPermRole']->id]);
 
         // Conceder permissão de visto ao role 'user'
-        $roles['user']->permissions()->syncWithoutDetaching([$perms['visto']->id]);
-        $roles['user']->refresh();
+        $this->grantToRole($roles['user'], 'visto_departamento_requisicoes');
 
         $owner = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
         $req = $this->makeReq($owner);

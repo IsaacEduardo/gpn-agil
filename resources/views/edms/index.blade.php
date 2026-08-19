@@ -72,14 +72,14 @@
                 @if(isset($currentFolder))
                     <input type="hidden" name="folder" value="{{ $currentFolder->id }}">
                 @endif
-                <div class="col-md-4">
+                <div class="col-lg-3 col-md-6">
                     <label class="form-label small text-muted fw-semibold">Termo de Busca</label>
                     <div class="input-group">
                         <span class="input-group-text bg-light border-0"><i class="fas fa-search text-muted"></i></span>
                         <input type="text" name="search" class="form-control bg-light border-0" placeholder="Assunto, título, ref, conteúdo..." value="{{ request('search') }}">
                     </div>
                 </div>
-                <div class="col-md-2">
+                <div class="col-lg-2 col-md-6">
                     <label class="form-label small text-muted fw-semibold">Tipo</label>
                     <select name="type" class="form-select bg-light border-0">
                         <option value="">Todos</option>
@@ -87,7 +87,7 @@
                         <option value="entrada" {{ request('type') == 'entrada' ? 'selected' : '' }}>Entrada</option>
                     </select>
                 </div>
-                <div class="col-md-4">
+                <div class="col-lg-4 col-md-8">
                     <label class="form-label small text-muted fw-semibold">Período de Arquivamento</label>
                     <div class="input-group">
                         <input type="date" name="date_start" class="form-control bg-light border-0" value="{{ request('date_start') }}" title="Data Início">
@@ -95,12 +95,12 @@
                         <input type="date" name="date_end" class="form-control bg-light border-0" value="{{ request('date_end') }}" title="Data Fim">
                     </div>
                 </div>
-                <div class="col-md-2 d-flex gap-2">
-                    <button type="submit" class="btn btn-primary rounded-3 w-100 fw-semibold">
+                <div class="col-lg-3 col-md-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary rounded-3 flex-fill fw-semibold">
                         <i class="fas fa-search me-1"></i> Filtrar
                     </button>
                     @if(request('search') || request('type') || request('date_start') || request('date_end'))
-                        <a href="{{ route('edms.index', ['folder' => $currentFolder->id ?? null]) }}" class="btn btn-light rounded-3 text-muted" title="Limpar Filtros">
+                        <a href="{{ route('edms.index', ['folder' => $currentFolder->id ?? null]) }}" class="btn btn-light border rounded-3 text-muted px-3" title="Limpar Filtros">
                             <i class="fas fa-times"></i>
                         </a>
                     @endif
@@ -260,6 +260,14 @@
                                             @endforeach
                                         </tbody>
                                     </table>
+                                </div>
+                                <div class="p-3 d-flex justify-content-between align-items-center bg-light border-top">
+                                    <div>
+                                        {{ $pendentesInternos->links() }}
+                                    </div>
+                                    <div>
+                                        {{ $pendentesEntrada->links() }}
+                                    </div>
                                 </div>
                             @endif
                         </div>
@@ -505,6 +513,10 @@
                                         </div>
                                     </div>
                                 @endforeach
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-4">
+                                <div>@if(method_exists($documentosInternos, 'links')) {{ $documentosInternos->links() }} @endif</div>
+                                <div>@if(method_exists($documentosEntrada, 'links')) {{ $documentosEntrada->links() }} @endif</div>
                             </div>
                         @endif
 

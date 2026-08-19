@@ -73,8 +73,21 @@ class ModeloDocumentoController extends Controller
         return redirect()->route('modelos.index')->with('success', 'Modelo criado com sucesso.');
     }
 
-    public function show(ModeloDocumento $modelo)
+    public function show(Request $request, ModeloDocumento $modelo)
     {
+        $modelo->load('especie', 'gabinete');
+
+        if ($request->boolean('preview')) {
+            $service = app(\App\Services\DocumentoInternoService::class);
+            $user = Auth::user() ?? new \App\Models\User;
+            $processedHtml = $service->processarTemplate($modelo->conteudo, null, $user);
+
+            return response()->json([
+                'modelo' => $modelo,
+                'conteudo_processado' => $processedHtml,
+            ]);
+        }
+
         return response()->json($modelo);
     }
 

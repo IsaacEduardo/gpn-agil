@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Domain\DocumentManagement\Events\DocumentoAssinadoEvent;
 use App\Events\DocumentoArquivado;
 use App\Listeners\ApplyNotificationPreferences;
 use App\Listeners\LogDocumentoArquivado;
+use App\Listeners\LogDocumentoAssinado;
 use App\Events\TaskAssigned;
 use App\Listeners\NotificationAuditSubscriber;
 use App\Listeners\SendTaskAssignedNotification;
@@ -33,6 +35,10 @@ class EventServiceProvider extends ServiceProvider
         ],
         NotificationSending::class => [
             ApplyNotificationPreferences::class,
+        ],
+        // Evento de Domínio DDD — disparado quando um documento é assinado digitalmente.
+        DocumentoAssinadoEvent::class => [
+            LogDocumentoAssinado::class,
         ],
     ];
 

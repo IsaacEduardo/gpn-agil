@@ -14,7 +14,13 @@
     $descricaoProblema = $oficina->descricao_problema ?? '';
     $servicosSolicitados = $oficina->servicos_solicitados ?? null;
     $quilometragem = $oficina->quilometragem_atual ?? null;
-    $insigniaSrc = $dadosInstituicao->logo_absolute_path;
+    $insigniaPath = $dadosInstituicao->logo_absolute_path;
+    $insigniaBase64 = null;
+    if ($insigniaPath && file_exists($insigniaPath)) {
+        $ext = strtolower(pathinfo($insigniaPath, PATHINFO_EXTENSION));
+        $mime = $ext === 'svg' ? 'image/svg+xml' : ($ext === 'jpg' || $ext === 'jpeg' ? 'image/jpeg' : 'image/' . $ext);
+        $insigniaBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($insigniaPath));
+    }
     $rodapePath = $dadosInstituicao->rodape_absolute_path;
     if (!$rodapePath) {
         $rodapeCandidates = [
@@ -182,11 +188,15 @@
 
         .footer {
             margin-top: 10mm;
+            page-break-inside: avoid;
+            break-inside: avoid-page;
         }
 
         .signature {
             margin-top: 12mm;
             text-align: center;
+            page-break-inside: avoid;
+            break-inside: avoid-page;
         }
 
         .signature .role {
@@ -232,24 +242,31 @@
     @endif
     <div class="header">
         @include('partials.document-header', [
-            'logoSrc' => $insigniaSrc,
+            'logoSrc' => $insigniaBase64,
             'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete(
                 (isset($requisicao) && $requisicao->gabinete) ? $requisicao->gabinete : optional(auth()->user())->gabinete()
             ),
         ])
     </div>
-    <div class="visto">
-        <div class="titulo">VISTO</div>
-        <div class="cargo">O SECRETÁRIO GERAL</div>
-        <div class="nome">{{ $chefeGabineteNome }}</div>
-    </div>
-    <div class="meta">
-        <div class="to">
-            <div>À</div>
-            <div class="to-company"><span class="inline">EMPRESA {{ mb_strtoupper($empresaNome, 'UTF-8') }}</span></div>
-        </div>
-        <div class="city">{{ mb_strtoupper($local, 'UTF-8') }}</div>
-    </div>
+
+    <table style="width: 100%; border: none; margin-top: 4mm; margin-bottom: 4mm; border-collapse: collapse;">
+        <tr>
+            <td style="width: 50%; vertical-align: top; text-align: left; border: none; padding: 0;">
+                <div style="text-align: center; width: 65mm; font-family: 'Malgun Gothic', Arial, sans-serif; font-size: 11pt; line-height: 1.3;">
+                    <div style="font-weight: bold; text-transform: uppercase;">VISTO</div>
+                    <div style="font-weight: bold; text-transform: uppercase;">O SECRETÁRIO GERAL</div>
+                    <div style="margin-top: 2mm; font-style: italic;">{{ $chefeGabineteNome }}</div>
+                </div>
+            </td>
+            <td style="width: 50%; vertical-align: top; text-align: right; border: none; padding: 0;">
+                <div style="text-align: left; width: 250px; margin-left: auto; font-family: 'Malgun Gothic', Arial, sans-serif; line-height: 1.2;">
+                    <div style="font-weight: bold; font-size: 14pt; margin-top: 4px;">À</div>
+                    <div style="font-weight: bold; font-size: 14pt;"><span class="inline">EMPRESA {{ mb_strtoupper($empresaNome, 'UTF-8') }}</span></div>
+                    <div style="font-weight: bold; text-decoration: underline; font-size: 16pt; text-decoration-thickness: 2px; text-underline-offset: 3px; margin-top: 2px;">{{ mb_strtoupper($local, 'UTF-8') }}</div>
+                </div>
+            </td>
+        </tr>
+    </table>
 
     <div class="oficio">
         OFÍCIO N.º _______/08.03.05/00-06/GPN/SG/DLP/{{ $anoOficio }}.

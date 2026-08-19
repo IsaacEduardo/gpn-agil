@@ -56,24 +56,14 @@ class GabineteDashboardController extends Controller
             $q->where('status', DocumentoStatus::EM_ANALISE);
         }])->get();
 
-        // Distribuição de status para gráfico doughnut (também alimenta os KPIs)
-        $statusDistrib = DocumentoInterno::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabinete->id))
-            ->select('status', \Illuminate\Support\Facades\DB::raw('count(*) as count'))
-            ->groupBy('status')
-            ->get()
-            ->mapWithKeys(function ($item) {
-                $statusKey = $item->status instanceof DocumentoStatus ? $item->status->value : $item->status;
+        // Caching Estratégico Redis dos KPIs e Distribuição de Status
+        $cachedStats = \App\Support\DashboardCache::getGabineteStats($gabinete->id);
+        $statusDistrib = collect($cachedStats['status_distrib']);
 
-                return [$statusKey => $item->count];
-            });
-
-        // KPIs derivados da distribuição (evita repetir contagens no banco)
         $stats = [
-            'total_docs' => $statusDistrib->sum(),
-            'em_analise' => (int) $statusDistrib->get(DocumentoStatus::EM_ANALISE->value, 0),
-            'assinados_hoje' => DocumentoInterno::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabinete->id))
-                ->where('status', DocumentoStatus::ASSINADO)
-                ->whereDate('assinado_em', today())->count(),
+            'total_docs' => $cachedStats['total_docs'],
+            'em_analise' => $cachedStats['em_analise'],
+            'assinados_hoje' => $cachedStats['assinados_hoje'],
         ];
 
         // Logs de Atividade Recentes
@@ -91,14 +81,16 @@ class GabineteDashboardController extends Controller
             ->where('status', DocumentoStatus::APROVADO)
             ->with(['especie', 'autor', 'departamento'])
             ->orderByDesc('updated_at')
-            ->get();
+            ->paginate(10, ['*'], 'page_sign')
+            ->withQueryString();
 
         // 2. Docs Para Aprovar (EM_ANALISE)
         $docsParaAprovar = DocumentoInterno::accessibleBy($user)
             ->where('status', DocumentoStatus::EM_ANALISE)
             ->with(['especie', 'autor', 'departamento'])
             ->orderBy('created_at')
-            ->get();
+            ->paginate(10, ['*'], 'page_approve')
+            ->withQueryString();
 
         // 3. Query Principal (Histórico / Todos)
         $query = DocumentoInterno::accessibleBy($user)

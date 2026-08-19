@@ -31,4 +31,20 @@ enum StatusRequisicao: string
             self::FINALIZADO => 'info',
         };
     }
+
+    public static function tryFromValue(?string $value): ?self
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return match (mb_strtolower(trim($value))) {
+            'aprovado', 'aprovada' => self::APROVADO,
+            'assinado', 'assinada' => self::ASSINADO,
+            'rejeitado', 'rejeitada' => self::REJEITADO,
+            'concluido', 'concluida', 'finalizado' => self::FINALIZADO,
+            'pendente' => self::PENDENTE,
+            default => self::tryFrom($value),
+        };
+    }
 }

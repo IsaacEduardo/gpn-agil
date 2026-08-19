@@ -11,8 +11,7 @@ use App\Models\ModeloDocumento;
 use App\Models\User;
 use App\Services\DocumentoInternoService;
 use App\Services\DocumentoWorkflowService;
-use Dompdf\Dompdf;
-use Dompdf\Options;
+use App\Services\PdfRenderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
@@ -25,11 +24,18 @@ class DocumentoInternoController extends Controller
 
     protected $workflowService;
 
-    public function __construct(DocumentoInternoService $service, \App\Services\SignatureService $signatureService, DocumentoWorkflowService $workflowService)
-    {
+    protected $pdfService;
+
+    public function __construct(
+        DocumentoInternoService $service,
+        \App\Services\SignatureService $signatureService,
+        DocumentoWorkflowService $workflowService,
+        PdfRenderService $pdfService
+    ) {
         $this->service = $service;
         $this->signatureService = $signatureService;
         $this->workflowService = $workflowService;
+        $this->pdfService = $pdfService;
     }
 
     public function index(Request $request)
@@ -365,24 +371,11 @@ class DocumentoInternoController extends Controller
         $documentoInterno->logAudit('download');
         $documentoInterno->load(['especie', 'departamento.gabinete', 'autor']);
 
-        $options = new Options;
-        $options->set('isRemoteEnabled', true);
-        $options->set('defaultFont', 'Times-Roman');
-
-        $dompdf = new Dompdf($options);
-
-        // Use a specific view for PDF to ensure clean output without navigation/sidebars
         $html = view('documentos_internos.pdf', compact('documentoInterno'))->render();
-
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'portrait');
-        $dompdf->render();
-
         $filename = 'Documento_'.str_replace('/', '-', $documentoInterno->numero_referencia).'.pdf';
-
         $isAttachment = $request->query('download') === '1';
 
-        return $dompdf->stream($filename, ['Attachment' => $isAttachment]);
+        return $this->pdfService->createPdfResponse($html, $filename, $isAttachment);
     }
 
     /**
@@ -456,5 +449,81 @@ class DocumentoInternoController extends Controller
         }
 
         return view('documentos_internos.verificar', compact('documento', 'valido', 'erroMsg', 'hash', 'tipoAssinatura'));
+    }
+
+    public function batchDownloadZip(Request $request)
+    {
+        $request->validate([
+            'documento_ids' => 'required|array',
+            'documento_ids.*' => 'exists:documento_internos,id',
+        ]);
+
+        $ids = $request->documento_ids;
+        $zipFileName = 'documentos_lote_' . now()->format('Ymd_His') . '.zip';
+        $zipPath = storage_path('app/public/' . $zipFileName);
+
+        $zip = new \ZipArchive();
+        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true) {
+            foreach ($ids as $id) {
+                $doc = DocumentoInterno::accessibleBy(Auth::user())->find($id);
+                if (! $doc) {
+                    continue;
+                }
+
+                $html = view('documentos_internos.pdf', ['documentoInterno' => $doc])->render();
+                $pdfBin = $this->pdfService->renderHtmlToPdf($html);
+
+                $refSegura = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $doc->numero_referencia ?: 'DOC-' . $doc->id);
+                $zip->addFromString("Documento_{$refSegura}.pdf", $pdfBin);
+            }
+            $zip->close();
+        }
+
+        return response()->streamDownload(function () use ($zipPath) {
+            if (file_exists($zipPath)) {
+                readfile($zipPath);
+                @unlink($zipPath);
+            }
+        }, $zipFileName, [
+            'Content-Type' => 'application/zip',
+        ]);
+    }
+
+    public function autoSave(Request $request, ?DocumentoInterno $documentoInterno = null)
+    {
+        $request->validate([
+            'titulo' => 'nullable|string|max:255',
+            'conteudo_final' => 'required|string',
+            'documento_especie_id' => 'nullable|exists:documento_especies,id',
+            'departamento_id' => 'nullable|exists:departamentos,id',
+        ]);
+
+        if ($documentoInterno && $documentoInterno->exists) {
+            if ($documentoInterno->status !== DocumentoStatus::RASCUNHO && $documentoInterno->status !== 'rascunho') {
+                return response()->json(['success' => false, 'message' => 'Apenas rascunhos podem ser salvos automaticamente.'], 422);
+            }
+
+            $documentoInterno->update([
+                'conteudo_final' => $request->conteudo_final,
+                'titulo' => $request->titulo ?: $documentoInterno->titulo,
+            ]);
+            $doc = $documentoInterno;
+        } else {
+            $doc = DocumentoInterno::create([
+                'titulo' => $request->titulo ?: 'Novo Documento (Rascunho)',
+                'conteudo_final' => $request->conteudo_final,
+                'criado_por' => Auth::id(),
+                'documento_especie_id' => $request->documento_especie_id ?: DocumentoEspecie::first()?->id,
+                'departamento_id' => $request->departamento_id ?: Auth::user()->departamento_id,
+                'status' => 'rascunho',
+                'versao_atual' => 1,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'documento_id' => $doc->id,
+            'saved_at' => now()->format('H:i:s'),
+        ]);
     }
 }

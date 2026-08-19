@@ -255,19 +255,19 @@ class RequisicaoServicoController extends Controller
             ]);
         }
 
-        // Gerar PDF
-        $pdf = Pdf::loadView('requisicoes.servico.pdf', [
+        // Gerar HTML e compilar via PdfRenderService
+        $html = view('requisicoes.servico.pdf', [
             'requisicao' => $requisicao,
             'empresa' => $empresa,
             'servico' => $servico,
-        ])->setPaper('a4');
+        ])->render();
 
         // Sanitizar nome do arquivo
         $codigo = $requisicao->codigo_sequencial ?? 'SER-XXXX-000';
         $codigoSeguro = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $codigo);
         $nomeArquivo = 'Oficio_Requisicao_Servico_'.$codigoSeguro.'.pdf';
 
-        return $pdf->stream($nomeArquivo);
+        return app(\App\Services\PdfRenderService::class)->createPdfResponse($html, $nomeArquivo);
     }
 
     public function print(?int $requisicaoId = null)

@@ -15,108 +15,72 @@ class ModeloDocumentoTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_can_create_modelo_documento_with_dynamic_fields()
+    public function test_get_templates_for_user_filters_inactive_and_gabinete()
     {
         $user = User::factory()->create();
+        $gab = Gabinete::factory()->create();
+        $dep = Departamento::factory()->create(['gabinete_id' => $gab->id]);
+        $user->update(['departamento_id' => $dep->id]);
 
-        $especie = DocumentoEspecie::firstOrCreate([
-            'nome' => 'Parecer',
-        ], [
+        $especie = DocumentoEspecie::firstOrCreate(['nome' => 'Ofício Teste'], ['sigla' => 'OFI']);
+
+        $activeModel = ModeloDocumento::create([
+            'nome' => 'Modelo Ativo Gabinete',
+            'documento_especie_id' => $especie->id,
+            'conteudo' => '<p>Conteúdo {{USUARIO_NOME}}</p>',
+            'gabinete_id' => $gab->id,
+            'user_id' => $user->id,
             'ativo' => true,
         ]);
 
-        $camposDinamicosJson = json_encode([
-            'destino' => 'text',
-            'motivo' => 'textarea',
-            'dias_gozo' => 'number',
-            'decisao' => 'select:Aprovado,Rejeitado',
-        ]);
-
-        $response = $this->actingAs($user)->post(route('modelos.store'), [
-            'nome' => 'Modelo Teste Campos Dinâmicos',
+        $inactiveModel = ModeloDocumento::create([
+            'nome' => 'Modelo Inativo Obsoleto',
             'documento_especie_id' => $especie->id,
-            'conteudo' => '<p>Conteúdo {{DESTINO}} {{MOTIVO}} {{DIAS_GOZO}} {{DECISAO}}</p>',
-            'campos_dinamicos_json' => $camposDinamicosJson,
-            'ativo' => 1,
+            'conteudo' => '<p>Conteúdo antigo</p>',
+            'gabinete_id' => $gab->id,
+            'user_id' => $user->id,
+            'ativo' => false,
         ]);
 
-        $response->assertRedirect(route('modelos.index'));
+        $service = app(DocumentoInternoService::class);
+        $templates = $service->getTemplatesForUser($user);
 
-        $this->assertDatabaseHas('modelo_documentos', [
-            'nome' => 'Modelo Teste Campos Dinâmicos',
-            'documento_especie_id' => $especie->id,
-        ]);
-
-        $modelo = ModeloDocumento::where('nome', 'Modelo Teste Campos Dinâmicos')->first();
-        $this->assertNotNull($modelo->campos_dinamicos);
-        $this->assertEquals('text', $modelo->campos_dinamicos['destino']);
-        $this->assertEquals('textarea', $modelo->campos_dinamicos['motivo']);
-        $this->assertEquals('number', $modelo->campos_dinamicos['dias_gozo']);
-        $this->assertEquals('select:Aprovado,Rejeitado', $modelo->campos_dinamicos['decisao']);
+        $this->assertTrue($templates->contains('id', $activeModel->id));
+        $this->assertFalse($templates->contains('id', $inactiveModel->id));
     }
 
-    public function test_can_update_modelo_documento_with_dynamic_fields()
+    public function test_template_placeholders_processing()
+    {
+        $user = User::factory()->create(['name' => 'Carlos Silva']);
+        $service = app(DocumentoInternoService::class);
+
+        $rawTemplate = '<p>Elaborado por {{USUARIO_NOME}} em {{DATA_ATUAL}} para {{DESTINATARIO_NOME}}.</p>';
+        $processed = $service->processarTemplate($rawTemplate, null, $user, [
+            'destinatario_nome' => 'Manuel Bento',
+        ]);
+
+        $this->assertStringContainsString('Carlos Silva', $processed);
+        $this->assertStringContainsString('Manuel Bento', $processed);
+        $this->assertStringContainsString(now()->format('d/m/Y'), $processed);
+    }
+
+    public function test_modelo_show_preview_endpoint()
     {
         $user = User::factory()->create();
-        $especie = DocumentoEspecie::firstOrCreate([
-            'nome' => 'Despacho',
-        ], [
-            'ativo' => true,
-        ]);
+        $especie = DocumentoEspecie::firstOrCreate(['nome' => 'Ofício Teste'], ['sigla' => 'OFI']);
 
         $modelo = ModeloDocumento::create([
-            'nome' => 'Modelo Antigo',
+            'nome' => 'Modelo Preview Teste',
             'documento_especie_id' => $especie->id,
-            'conteudo' => '<p>Corpo</p>',
-            'ativo' => true,
+            'conteudo' => '<p>Template {{USUARIO_NOME}}</p>',
             'user_id' => $user->id,
+            'ativo' => true,
         ]);
 
-        $camposDinamicosJson = json_encode([
-            'observacoes' => 'textarea',
-        ]);
+        $response = $this->actingAs($user)->getJson(route('modelos.show', ['modelo' => $modelo->id, 'preview' => 1]));
 
-        $response = $this->actingAs($user)->put(route('modelos.update', $modelo), [
-            'nome' => 'Modelo Atualizado',
-            'documento_especie_id' => $especie->id,
-            'conteudo' => '<p>Corpo {{OBSERVACOES}}</p>',
-            'campos_dinamicos_json' => $camposDinamicosJson,
-            'ativo' => 1,
-        ]);
-
-        $response->assertRedirect(route('modelos.index'));
-
-        $modelo->refresh();
-        $this->assertEquals('Modelo Atualizado', $modelo->nome);
-        $this->assertNotNull($modelo->campos_dinamicos);
-        $this->assertEquals('textarea', $modelo->campos_dinamicos['observacoes']);
-    }
-
-    public function test_documento_interno_service_processes_custom_dynamic_fields()
-    {
-        $gabinete = Gabinete::create([
-            'nome' => 'Gabinete de Tecnologia',
-            'sigla' => 'GAB.TEC',
-        ]);
-        $departamento = Departamento::create([
-            'nome' => 'Desenvolvimento',
-            'sigla' => 'DEV',
-            'gabinete_id' => $gabinete->id,
-        ]);
-        $user = User::factory()->create([
-            'departamento_id' => $departamento->id,
-        ]);
-
-        $template = '<p>Destino: {{DESTINO}}, Decisão: {{DECISAO}}</p>';
-        $dadosExtras = [
-            'destino' => 'Luanda',
-            'decisao' => 'Aprovado',
-        ];
-
-        $service = new DocumentoInternoService;
-        $resultado = $service->processarTemplate($template, null, $user, $dadosExtras);
-
-        $this->assertStringContainsString('Destino: Luanda', $resultado);
-        $this->assertStringContainsString('Decisão: Aprovado', $resultado);
+        $response->assertStatus(200);
+        $response->assertJsonStructure(['modelo', 'conteudo_processado']);
+        $response->assertJsonFragment(['nome' => 'Modelo Preview Teste']);
     }
 }

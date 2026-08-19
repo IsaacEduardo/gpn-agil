@@ -246,30 +246,21 @@ class RequisicaoController extends Controller
 
     /**
      * Emitir visto do departamento (aprovar).
-     * Nota: A lógica de visto é específica demais, pode ser movida para o service depois,
-     * mas por enquanto manteremos aqui ou moveremos para métodos auxiliares no service se necessário.
      */
     public function vistoAprovar(Request $request, Requisicao $requisicao)
     {
         $this->authorize('vistoAprovar', $requisicao);
 
-        // TODO: Mover lógica de visto para o Service
-        if ($requisicao->status !== StatusRequisicao::PENDENTE) {
+        try {
+            $this->service->emitirVistoAprovado(
+                $requisicao,
+                Auth::user(),
+                $request->input('observacao')
+            );
+        } catch (\DomainException $e) {
             return redirect()->route('requisicoes.show', $requisicao->id)
-                ->with('error', 'Visto só pode ser emitido enquanto a requisição está pendente.');
+                ->with('error', $e->getMessage());
         }
-
-        if ($requisicao->vistoDepartamentoAprovado()) {
-            return redirect()->route('requisicoes.show', $requisicao->id)
-                ->with('error', 'O visto do departamento já foi aprovado.');
-        }
-
-        $requisicao->update([
-            'visto_departamento_status' => 'aprovado',
-            'visto_departamento_por' => Auth::id(),
-            'visto_departamento_data' => now(),
-            'visto_departamento_observacao' => $request->input('observacao'),
-        ]);
 
         return redirect()->route('requisicoes.show', $requisicao->id)
             ->with('success', 'Visto do departamento aprovado.');
@@ -282,26 +273,20 @@ class RequisicaoController extends Controller
     {
         $this->authorize('vistoRejeitar', $requisicao);
 
-        if ($requisicao->status !== StatusRequisicao::PENDENTE) {
-            return redirect()->route('requisicoes.show', $requisicao->id)
-                ->with('error', 'Visto só pode ser emitido enquanto a requisição está pendente.');
-        }
-
-        if ($requisicao->vistoDepartamentoRejeitado()) {
-            return redirect()->route('requisicoes.show', $requisicao->id)
-                ->with('error', 'O visto do departamento já foi rejeitado.');
-        }
-
         $request->validate([
             'observacao' => 'nullable|string|max:500',
         ]);
 
-        $requisicao->update([
-            'visto_departamento_status' => 'rejeitado',
-            'visto_departamento_por' => Auth::id(),
-            'visto_departamento_data' => now(),
-            'visto_departamento_observacao' => $request->input('observacao'),
-        ]);
+        try {
+            $this->service->emitirVistoRejeitado(
+                $requisicao,
+                Auth::user(),
+                (string) $request->input('observacao', '')
+            );
+        } catch (\DomainException $e) {
+            return redirect()->route('requisicoes.show', $requisicao->id)
+                ->with('error', $e->getMessage());
+        }
 
         return redirect()->route('requisicoes.show', $requisicao->id)
             ->with('success', 'Visto do departamento rejeitado.');

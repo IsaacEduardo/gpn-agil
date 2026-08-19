@@ -32,6 +32,7 @@ class NotificationCategory
     public const MANAGEABLE_CHANNELS = [
         'mail' => 'E-mail',
         'broadcast' => 'Tempo real',
+        'push' => 'Notificações Push (Navegador)',
     ];
 
     /**

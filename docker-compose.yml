@@ -90,6 +90,20 @@ services:
       - php
       - reverb
 
+  # Servidor Gotenberg para geração determinística de PDFs via Headless Chromium
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: gpn_gotenberg
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 volumes:
   mysql-data:
   redis-data:

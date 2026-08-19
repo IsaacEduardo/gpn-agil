@@ -2,6 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Application\RequisitionFleet\Commands\CriarViaturaCommand;
+use App\Application\RequisitionFleet\DTOs\CriarViaturaDTO;
+use App\Application\RequisitionFleet\Handlers\CriarViaturaHandler;
+use App\Domain\RequisitionFleet\Entities\ViaturaEntity;
+use App\Domain\RequisitionFleet\Repositories\ViaturaRepositoryInterface;
+use App\Domain\RequisitionFleet\ValueObjects\MatriculaViaturaValueObject;
 use App\Models\Viatura;
 use App\Models\ViaturaFoto;
 use Illuminate\Http\Request;
@@ -10,6 +16,10 @@ use Illuminate\Support\Facades\Validator;
 
 class ViaturaController extends Controller
 {
+    public function __construct(
+        private readonly CriarViaturaHandler       $criarViaturaHandler,
+        private readonly ViaturaRepositoryInterface $viaturaRepository
+    ) {}
     /**
      * Display a listing of the resource.
      */
@@ -124,7 +134,23 @@ class ViaturaController extends Controller
                 ->withInput();
         }
 
-        $viatura = Viatura::create($request->all());
+        // ── Camada de Domínio (DDD) ───────────────────────────────────────────
+        // O Handler valida invariantes (matrícula não vazia, marca/modelo obrigatório)
+        // e persiste o Aggregate Root via EloquentViaturaRepository.
+        $dto    = CriarViaturaDTO::fromArray($request->all());
+        $entity = $this->criarViaturaHandler->handle(new CriarViaturaCommand($dto));
+
+        // ── Campos complementares (infra-estrutura) ───────────────────────────
+        // Actualizamos identificacao, marca, ano, tipo e outros campos não capturados
+        // pelo Aggregate Root de domínio.
+        $viatura = Viatura::findOrFail($entity->getId());
+        $viatura->update(array_filter([
+            'identificacao'    => $request->input('identificacao'),
+            'marca'            => $request->input('marca'),
+            'ano'              => $request->input('ano'),
+            'tipo'             => $request->input('tipo'),
+            'observacoes'      => $request->input('observacoes'),
+        ], fn($v) => $v !== null));
 
         // Processa o upload de fotos
         if ($request->hasFile('fotos')) {
@@ -221,6 +247,26 @@ class ViaturaController extends Controller
                 ->withInput();
         }
 
+        // ── Camada de Domínio (DDD) — update ─────────────────────────────────
+        // Reconstrói a entidade de domínio com os dados actualizados e persiste
+        // via repositório de domínio.
+        $statusMap = [
+            'Operacional'   => 'operacional',
+            'Em manutenção' => 'manutencao',
+            'Inoperante'    => 'inoperante',
+        ];
+        $domainStatus = $statusMap[$request->input('status_operacional', 'Operacional')] ?? 'operacional';
+
+        $novaEntity = new ViaturaEntity(
+            id: $viatura->id,
+            matricula: new MatriculaViaturaValueObject(strtoupper($request->input('placa', $viatura->placa))),
+            marcaModelo: trim($request->input('marca', '') . ' ' . $request->input('modelo', '')),
+            statusOperacional: $domainStatus,
+            departamentoId: null,
+        );
+        $this->viaturaRepository->save($novaEntity);
+
+        // ── Campos complementares (infra-estrutura) ───────────────────────────
         // Atualiza apenas os campos validados (evita mass assignment de campos extra)
         $viatura->update($validator->validated());
 

@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Application\DocumentManagement\Commands\CriarDocumentoEntradaCommand;
+use App\Application\DocumentManagement\DTOs\CriarDocumentoEntradaDTO;
+use App\Application\DocumentManagement\Handlers\CriarDocumentoEntradaHandler;
 use App\Http\Requests\StoreDocumentoEntradaRequest;
 use App\Models\Anexo;
 use App\Models\Departamento;
@@ -30,10 +33,16 @@ class DocumentoEntradaController extends Controller
 
     protected $permissionService;
 
-    public function __construct(DocumentoEntradaService $documentoService, DocumentoPermissionService $permissionService)
-    {
+    protected CriarDocumentoEntradaHandler $criarHandler;
+
+    public function __construct(
+        DocumentoEntradaService $documentoService,
+        DocumentoPermissionService $permissionService,
+        CriarDocumentoEntradaHandler $criarHandler
+    ) {
         $this->documentoService = $documentoService;
         $this->permissionService = $permissionService;
+        $this->criarHandler = $criarHandler;
     }
 
     public function searchJson(Request $request)
@@ -171,6 +180,22 @@ class DocumentoEntradaController extends Controller
     public function store(StoreDocumentoEntradaRequest $request)
     {
         $validated = $request->validated();
+
+        // ── Camada de Domínio (DDD) — Validação de Invariantes ──────────────────
+        // Constrói o DTO, instancia a DocumentoEntradaEntity e valida as
+        // invariantes de domínio (assunto obrigatório, protocolo não vazio).
+        // Não persiste aqui: DocumentoEntrada requer numeração sequencial
+        // transaccional gerida pelo Service — usar o repositório causaria
+        // um INSERT sem numero_sequencial (NOT NULL).
+        $this->criarHandler->validateOnly(
+            new CriarDocumentoEntradaCommand(
+                CriarDocumentoEntradaDTO::fromArray($validated)
+            )
+        );
+
+        // ── Infra-estrutura — Persistência Completa ──────────────────────────────
+        // O Service gere: numeração sequencial, upload de ficheiros, tags,
+        // encaminhamento inicial e jobs de OCR.
         $this->documentoService->createDocument(
             $validated,
             $request->file('arquivo'),
