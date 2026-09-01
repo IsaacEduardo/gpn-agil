@@ -2,22 +2,107 @@
 
 namespace App\Services;
 
+use App\Enums\DocumentoStatus;
 use App\Models\DocumentoEntrada;
+use App\Models\DocumentoEspecie;
 use App\Models\DocumentoInterno;
 use App\Models\DocumentoVersao;
 use App\Models\ModeloDocumento;
 use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class DocumentoInternoService
 {
     /**
-     * Retorna os templates disponíveis para o usuário, priorizando os do seu gabinete.
+     * Verifica se o utilizador pertence à Secretaria Geral ou possui privilégios de Admin.
+     */
+    public function isUserSecretariaGeral(User $user): bool
+    {
+        if ($user->isAdmin() || $user->hasRole('admin') || $user->hasRole('Admin')) {
+            return true;
+        }
+
+        $dep = $user->departamento;
+        if (! $dep) {
+            return false;
+        }
+
+        $depSigla = strtoupper($dep->sigla ?? '');
+        $depNome = mb_strtoupper($dep->nome ?? '');
+
+        $validSiglas = ['SEC_GERAL', 'SEC.GERAL', 'SEC_GER', 'SG', 'SEC.GER.GOV.PROV.HLA'];
+        if (in_array($depSigla, $validSiglas)) {
+            return true;
+        }
+
+        if (str_contains($depNome, 'SECRETARIA GERAL') || str_contains($depNome, 'SECRETÁRIA GERAL')) {
+            return true;
+        }
+
+        $gab = $dep->gabinete;
+        if ($gab) {
+            $gabSigla = strtoupper($gab->sigla ?? '');
+            $gabNome = mb_strtoupper($gab->nome ?? '');
+            if (in_array($gabSigla, $validSiglas) || str_contains($gabNome, 'SECRETARIA GERAL') || str_contains($gabNome, 'SECRETÁRIA GERAL')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Retorna a lista dos Chefes de Departamento do gabinete do utilizador.
+     */
+    public function getChefesDepartamentoForUser(User $user)
+    {
+        $gabineteId = $user->departamento ? $user->departamento->gabinete_id : null;
+
+        $query = User::query()->with('departamento');
+
+        if ($gabineteId) {
+            $query->whereHas('departamento', function ($q) use ($gabineteId) {
+                $q->where('gabinete_id', $gabineteId);
+            });
+        } else {
+            $query->where('departamento_id', $user->departamento_id);
+        }
+
+        return $query->where(function ($q) {
+            $q->whereHas('roles', function ($sq) {
+                $sq->where('name', 'chefe-departamento')
+                    ->orWhere('name', 'Chefe de Departamento')
+                    ->orWhere('name', 'like', '%chefe%');
+            })
+            ->orWhereIn('id', function ($sq) {
+                $sq->select('responsavel_id')
+                    ->from('departamentos')
+                    ->whereNotNull('responsavel_id');
+            });
+        })
+        ->orderBy('name')
+        ->get()
+        ->map(function ($u) {
+            $deptoNome = $u->departamento ? $u->departamento->nome : 'Departamento';
+
+            return [
+                'id' => $u->id,
+                'nome' => $u->name,
+                'departamento_nome' => $deptoNome,
+                'label' => $u->name.' - Chefe de Departamento de '.$deptoNome,
+            ];
+        });
+    }
+
+    /**
+     * Retorna os templates disponíveis para o usuário, priorizando os do seu gabinete e aplicando RBAC de visualização.
      */
     public function getTemplatesForUser(User $user)
     {
         $gabineteId = $user->departamento ? $user->departamento->gabinete_id : null;
+        $isSecGeral = $this->isUserSecretariaGeral($user);
 
         return ModeloDocumento::where('ativo', true)
             ->where(function ($q) use ($gabineteId) {
@@ -26,20 +111,24 @@ class DocumentoInternoService
                     $q->orWhere('gabinete_id', $gabineteId);
                 }
             })
+            ->when(! $isSecGeral, function ($q) {
+                $q->where(function ($sq) {
+                    $sq->whereNull('codigo')
+                        ->orWhere('codigo', '!=', 'ORDEM_DE_SERVICO_SEC_GERAL');
+                });
+            })
             ->with('especie')
             ->get();
-        // Lógica adicional de filtragem pode ser aplicada aqui se necessário
-        // Ex: Se existir um modelo específico do gabinete para uma espécie, ocultar o global.
     }
 
     public function processarTemplate(string $conteudoTemplate, ?DocumentoEntrada $docEntrada, User $user, array $dadosExtras = []): string
     {
-        // Obter Responsável do Gabinete
-        $responsavel = $user->departamento?->gabinete?->responsavel;
-        $nomeResponsavel = $responsavel ? $responsavel->name : $user->name;
-        // Se houver cargo definido no user, usa, senão tenta inferir ou usa genérico
-        // Assumindo que o cargo pode vir de uma propriedade ou relação futura. Por agora, usamos placeholder genérico se não for o user atual.
-        // Mas vamos manter simples: O Nome é o mais importante.
+        // Obter Responsável do Gabinete (Chefe do Gabinete / Secretário Geral)
+        $responsavel = $user->departamento?->gabinete?->responsavel
+            ?? $user->departamento?->gabinete?->superChefe
+            ?? $user->departamento?->responsavel
+            ?? $user;
+        $nomeResponsavel = $responsavel->name;
 
         // Obter dados da instituição cadastrada
         try {
@@ -48,49 +137,75 @@ class DocumentoInternoService
             $dadosInstituicao = new \App\Models\DadosInstituicao;
         }
 
-        // Fallbacks se estiver vazio
         if (empty($dadosInstituicao->nome_oficial)) {
-            $dadosInstituicao->nome_oficial = 'Governo Provincial do Namibe';
+            $dadosInstituicao->nome_oficial = 'Governo Provincial';
         }
         if (empty($dadosInstituicao->sigla)) {
-            $dadosInstituicao->sigla = 'GPN';
+            $dadosInstituicao->sigla = 'GOV';
         }
         if (empty($dadosInstituicao->cidade)) {
-            $dadosInstituicao->cidade = 'Moçâmedes';
+            $dadosInstituicao->cidade = 'Sede';
         }
         if (empty($dadosInstituicao->cabecalho_linha1)) {
             $dadosInstituicao->cabecalho_linha1 = 'REPÚBLICA DE ANGOLA';
         }
         if (empty($dadosInstituicao->cabecalho_linha2)) {
-            $dadosInstituicao->cabecalho_linha2 = 'GOVERNO PROVINCIAL DO NAMIBE';
+            $dadosInstituicao->cabecalho_linha2 = mb_strtoupper($dadosInstituicao->nome_oficial);
         }
+
+        $siglaGabinete = $user->departamento?->gabinete?->sigla
+            ?? $user->departamento?->sigla
+            ?? 'SEC.GER.GOV.PROV.HLA';
+
+        $insigniaUrl = ! empty($dadosInstituicao->logo_url) ? $dadosInstituicao->logo_url : asset('images/insignia.png');
+        $governoNome = ! empty($dadosInstituicao->cabecalho_linha2) ? $dadosInstituicao->cabecalho_linha2 : 'Governo Provincial da Huíla';
+        $gabineteSecretariaNome = ($user->departamento && $user->departamento->gabinete)
+            ? $user->departamento->gabinete->nome
+            : ($user->departamento ? $user->departamento->nome : 'Secretaria Geral');
+
+        $qrCodeDefault = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="70" height="70" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23eee"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="%23666">QR CODE</text></svg>';
+
+        $dataExtensoFormatada = now()->translatedFormat('d \d\e F \d\e Y');
 
         $placeholders = [
             '{{DATA_ATUAL}}' => now()->format('d/m/Y'),
-            '{{DATA_EXTENSO}}' => now()->translatedFormat('d \d\e F \d\e Y'),
+            '{{ DATA_ATUAL }}' => now()->format('d/m/Y'),
+            '{{DATA_EXTENSO}}' => $dataExtensoFormatada,
+            '{{ DATA_EXTENSO }}' => $dataExtensoFormatada,
             '{{ANO}}' => now()->format('Y'),
-            '{{USUARIO_NOME}}' => $user->name, // Quem elabora
-            '{{RESPONSAVEL_NOME}}' => $nomeResponsavel, // Quem assina (Chefe ou próprio)
+            '{{ ANO }}' => now()->format('Y'),
+            '{{USUARIO_NOME}}' => $user->name,
+            '{{ USUARIO_NOME }}' => $user->name,
+            '{{RESPONSAVEL_NOME}}' => $nomeResponsavel,
+            '{{ RESPONSAVEL_NOME }}' => $nomeResponsavel,
             '{{DEPARTAMENTO_NOME}}' => $user->departamento ? $user->departamento->nome : 'Departamento',
+            '{{ DEPARTAMENTO_NOME }}' => $user->departamento ? $user->departamento->nome : 'Departamento',
             '{{GABINETE_NOME}}' => ($user->departamento && $user->departamento->gabinete) ? $user->departamento->gabinete->nome : '',
+            '{{ GABINETE_NOME }}' => ($user->departamento && $user->departamento->gabinete) ? $user->departamento->gabinete->nome : '',
             '{{DEPARTAMENTO_SIGLA}}' => $user->departamento ? strtoupper(Str::slug($user->departamento->nome, '')) : 'DEP',
+            '{{ DEPARTAMENTO_SIGLA }}' => $user->departamento ? strtoupper(Str::slug($user->departamento->nome, '')) : 'DEP',
             '{{INSTITUICAO_NOME}}' => $dadosInstituicao->nome_oficial,
+            '{{ INSTITUICAO_NOME }}' => $dadosInstituicao->nome_oficial,
             '{{INSTITUICAO_CABECALHO_1}}' => $dadosInstituicao->cabecalho_linha1,
+            '{{ INSTITUICAO_CABECALHO_1 }}' => $dadosInstituicao->cabecalho_linha1,
             '{{INSTITUICAO_CABECALHO_2}}' => $dadosInstituicao->cabecalho_linha2,
+            '{{ INSTITUICAO_CABECALHO_2 }}' => $dadosInstituicao->cabecalho_linha2,
             '{{INSTITUICAO_CABECALHO_3}}' => $dadosInstituicao->cabecalho_linha3 ?? '',
+            '{{ INSTITUICAO_CABECALHO_3 }}' => $dadosInstituicao->cabecalho_linha3 ?? '',
             '{{INSTITUICAO_LOCAL}}' => $dadosInstituicao->cidade,
+            '{{ INSTITUICAO_LOCAL }}' => $dadosInstituicao->cidade,
         ];
 
         // Construir a linha da data institucional
         $gabineteNome = ($user->departamento && $user->departamento->gabinete) ? $user->departamento->gabinete->nome : ($user->departamento ? $user->departamento->nome : $dadosInstituicao->cabecalho_linha2);
-        $linhaData = mb_strtoupper($gabineteNome).', em '.$dadosInstituicao->cidade.', aos '.now()->translatedFormat('d \d\e F \d\e Y');
+        $linhaData = mb_strtoupper($gabineteNome).', em '.$dadosInstituicao->cidade.', aos '.$dataExtensoFormatada;
 
         $placeholders['{{RODAPE_INSTITUCIONAL_DATA}}'] = $linhaData;
 
         // Helper to trim and check
         $getVal = fn ($key, $default) => ! empty($dadosExtras[$key]) && trim($dadosExtras[$key]) !== '' ? trim($dadosExtras[$key]) : $default;
 
-        // Recipient placeholders from dadosExtras (which comes from request inputs)
+        // Recipient placeholders from dadosExtras
         $placeholders['{{DESTINATARIO_NOME}}'] = $getVal('destinatario_nome', '[NOME DO DESTINATÁRIO]');
         $placeholders['{{DESTINATARIO_CARGO}}'] = $getVal('destinatario_cargo', '[CARGO]');
         $placeholders['{{DESTINATARIO_ORGAO}}'] = $getVal('destinatario_orgao', '[INSTITUIÇÃO/ÓRGÃO]');
@@ -106,10 +221,98 @@ class DocumentoInternoService
             $placeholders['{{DOCUMENTO_ORIGEM_DATA}}'] = $docEntrada->data_documento ? $docEntrada->data_documento->format('d/m/Y') : '';
         }
 
-        // Merge extra data (user input fields)
+        // Resolvendo Data de Ausência dinâmica
+        $rawDate = $getVal('data_inicio_ausencia', null);
+        if ($rawDate) {
+            try {
+                $dataInicioFormatada = \Carbon\Carbon::parse($rawDate)->translatedFormat('d \d\e F \d\e Y');
+            } catch (\Exception $e) {
+                $dataInicioFormatada = $rawDate;
+            }
+        } else {
+            $dataInicioFormatada = '26 de Maio de 2026';
+        }
+
+        // Resolvendo Substituto (Chefe de Departamento do Gabinete)
+        $substitutoUserId = $getVal('substituto_user_id', null);
+        $substitutoNome = 'Eduardo Chivangulula Gabriel';
+        $substitutoDepto = 'Gestão do Orçamento e Contabilidade';
+
+        if ($substitutoUserId) {
+            $subUser = User::with('departamento')->find($substitutoUserId);
+            if ($subUser) {
+                $substitutoNome = $subUser->name;
+                if ($subUser->departamento) {
+                    $substitutoDepto = $subUser->departamento->nome;
+                }
+            }
+        } else {
+            if (! empty($dadosExtras['substituto_nome'])) {
+                $substitutoNome = $dadosExtras['substituto_nome'];
+            }
+            if (! empty($dadosExtras['substituto_departamento'])) {
+                $substitutoDepto = $dadosExtras['substituto_departamento'];
+            }
+        }
+
+        $preambuloDefault = "Ausentando-me para cumprimento de missão de Serviço Oficial, a partir do dia {$dataInicioFormatada} e havendo necessidade de se assegurar o normal funcionamento da Secretaria Geral do Governo, enquanto durar a minha ausência;";
+        $deliberacaoDefault = "O Senhor <strong>{$substitutoNome}</strong> - Chefe de Departamento de {$substitutoDepto} da Secretaria Geral do Governo Provincial, a responder pelos assuntos correntes da referida Secretaria.";
+
+        // Merge extra data (user input fields) with upper and exact case variations
         foreach ($dadosExtras as $key => $value) {
             $placeholders['{{'.strtoupper($key).'}}'] = $value;
+            $placeholders['{{ '.$key.' }}'] = $value;
+            $placeholders['{{'.$key.'}}'] = $value;
+            $placeholders['{{{ '.$key.' }}}'] = $value;
         }
+
+        // Calcular número de ordem sequencial automático para o ano atual do servidor
+        $especieOrdemId = DocumentoEspecie::where('nome', 'like', '%Ordem%')->value('id');
+        $countExistentes = DocumentoInterno::where(function ($q) use ($especieOrdemId) {
+            if ($especieOrdemId) {
+                $q->where('documento_especie_id', $especieOrdemId);
+            } else {
+                $q->where('titulo', 'like', '%Ordem%');
+            }
+        })
+        ->whereYear('created_at', now()->year)
+        ->count();
+
+        $numAutoCalculado = sprintf('%02d', 6 + $countExistentes);
+        $numeroOrdemFinal = $getVal('numero_ordem', $numAutoCalculado);
+        $anoAtualServidor = now()->format('Y');
+
+        // Placeholders específicos formatados (sobrepõem entradas brutas se necessário)
+        $placeholders['{{ qr_code_img_url }}'] = $getVal('qr_code_img_url', $qrCodeDefault);
+        $placeholders['{{ insignia_nacional_url }}'] = $getVal('insignia_nacional_url', $insigniaUrl);
+        $placeholders['{{ governo_provincial_nome }}'] = $getVal('governo_provincial_nome', 'Governo Provincial da Huíla');
+        $placeholders['{{ gabinete_secretaria_nome }}'] = $getVal('gabinete_secretaria_nome', 'Secretaria Geral');
+        $placeholders['{{ numero_ordem }}'] = $numeroOrdemFinal;
+        $placeholders['{{NUMERO_ORDEM}}'] = $numeroOrdemFinal;
+        $placeholders['{{ sigla_gabinete }}'] = $getVal('sigla_gabinete', $siglaGabinete);
+        $placeholders['{{ ano_corrente }}'] = $anoAtualServidor;
+        $placeholders['{{ANO_CORRENTE}}'] = $anoAtualServidor;
+        
+        $placeholders['{{ data_inicio_ausencia }}'] = $dataInicioFormatada;
+        $placeholders['{{DATA_INICIO_AUSENCIA}}'] = $dataInicioFormatada;
+        $placeholders['{{ substituto_nome }}'] = $substitutoNome;
+        $placeholders['{{SUBSTITUTO_NOME}}'] = $substitutoNome;
+        $placeholders['{{ substituto_departamento }}'] = $substitutoDepto;
+        $placeholders['{{SUBSTITUTO_DEPARTAMENTO}}'] = $substitutoDepto;
+
+        $placeholders['{{ preambulo_motivo }}'] = $getVal('preambulo_motivo', $preambuloDefault);
+        $placeholders['{{PREAMBULO_MOTIVO}}'] = $placeholders['{{ preambulo_motivo }}'];
+        $placeholders['{{ verbo_operativo }}'] = $getVal('verbo_operativo', 'INDICO:');
+        $placeholders['{{ texto_deliberacao }}'] = $getVal('texto_deliberacao', $deliberacaoDefault);
+        $placeholders['{{TEXTO_DELIBERACAO}}'] = $placeholders['{{ texto_deliberacao }}'];
+        
+        $placeholders['{{ localidade_data_extenso }}'] = $getVal('localidade_data_extenso', $dataExtensoFormatada);
+        $placeholders['{{LOCALIDADE_DATA_EXTENSO}}'] = $placeholders['{{ localidade_data_extenso }}'];
+        $placeholders['{{ cargo_signatario }}'] = $getVal('cargo_signatario', 'O Secretário Geral');
+        $placeholders['{{ nome_signatario }}'] = $getVal('nome_signatario', $nomeResponsavel);
+        $placeholders['{{{ endereco_rodape_html }}}'] = $getVal('endereco_rodape_html', 'Largo Gabriel Calof<br>telf: (+244)948956662<br>e-mail: govprovhuila@gmail.com<br>Lubango<br>ANGOLA');
+        $placeholders['{{ endereco_rodape }}'] = $getVal('endereco_rodape', 'Largo Gabriel Calof, Lubango, ANGOLA');
+        $placeholders['{{ portal_url }}'] = $getVal('portal_url', 'huila.gov.ao');
 
         $conteudoProcessado = str_replace(array_keys($placeholders), array_values($placeholders), $conteudoTemplate);
 
@@ -191,6 +394,7 @@ class DocumentoInternoService
             'DESPACHO' => 'DESP',
             'CIRCULAR' => 'CIRC',
             'NOTA' => 'NOTA',
+            'ORDEMDESERVICO', 'ORDEM' => 'OS',
             default => substr($especie, 0, 4)
         };
 
@@ -295,5 +499,162 @@ class DocumentoInternoService
 
             return $documento;
         });
+    }
+
+    /**
+     * Identifica o perfil de fluxo de trabalho do utilizador para documentos internos.
+     */
+    public function getUserWorkflowProfile(User $user): string
+    {
+        if ($user->isAdmin() || $user->isChefeGabinete() || $user->isSuperChefeGabinete()) {
+            return 'gabinete';
+        }
+
+        try {
+            if ($user->hasPermissionTo('gabinete.view_all')) {
+                return 'gabinete';
+            }
+        } catch (\Throwable $e) {
+        }
+
+        if ($user->isChefeDepartamento()) {
+            return 'chefe_departamento';
+        }
+
+        return 'tecnico';
+    }
+
+    /**
+     * Retorna a aba padrão para o perfil.
+     */
+    public function getDefaultTabForProfile(string $profile): string
+    {
+        return match ($profile) {
+            'gabinete' => 'homologacao',
+            'chefe_departamento' => 'revisao',
+            'tecnico' => 'meus_rascunhos',
+            default => 'todos',
+        };
+    }
+
+    /**
+     * Aplica o filtro da aba ativa na query de documentos internos.
+     */
+    public function applyRoleTabFilter($query, string $tab, ?User $user, string $profile): void
+    {
+        if (! $user) {
+            return;
+        }
+
+        switch ($profile) {
+            case 'gabinete':
+                if ($tab === 'homologacao') {
+                    $query->whereIn('status', [
+                        DocumentoStatus::EM_ANALISE,
+                        DocumentoStatus::PENDENTE_TRATAMENTO,
+                        DocumentoStatus::TRATADO,
+                    ]);
+                } elseif ($tab === 'assinados') {
+                    $query->whereIn('status', [
+                        DocumentoStatus::APROVADO,
+                        DocumentoStatus::ASSINADO,
+                        DocumentoStatus::FINALIZADO,
+                    ]);
+                }
+                // 'todos' -> histórico global do gabinete (sem filtro extra de status)
+                break;
+
+            case 'chefe_departamento':
+                if ($tab === 'revisao') {
+                    $query->where('status', DocumentoStatus::EM_ANALISE);
+                } elseif ($tab === 'elaboracao') {
+                    $query->where('status', DocumentoStatus::RASCUNHO);
+                } elseif ($tab === 'assinados') {
+                    $query->whereIn('status', [
+                        DocumentoStatus::APROVADO,
+                        DocumentoStatus::ASSINADO,
+                        DocumentoStatus::FINALIZADO,
+                    ]);
+                }
+                // 'todos' -> histórico completo do departamento
+                break;
+
+            case 'tecnico':
+                if ($tab === 'meus_rascunhos') {
+                    $query->where('criado_por', $user->id)
+                        ->where('status', DocumentoStatus::RASCUNHO);
+                } elseif ($tab === 'em_revisao') {
+                    $query->where('criado_por', $user->id)
+                        ->where('status', DocumentoStatus::EM_ANALISE);
+                } elseif ($tab === 'aprovados') {
+                    $query->whereIn('status', [
+                        DocumentoStatus::APROVADO,
+                        DocumentoStatus::ASSINADO,
+                        DocumentoStatus::FINALIZADO,
+                    ]);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Gera a estrutura de Underline Tabs com contagens dinâmicas para o utilizador.
+     */
+    public function getRoleWorkflowTabs(?User $user, Request $request): array
+    {
+        if (! $user) {
+            return [];
+        }
+
+        $profile = $this->getUserWorkflowProfile($user);
+        $activeTab = $request->input('tab') ?: $this->getDefaultTabForProfile($profile);
+
+        $baseQuery = DocumentoInterno::accessibleBy($user);
+
+        $tabsConfig = match ($profile) {
+            'gabinete' => [
+                ['key' => 'homologacao', 'label' => 'Para Homologação', 'icon' => 'far fa-clock', 'badge_type' => 'warning'],
+                ['key' => 'assinados', 'label' => 'Assinados / Homologados', 'icon' => 'far fa-check-circle', 'badge_type' => 'info'],
+                ['key' => 'todos', 'label' => 'Todos do Gabinete', 'icon' => 'fas fa-layer-group', 'badge_type' => 'neutral'],
+            ],
+            'chefe_departamento' => [
+                ['key' => 'revisao', 'label' => 'Aguardando Revisão', 'icon' => 'far fa-clock', 'badge_type' => 'warning'],
+                ['key' => 'elaboracao', 'label' => 'Em Elaboração', 'icon' => 'far fa-edit', 'badge_type' => 'info'],
+                ['key' => 'assinados', 'label' => 'Assinados / Expedidos', 'icon' => 'far fa-check-circle', 'badge_type' => 'neutral'],
+                ['key' => 'todos', 'label' => 'Todos do Departamento', 'icon' => 'fas fa-building', 'badge_type' => 'neutral'],
+            ],
+            'tecnico' => [
+                ['key' => 'meus_rascunhos', 'label' => 'Meus Rascunhos', 'icon' => 'far fa-edit', 'badge_type' => 'warning'],
+                ['key' => 'em_revisao', 'label' => 'Em Revisão', 'icon' => 'far fa-clock', 'badge_type' => 'info'],
+                ['key' => 'aprovados', 'label' => 'Aprovados do Departamento', 'icon' => 'far fa-check-circle', 'badge_type' => 'neutral'],
+            ],
+            default => [
+                ['key' => 'todos', 'label' => 'Todos os Documentos', 'icon' => 'fas fa-layer-group', 'badge_type' => 'neutral'],
+            ],
+        };
+
+        $tabs = [];
+        foreach ($tabsConfig as $cfg) {
+            $q = clone $baseQuery;
+            $this->applyRoleTabFilter($q, $cfg['key'], $user, $profile);
+            $count = $q->count();
+
+            $badgeClass = match ($cfg['badge_type']) {
+                'warning' => $count > 0 ? 'tab-badge-warning' : 'tab-badge-neutral opacity-50',
+                'info' => $count > 0 ? 'tab-badge-info' : 'tab-badge-neutral opacity-50',
+                default => 'tab-badge-neutral'.($count == 0 ? ' opacity-50' : ''),
+            };
+
+            $tabs[] = [
+                'key' => $cfg['key'],
+                'label' => $cfg['label'],
+                'icon' => $cfg['icon'],
+                'count' => $count,
+                'badge_class' => $badgeClass,
+                'is_active' => ($cfg['key'] === $activeTab),
+            ];
+        }
+
+        return $tabs;
     }
 }

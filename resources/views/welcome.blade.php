@@ -142,8 +142,8 @@
             <a href="{{ url('/') }}" class="portal-brand">
                 <img src="{{ $dadosInstituicao->logo_url }}" alt="Insígnia institucional">
                 <span>
-                    <span class="pb-name d-block">{{ $dadosInstituicao->sigla ?? 'GPN' }}</span>
-                    <span class="pb-sub">{{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial do Namibe' }}</span>
+                    <span class="pb-name d-block">{{ $dadosInstituicao->sigla ?? 'GOV' }}</span>
+                    <span class="pb-sub">{{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial' }}</span>
                 </span>
             </a>
             <div>
@@ -173,7 +173,7 @@
                         Sistema de Gestão <span class="accent">Administrativa e Documental</span>
                     </h1>
                     <p class="hero-subtitle">
-                        Plataforma institucional do {{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial do Namibe' }}
+                        Plataforma institucional do {{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial' }}
                         para a gestão de documentos, requisições, frota e serviços — de forma segura, rastreável e eficiente.
                     </p>
                     <div class="d-flex justify-content-center flex-wrap gap-3">
