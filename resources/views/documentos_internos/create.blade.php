@@ -107,6 +107,19 @@
                                             <label for="titulo">Título / Assunto</label>
                                         </div>
 
+                                        @if (isset($departamentos) && $departamentos->isNotEmpty())
+                                            <div class="form-floating mb-3">
+                                                <select class="form-select" id="departamento_id" name="departamento_id" required>
+                                                    @foreach ($departamentos as $dep)
+                                                        <option value="{{ $dep->id }}" {{ (Auth::user()->departamento_id == $dep->id || $loop->first) ? 'selected' : '' }}>
+                                                            {{ $dep->sigla ? $dep->sigla . ' — ' : '' }}{{ $dep->nome }}
+                                                        </option>
+                                                    @endforeach
+                                                </select>
+                                                <label for="departamento_id"><i class="fas fa-building me-1 text-primary"></i> Departamento Emissor / Origem</label>
+                                            </div>
+                                        @endif
+
                                         <div class="row g-2 mb-3">
                                             <div class="col-md-6">
                                                 <div class="form-floating">

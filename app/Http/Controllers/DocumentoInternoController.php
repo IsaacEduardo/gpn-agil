@@ -219,11 +219,15 @@ class DocumentoInternoController extends Controller
             $documentoEntrada = DocumentoEntrada::find($request->documento_entrada_id);
         }
 
+        $user = Auth::user();
         $especies = DocumentoEspecie::where('ativo', true)->orderBy('nome')->get();
-        $modelos = $this->service->getTemplatesForUser(Auth::user())->groupBy('documento_especie_id');
-        $chefesDepartamento = $this->service->getChefesDepartamentoForUser(Auth::user());
+        $modelos = $this->service->getTemplatesForUser($user)->groupBy('documento_especie_id');
+        $chefesDepartamento = $this->service->getChefesDepartamentoForUser($user);
+        $departamentos = ($user->isAdmin() || $user->isChefeGabinete() || $user->isSuperChefeGabinete() || ! $user->departamento_id)
+            ? \App\Models\Departamento::orderBy('nome')->get()
+            : collect();
 
-        return view('documentos_internos.create', compact('documentoEntrada', 'especies', 'modelos', 'chefesDepartamento'));
+        return view('documentos_internos.create', compact('documentoEntrada', 'especies', 'modelos', 'chefesDepartamento', 'departamentos'));
     }
 
     public function preview(Request $request)
@@ -249,24 +253,34 @@ class DocumentoInternoController extends Controller
             'modelo_documento_id' => 'nullable|exists:modelo_documentos,id',
             'documento_entrada_id' => 'nullable|exists:documentos_entradas,id',
             'conteudo_final' => 'required|string',
+            'departamento_id' => 'nullable|exists:departamentos,id',
             'destinatario_nome' => 'nullable|string|max:255',
             'destinatario_cargo' => 'nullable|string|max:255',
             'destinatario_orgao' => 'nullable|string|max:255',
             'destinatario_local' => 'nullable|string|max:255',
         ]);
 
+        $user = Auth::user();
         $doc = new DocumentoInterno($validated);
-        $doc->criado_por = Auth::id();
-        $doc->departamento_id = Auth::user()->departamento_id;
+        $doc->criado_por = $user->id;
+
+        // Determinar departamento com fallback robusto
+        $deptId = $request->input('departamento_id')
+            ?: $user->departamento_id
+            ?: $user->departamentoPrincipal()?->id
+            ?: $user->departamentos()->first()?->id;
+
+        if (! $deptId) {
+            $deptId = \App\Models\Departamento::first()?->id;
+        }
+
+        $doc->departamento_id = $deptId;
         $doc->status = DocumentoStatus::RASCUNHO; // Default
 
         // Generate Reference Number
-        // We load relationships needed for generation
-        $doc->load(['especie', 'departamento']);
-        // Need to save first? No, we need ID for count usually, but here we calculate before save.
-        // But we need relations. So let's set them.
+        $departamento = \App\Models\Departamento::find($deptId);
         $doc->setRelation('especie', DocumentoEspecie::find($validated['documento_especie_id']));
-        $doc->setRelation('departamento', Auth::user()->departamento);
+        $doc->setRelation('departamento', $departamento);
 
         $doc->numero_referencia = $this->service->gerarNumeroReferencia($doc);
 
