@@ -384,7 +384,7 @@
                 window.Toast.info(@json(session('info')));
             @endif
 
-            @if ($errors->any())
+            @if (isset($errors) && $errors->any())
                 @php
                     $errorList = implode('<br>', $errors->all());
                 @endphp
