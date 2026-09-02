@@ -12,12 +12,16 @@ use App\Models\User;
 use App\Models\Viatura;
 use App\Observers\RequisicaoObserver;
 use App\Support\CatalogCache;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,9 +30,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Provedor de IA do Assistente (isolado por interface para permitir troca por Kimi / Anthropic / Fake).
+        // Provedor de IA do Assistente (isolado por interface para permitir troca por DeepSeek / OpenAI / Kimi / Anthropic / Fake).
         $this->app->singleton(\App\Services\Ai\LlmClient::class, function () {
-            $driver = env('ASSISTENTE_DRIVER', config('services.anthropic.driver', 'anthropic'));
+            $driver = env('ASSISTENTE_DRIVER', config('services.deepseek.driver', 'deepseek'));
+            if (in_array(strtolower($driver), ['deepseek'])) {
+                return new \App\Services\Ai\DeepSeekLlmClient(config('services.deepseek', []));
+            }
+            if (in_array(strtolower($driver), ['openai', 'chatgpt'])) {
+                return new \App\Services\Ai\OpenAiLlmClient(config('services.openai', []));
+            }
             if (in_array(strtolower($driver), ['kimi', 'moonshot'])) {
                 return new \App\Services\Ai\KimiLlmClient(config('services.kimi', []));
             }
@@ -68,39 +78,60 @@ class AppServiceProvider extends ServiceProvider
         // invisíveis no ecrã, o que faz as listagens parecerem não paginadas.
         Paginator::useBootstrapFive();
 
-        // Compartilhar dados da instituição com todas as views (com cache de alta performance)
+        // ---------------------------------------------------------------------
+        // Definições de Rate Limiting (Segurança & OWASP Top 10)
+        // ---------------------------------------------------------------------
+        RateLimiter::for('login', function (Request $request) {
+            $email = (string) $request->input('email');
+
+            return Limit::perMinutes(15, 5)->by(Str::transliterate(Str::lower($email).'|'.$request->ip()));
+        });
+
+        RateLimiter::for('global-api', function (Request $request) {
+            return Limit::perMinute(120)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('ai-assistant', function (Request $request) {
+            return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('ocr-processing', function (Request $request) {
+            return Limit::perMinute(15)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('heavy-exports', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // Compartilhar dados da instituição com todas as views (cache curto de 10s para atualização instantânea)
         try {
-            $dados = Cache::rememberForever('dados_instituicao_global', function () {
+            $dados = Cache::remember('dados_instituicao_global', 10, function () {
                 $inst = Schema::hasTable('dados_instituicao')
                     ? (DadosInstituicao::first() ?? new DadosInstituicao)
                     : new DadosInstituicao;
 
-                // Fallbacks padrão para Namibe / Angola
+                // Fallbacks dinâmicos a partir da instituição cadastrada
                 if (empty($inst->nome_oficial)) {
-                    $inst->nome_oficial = 'Governo Provincial do Namibe';
+                    $inst->nome_oficial = 'Governo Provincial';
                 }
                 if (empty($inst->sigla)) {
-                    $inst->sigla = 'GPN';
-                }
-                if (empty($inst->cidade)) {
-                    $inst->cidade = 'Moçâmedes';
+                    $inst->sigla = 'GOV';
                 }
                 if (empty($inst->cabecalho_linha1)) {
                     $inst->cabecalho_linha1 = 'REPÚBLICA DE ANGOLA';
                 }
                 if (empty($inst->cabecalho_linha2)) {
-                    $inst->cabecalho_linha2 = 'GOVERNO PROVINCIAL DO NAMIBE';
+                    $inst->cabecalho_linha2 = mb_strtoupper($inst->nome_oficial);
                 }
 
                 return $inst;
             });
         } catch (\Exception $e) {
             $dados = new DadosInstituicao;
-            $dados->nome_oficial = 'Governo Provincial do Namibe';
-            $dados->sigla = 'GPN';
-            $dados->cidade = 'Moçâmedes';
+            $dados->nome_oficial = 'Governo Provincial';
+            $dados->sigla = 'GOV';
             $dados->cabecalho_linha1 = 'REPÚBLICA DE ANGOLA';
-            $dados->cabecalho_linha2 = 'GOVERNO PROVINCIAL DO NAMIBE';
+            $dados->cabecalho_linha2 = 'GOVERNO PROVINCIAL';
         }
 
         View::share('dadosInstituicao', $dados);
@@ -165,6 +196,10 @@ class AppServiceProvider extends ServiceProvider
                 'pend_reservas' => 0,
                 'can_review_requisicoes' => false,
                 'can_review_reservas' => false,
+                'ext_pendentes' => 0,
+                'int_pendentes' => 0,
+                'user_profile' => 'tecnico',
+                'default_tab' => 'atribuidos_mim',
             ];
 
             if (Auth::check()) {
@@ -175,6 +210,29 @@ class AppServiceProvider extends ServiceProvider
                 $counts = Cache::remember("menu_counts_user_{$user->id}", 30, function () use ($user, $counts) {
                     $counts['can_review_requisicoes'] = (bool) ($user->role && $user->hasPermission('visto_departamento_requisicoes'));
                     $counts['can_review_reservas'] = (bool) ($user->role && $user->hasPermission('visto_departamento_reservas'));
+
+                    $permissionService = app(\App\Services\DocumentoPermissionService::class);
+                    $documentoService = app(\App\Services\DocumentoEntradaService::class);
+
+                    $profile = $permissionService->getUserWorkflowProfile($user);
+                    $defaultTab = $documentoService->getDefaultTabForProfile($profile);
+
+                    $counts['user_profile'] = $profile;
+                    $counts['default_tab'] = $defaultTab;
+
+                    // 1. Contagem dinâmica de Documentos Externos pendentes segundo o perfil do utilizador (1-clique)
+                    $qExt = DocumentoEntrada::query()->where('arquivado', false);
+                    $documentoService->applyVisibilityScope($qExt, $user);
+                    $documentoService->applyRoleTabFilter($qExt, $defaultTab, $user, $profile);
+                    $counts['ext_pendentes'] = $qExt->count();
+
+                    // 2. Contagem de Documentos Internos aguardando parecer/revisão
+                    $qInt = \App\Models\DocumentoInterno::accessibleBy($user)
+                        ->whereIn('status', [
+                            \App\Enums\DocumentoStatus::EM_ANALISE->value,
+                            \App\Enums\DocumentoStatus::PENDENTE_TRATAMENTO->value,
+                        ]);
+                    $counts['int_pendentes'] = $qInt->count();
 
                     $deptIds = $user->departamentos()->pluck('departamentos.id')->all();
                     if (empty($deptIds) && $user->departamento_id) {
