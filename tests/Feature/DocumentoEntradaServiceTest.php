@@ -58,7 +58,7 @@ class DocumentoEntradaServiceTest extends TestCase
             'id' => $doc->id,
             'assunto' => 'Assunto de Teste',
             'numero_sequencial' => 1,
-            'status' => 'registrado',
+            'status' => \App\Enums\DocumentoStatus::PENDENTE_TRATAMENTO->value,
         ]);
 
         $this->assertNotNull($doc->arquivo_caminho);
@@ -73,6 +73,10 @@ class DocumentoEntradaServiceTest extends TestCase
         $gabinete = Gabinete::create(['nome' => 'Gab', 'sigla' => 'GAB', 'responsavel_id' => $user->id]);
         $dep1 = Departamento::create(['nome' => 'Dep 1', 'gabinete_id' => $gabinete->id]);
         $dep2 = Departamento::create(['nome' => 'Dep 2', 'gabinete_id' => $gabinete->id]);
+
+        $user->update(['departamento_id' => $dep1->id]);
+        \Illuminate\Support\Facades\Cache::forget("user_{$user->id}_responsible_gabinetes");
+        \Illuminate\Support\Facades\Cache::forget("user_{$user->id}_departments");
 
         DocumentoEntrada::create([
             'numero_sequencial' => 1,

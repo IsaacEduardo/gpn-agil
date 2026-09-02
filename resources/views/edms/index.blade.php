@@ -1,1114 +1,821 @@
 @extends('layouts.app')
 
+@section('title', 'EDMS - Arquivo Digital')
+
 @section('content')
 <div class="container-fluid py-4">
-    {{-- Header Section --}}
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
-        <div>
-            <h4 class="fw-bold text-primary mb-1 d-flex align-items-center">
-                <span class="p-2 bg-primary-subtle text-primary rounded-3 me-3 d-inline-flex align-items-center justify-content-center" style="width: 42px; height: 42px;">
-                    <i class="fas fa-archive fs-5"></i>
-                </span>
-                <span>EDMS - Gestão de Arquivos Digitais</span>
-            </h4>
-            <p class="text-muted small mb-0 ms-0 ms-md-5">
-                @if(isset($currentFolder))
-                    <nav aria-label="breadcrumb">
-                        <ol class="breadcrumb mb-0 p-0 bg-transparent">
-                            <li class="breadcrumb-item">
-                                <a href="{{ route('edms.index') }}" class="text-primary text-decoration-none">
-                                    <i class="fas fa-home me-1"></i> Raiz
-                                </a>
-                            </li>
-                            @foreach($breadcrumbs as $crumb)
-                                <li class="breadcrumb-item">
-                                    <a href="{{ route('edms.index', ['folder' => $crumb->id]) }}" class="text-primary text-decoration-none">
-                                        {{ $crumb->nome }}
-                                    </a>
-                                </li>
-                            @endforeach
-                            <li class="breadcrumb-item active fw-semibold text-dark" aria-current="page">{{ $currentFolder->nome }}</li>
-                        </ol>
-                    </nav>
-                @else
-                    Gerencie, localize e organize de forma cronológica a documentação oficial da província
-                @endif
-            </p>
-        </div>
-        <div class="d-flex gap-2">
-            @if(auth()->user()->hasRole('admin') || auth()->user()->hasRole('Admin'))
-                <a href="{{ route('edms.retention') }}" class="btn btn-outline-danger px-3 rounded-pill fw-semibold shadow-sm">
-                    <i class="fas fa-calendar-alt me-1"></i> Tabela de Temporalidade
-                </a>
-            @endif
-            @if(isset($currentFolder) && ($currentFolder->created_by === auth()->id() || auth()->user()->hasRole('admin') || auth()->user()->hasRole('Admin')))
-                <button class="btn btn-outline-warning px-3 rounded-pill fw-semibold shadow-sm" data-bs-toggle="modal" data-bs-target="#shareFolderModal">
-                    <i class="fas fa-share-alt me-1"></i> Partilhar Pasta
-                </button>
-                <button class="btn btn-outline-secondary px-3 rounded-pill fw-semibold shadow-sm" id="btnFolderHistory" data-bs-toggle="modal" data-bs-target="#folderHistoryModal" data-folder-id="{{ $currentFolder->id }}">
-                    <i class="fas fa-history me-1"></i> Histórico
-                </button>
-            @endif
-            <button class="btn btn-outline-primary px-3 rounded-pill fw-semibold shadow-sm" data-bs-toggle="modal" data-bs-target="#createFolderModal">
-                <i class="fas fa-folder-plus me-1"></i> Nova Pasta
-            </button>
-        </div>
-    </div>
 
-    {{-- Alert Success / Errors --}}
+    {{-- Alert Messages --}}
     @if(session('success'))
-        <div class="alert alert-success border-0 shadow-sm rounded-4 alert-dismissible fade show d-flex align-items-center" role="alert">
+        <div class="alert alert-success border-0 shadow-sm rounded-3 alert-dismissible fade show d-flex align-items-center mb-4" role="alert">
             <i class="fas fa-check-circle me-3 fs-4 text-success"></i>
             <div>{{ session('success') }}</div>
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     @endif
 
-    {{-- Advanced Search & Filters Card --}}
+    @if(session('error'))
+        <div class="alert alert-danger border-0 shadow-sm rounded-3 alert-dismissible fade show d-flex align-items-center mb-4" role="alert">
+            <i class="fas fa-exclamation-triangle me-3 fs-4 text-danger"></i>
+            <div>{{ session('error') }}</div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    {{-- Top Action Toolbar & Breadcrumb Header --}}
     <div class="card border-0 shadow-sm rounded-4 mb-4">
-        <div class="card-body p-4">
-            <h6 class="fw-bold text-dark mb-3"><i class="fas fa-filter text-primary me-2"></i>Pesquisa Avançada e Filtros</h6>
-            <form action="{{ route('edms.index', ['folder' => $currentFolder->id ?? null]) }}" method="GET" class="row g-3 align-items-end">
-                @if(isset($currentFolder))
-                    <input type="hidden" name="folder" value="{{ $currentFolder->id }}">
-                @endif
-                <div class="col-lg-3 col-md-6">
-                    <label class="form-label small text-muted fw-semibold">Termo de Busca</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light border-0"><i class="fas fa-search text-muted"></i></span>
-                        <input type="text" name="search" class="form-control bg-light border-0" placeholder="Assunto, título, ref, conteúdo..." value="{{ request('search') }}">
+        <div class="card-body p-3 p-md-4">
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+                
+                {{-- Title & Dynamic Breadcrumbs --}}
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="p-2 bg-primary-subtle text-primary rounded-3 d-inline-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                            <i class="fas fa-archive fs-5"></i>
+                        </span>
+                        <h4 class="fw-bold text-dark mb-0">EDMS - Gestão de Arquivos Digitais</h4>
                     </div>
+
+                    {{-- Breadcrumb Dinâmico --}}
+                    <nav aria-label="breadcrumb" class="ms-1 mt-2">
+                        <ol class="breadcrumb mb-0 small text-muted">
+                            <li class="breadcrumb-item">
+                                <a href="{{ route('edms.index') }}" class="text-decoration-none text-primary fw-semibold">
+                                    <i class="fas fa-database me-1"></i> Repositório
+                                </a>
+                            </li>
+                            
+                            @if(isset($currentFolder))
+                                @foreach($breadcrumbs as $crumb)
+                                    <li class="breadcrumb-item">
+                                        <a href="{{ route('edms.index', ['folder' => $crumb->id]) }}" class="text-decoration-none text-secondary">
+                                            {{ $crumb->nome }}
+                                        </a>
+                                    </li>
+                                @endforeach
+                                <li class="breadcrumb-item active fw-bold text-dark">{{ $currentFolder->nome }}</li>
+                            @elseif($activeTreeKey === 'entradas')
+                                <li class="breadcrumb-item text-secondary">Doc. de Entrada</li>
+                                @if($treeYear)
+                                    <li class="breadcrumb-item {{ !$treeMonth ? 'active fw-bold text-dark' : '' }}">
+                                        <a href="{{ route('edms.index', ['tree' => 'entradas', 'year' => $treeYear, 'view_mode' => $viewMode]) }}" class="text-decoration-none text-secondary">{{ $treeYear }}</a>
+                                    </li>
+                                @endif
+                                @if($treeMonth)
+                                    <li class="breadcrumb-item {{ !$treeEspecie ? 'active fw-bold text-dark' : '' }}">
+                                        <a href="{{ route('edms.index', ['tree' => 'entradas', 'year' => $treeYear, 'month' => $treeMonth, 'view_mode' => $viewMode]) }}" class="text-decoration-none text-secondary">{{ $treeMonthName }}</a>
+                                    </li>
+                                @endif
+                                @if($treeEspecie)
+                                    <li class="breadcrumb-item active fw-bold text-dark">{{ $treeEspecie }}</li>
+                                @endif
+                            @elseif($activeTreeKey === 'internos')
+                                <li class="breadcrumb-item text-secondary">Doc. Internos</li>
+                                @if($treeYear)
+                                    <li class="breadcrumb-item {{ !$treeMonth ? 'active fw-bold text-dark' : '' }}">
+                                        <a href="{{ route('edms.index', ['tree' => 'internos', 'year' => $treeYear, 'view_mode' => $viewMode]) }}" class="text-decoration-none text-secondary">{{ $treeYear }}</a>
+                                    </li>
+                                @endif
+                                @if($treeMonth)
+                                    <li class="breadcrumb-item {{ !$treeEspecie ? 'active fw-bold text-dark' : '' }}">
+                                        <a href="{{ route('edms.index', ['tree' => 'internos', 'year' => $treeYear, 'month' => $treeMonth, 'view_mode' => $viewMode]) }}" class="text-decoration-none text-secondary">{{ $treeMonthName }}</a>
+                                    </li>
+                                @endif
+                                @if($treeEspecie)
+                                    <li class="breadcrumb-item active fw-bold text-dark">{{ $treeEspecie }}</li>
+                                @endif
+                            @elseif($activeTreeKey === 'pendentes')
+                                <li class="breadcrumb-item active fw-bold text-warning-emphasis">Pendentes de Arquivamento</li>
+                            @else
+                                <li class="breadcrumb-item active fw-semibold text-secondary">Dossiês & Pastas Manuais</li>
+                            @endif
+                        </ol>
+                    </nav>
                 </div>
-                <div class="col-lg-2 col-md-6">
-                    <label class="form-label small text-muted fw-semibold">Tipo</label>
-                    <select name="type" class="form-select bg-light border-0">
-                        <option value="">Todos</option>
-                        <option value="interno" {{ request('type') == 'interno' ? 'selected' : '' }}>Interno</option>
-                        <option value="entrada" {{ request('type') == 'entrada' ? 'selected' : '' }}>Entrada</option>
-                    </select>
-                </div>
-                <div class="col-lg-4 col-md-8">
-                    <label class="form-label small text-muted fw-semibold">Período de Arquivamento</label>
-                    <div class="input-group">
-                        <input type="date" name="date_start" class="form-control bg-light border-0" value="{{ request('date_start') }}" title="Data Início">
-                        <span class="input-group-text bg-transparent border-0 text-muted small">até</span>
-                        <input type="date" name="date_end" class="form-control bg-light border-0" value="{{ request('date_end') }}" title="Data Fim">
+
+                {{-- Toolbar Actions & View Mode Toggle --}}
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    
+                    {{-- Toggle View Mode: Table vs Grid --}}
+                    <div class="btn-group shadow-sm rounded-pill p-1 bg-light border" role="group" aria-label="Modo de Visualização">
+                        <a href="{{ request()->fullUrlWithQuery(['view_mode' => 'table']) }}" 
+                           class="btn btn-sm rounded-pill border-0 px-3 {{ $viewMode === 'table' ? 'btn-primary text-white fw-bold shadow-sm' : 'btn-light text-muted' }}" 
+                           title="Visualização em Tabela Detalhada">
+                            <i class="fas fa-table me-1"></i> Tabela
+                        </a>
+                        <a href="{{ request()->fullUrlWithQuery(['view_mode' => 'grid']) }}" 
+                           class="btn btn-sm rounded-pill border-0 px-3 {{ $viewMode === 'grid' ? 'btn-primary text-white fw-bold shadow-sm' : 'btn-light text-muted' }}" 
+                           title="Visualização em Grid Amplo">
+                            <i class="fas fa-th-large me-1"></i> Grid
+                        </a>
                     </div>
-                </div>
-                <div class="col-lg-3 col-md-4 d-flex gap-2">
-                    <button type="submit" class="btn btn-primary rounded-3 flex-fill fw-semibold">
-                        <i class="fas fa-search me-1"></i> Filtrar
-                    </button>
-                    @if(request('search') || request('type') || request('date_start') || request('date_end'))
-                        <a href="{{ route('edms.index', ['folder' => $currentFolder->id ?? null]) }}" class="btn btn-light border rounded-3 text-muted px-3" title="Limpar Filtros">
-                            <i class="fas fa-times"></i>
+
+                    {{-- Admin Temporalidade --}}
+                    @if(auth()->user()->isAdmin() || auth()->user()->hasRole('admin'))
+                        <a href="{{ route('edms.retention') }}" class="btn btn-outline-danger btn-sm px-3 rounded-pill fw-semibold shadow-sm">
+                            <i class="fas fa-calendar-alt me-1"></i> Temporalidade
                         </a>
                     @endif
+
+                    {{-- Ações da Pasta Física --}}
+                    @if(isset($currentFolder) && ($currentFolder->created_by === auth()->id() || auth()->user()->isAdmin()))
+                        <button class="btn btn-outline-warning btn-sm px-3 rounded-pill fw-semibold shadow-sm" data-bs-toggle="modal" data-bs-target="#shareFolderModal">
+                            <i class="fas fa-share-alt me-1"></i> Partilhar
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm px-3 rounded-pill fw-semibold shadow-sm" id="btnFolderHistory" data-bs-toggle="modal" data-bs-target="#folderHistoryModal" data-folder-id="{{ $currentFolder->id }}">
+                            <i class="fas fa-history me-1"></i> Histórico
+                        </button>
+                    @endif
+
+                    {{-- Nova Pasta --}}
+                    <button class="btn btn-primary btn-sm px-3 rounded-pill fw-semibold shadow-sm" data-bs-toggle="modal" data-bs-target="#createFolderModal">
+                        <i class="fas fa-folder-plus me-1"></i> Nova Pasta
+                    </button>
                 </div>
-            </form>
+
+            </div>
+
+            {{-- Inline Fast Search & Collapsible Advanced Filter --}}
+            <div class="mt-3 pt-3 border-top">
+                <form action="{{ route('edms.index') }}" method="GET" class="row g-2 align-items-center">
+                    <input type="hidden" name="tree" value="{{ $activeTreeKey }}">
+                    @if($currentFolder) <input type="hidden" name="folder" value="{{ $currentFolder->id }}"> @endif
+                    @if($treeYear) <input type="hidden" name="year" value="{{ $treeYear }}"> @endif
+                    @if($treeMonth) <input type="hidden" name="month" value="{{ $treeMonth }}"> @endif
+                    @if($treeEspecie) <input type="hidden" name="especie" value="{{ $treeEspecie }}"> @endif
+                    <input type="hidden" name="view_mode" value="{{ $viewMode }}">
+
+                    <div class="col-md-5 col-lg-6">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span>
+                            <input type="text" name="search" class="form-control bg-light border-start-0 ps-0" placeholder="Pesquisar por assunto, número, ref, procedência..." value="{{ request('search') }}">
+                            @if(request('search'))
+                                <a href="{{ route('edms.index', ['tree' => $activeTreeKey, 'year' => $treeYear, 'month' => $treeMonth, 'especie' => $treeEspecie, 'view_mode' => $viewMode]) }}" class="btn btn-light border border-start-0 text-muted" title="Limpar busca">
+                                    <i class="fas fa-times"></i>
+                                </a>
+                            @endif
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 col-lg-2">
+                        <select name="type" class="form-select form-select-sm bg-light">
+                            <option value="">Todos os Tipos</option>
+                            <option value="entrada" {{ request('type') === 'entrada' ? 'selected' : '' }}>Entradas Externas</option>
+                            <option value="interno" {{ request('type') === 'interno' ? 'selected' : '' }}>Internos</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4 col-lg-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-secondary btn-sm px-3 rounded-pill fw-semibold">
+                            <i class="fas fa-filter me-1"></i> Filtrar
+                        </button>
+                        <button type="button" class="btn btn-link btn-sm text-decoration-none text-muted" data-bs-toggle="collapse" data-bs-target="#advancedFiltersCollapse">
+                            <i class="fas fa-sliders-h me-1"></i> Datas
+                        </button>
+                    </div>
+
+                    {{-- Collapsible Dates --}}
+                    <div class="collapse col-12 mt-2 {{ request('date_start') || request('date_end') ? 'show' : '' }}" id="advancedFiltersCollapse">
+                        <div class="p-3 bg-light rounded-3 d-flex flex-wrap align-items-center gap-3">
+                            <span class="small fw-bold text-muted">Intervalo de Datas:</span>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="small text-muted">De:</span>
+                                <input type="date" name="date_start" class="form-control form-control-sm" value="{{ request('date_start') }}">
+                                <span class="small text-muted">Até:</span>
+                                <input type="date" name="date_end" class="form-control form-control-sm" value="{{ request('date_end') }}">
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
-    {{-- Main Contents --}}
-    @if(!isset($currentFolder) && !request('search') && !request('type') && !request('date_start') && !request('date_end'))
-        {{-- ROOT VIEW WITH TABS: ARCHIVE VS PENDING INBOX --}}
-        <div class="card border-0 bg-transparent">
-            <div class="card-header border-0 bg-transparent p-0 mb-3">
-                <ul class="nav nav-pills gap-2" id="edmsTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active px-4 py-2 rounded-pill fw-semibold d-flex align-items-center shadow-sm" id="folders-tab" data-bs-toggle="tab" data-bs-target="#folders-content" type="button" role="tab" aria-controls="folders-content" aria-selected="true">
-                            <i class="fas fa-folder-open me-2"></i>Pastas do Departamento
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        @php
-                            $totalPendentes = $pendentesInternos->count() + $pendentesEntrada->count();
-                        @endphp
-                        <button class="nav-link px-4 py-2 rounded-pill fw-semibold d-flex align-items-center position-relative shadow-sm" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pending-content" type="button" role="tab" aria-controls="pending-content" aria-selected="false">
-                            <i class="fas fa-inbox me-2"></i>Pendentes de Arquivamento
-                            @if($totalPendentes > 0)
-                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-white">
-                                    {{ $totalPendentes }}
+    {{-- Main Hybrid Layout: 2 Columns (Tree View Left 1/4 + Workspace Right 3/4) --}}
+    <div class="row g-4">
+
+        {{-- 1. LEFT SIDEBAR: CRONOLOGICAL TREE VIEW NAVIGATOR (1/4 Width) --}}
+        <div class="col-lg-3">
+            <div class="card border-0 shadow-sm rounded-4 sticky-top" style="top: 20px; z-index: 10;">
+                <div class="card-header bg-white border-0 py-3 px-3">
+                    <h6 class="fw-bold text-dark mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="fas fa-sitemap text-primary me-2"></i>Navegador de Arquivos</span>
+                        <span class="badge bg-primary-subtle text-primary rounded-pill small px-2">RBAC</span>
+                    </h6>
+                </div>
+                
+                <div class="card-body p-2" style="max-height: calc(100vh - 200px); overflow-y: auto;">
+                    <div class="list-group list-group-flush border-0 small">
+                        
+                        {{-- A. DOCUMENTOS DE ENTRADA (TREE ACCORDION: Tipo -> Ano -> Mês -> Espécie) --}}
+                        <div class="mb-2">
+                            <a href="#treeEntradasCollapse" data-bs-toggle="collapse" 
+                               class="list-group-item list-group-item-action border-0 rounded-3 d-flex align-items-center justify-content-between p-2 fw-semibold {{ $activeTreeKey === 'entradas' ? 'bg-warning-subtle text-dark' : 'text-dark' }}"
+                               aria-expanded="{{ $activeTreeKey === 'entradas' ? 'true' : 'false' }}">
+                                <span class="d-flex align-items-center gap-2 text-truncate">
+                                    <i class="fas fa-file-import text-warning fs-6"></i>
+                                    <span>Doc. de Entrada</span>
                                 </span>
-                            @endif
-                        </button>
-                    </li>
-                </ul>
-            </div>
+                                <span class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-warning-subtle text-dark rounded-pill">{{ $virtualTree['entradas']['total'] ?? 0 }}</span>
+                                    <i class="fas fa-chevron-down nav-arrow opacity-50" style="font-size: 0.75rem;"></i>
+                                </span>
+                            </a>
 
-            <div class="tab-content" id="edmsTabsContent">
-                {{-- TAB: FOLDERS --}}
-                <div class="tab-pane fade show active" id="folders-content" role="tabpanel" aria-labelledby="folders-tab">
-                    <div class="row g-3">
-                        @forelse($pastas as $pasta)
-                            <div class="col-12 col-md-6 col-lg-4 col-xl-3">
-                                <a href="{{ route('edms.index', ['folder' => $pasta->id]) }}" class="text-decoration-none text-dark">
-                                    <div class="card border-0 shadow-sm rounded-4 h-100 card-hover transition-all border-start-system border-start {{ $pasta->is_system ? 'border-primary' : 'border-warning' }}">
-                                        <div class="card-body p-4 d-flex align-items-center gap-3">
-                                            <div class="p-3 rounded-4 {{ $pasta->is_system ? 'bg-primary-subtle text-primary' : 'bg-warning-subtle text-warning' }}">
-                                                <i class="fas fa-folder{{ $pasta->is_system ? '' : '-open' }} fs-3"></i>
-                                            </div>
-                                            <div class="overflow-hidden">
-                                                <h6 class="fw-bold mb-1 text-truncate" title="{{ $pasta->nome }}">{{ $pasta->nome }}</h6>
-                                                <small class="text-muted d-block">{{ $pasta->children_count + $pasta->documentos_internos_count }} itens no total</small>
-                                            </div>
-                                            @if($pasta->is_system)
-                                                <span class="ms-auto badge bg-primary-subtle text-primary text-uppercase" style="font-size: 0.65rem">Sistema</span>
-                                            @endif
+                            <div class="collapse ps-2 mt-1 {{ $activeTreeKey === 'entradas' ? 'show' : '' }}" id="treeEntradasCollapse">
+                                @forelse($virtualTree['entradas']['years'] ?? [] as $ano => $anoData)
+                                    {{-- Nível 2: Ano --}}
+                                    <div class="mt-1">
+                                        <div class="d-flex align-items-center justify-content-between py-1 px-2 rounded {{ $activeTreeKey === 'entradas' && $treeYear == $ano && !$treeMonth && !$treeEspecie ? 'bg-light fw-bold text-primary' : 'text-secondary' }}">
+                                            <a href="{{ route('edms.index', ['tree' => 'entradas', 'year' => $ano, 'view_mode' => $viewMode]) }}" class="text-decoration-none text-dark fw-semibold text-truncate">
+                                                <i class="far fa-folder-open text-warning me-1"></i> {{ $ano }}
+                                            </a>
+                                            <span class="badge bg-light text-dark rounded-pill border" style="font-size: 0.7rem;">{{ $anoData['count'] }}</span>
                                         </div>
-                                    </div>
-                                </a>
-                            </div>
-                        @empty
-                            <div class="col-12 text-center py-5">
-                                <div class="p-4 bg-white shadow-sm rounded-4 d-inline-block text-muted">
-                                    <i class="fas fa-folder-open fs-1 mb-3 opacity-50 text-secondary"></i>
-                                    <p class="mb-0 fw-semibold">Nenhuma pasta encontrada.</p>
-                                    <p class="small mb-0">Crie uma nova pasta clicando no botão acima.</p>
-                                </div>
-                            </div>
-                        @endforelse
-                    </div>
-                </div>
 
-                {{-- TAB: PENDING DOCUMENTS --}}
-                <div class="tab-pane fade" id="pending-content" role="tabpanel" aria-labelledby="pending-tab">
-                    <div class="card border-0 shadow-sm rounded-4">
-                        <div class="card-body p-0">
-                            @if($totalPendentes == 0)
-                                <div class="text-center py-5 text-muted">
-                                    <div class="p-3 bg-light rounded-circle d-inline-flex mb-3">
-                                        <i class="fas fa-check fs-2 text-success"></i>
-                                    </div>
-                                    <p class="fw-bold mb-0">Tudo em dia!</p>
-                                    <p class="small mb-0">Não há documentos aguardando arquivamento para o seu departamento.</p>
-                                </div>
-                            @else
-                                <div class="table-responsive">
-                                    <table class="table table-hover align-middle mb-0">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th class="ps-4">Documento</th>
-                                                <th>Tipo</th>
-                                                <th>Ref / Sequencial</th>
-                                                <th>Data Registro</th>
-                                                <th>Autor / Procedência</th>
-                                                <th class="text-end pe-4">Ação</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {{-- Pendentes Internos --}}
-                                            @foreach($pendentesInternos as $doc)
-                                                <tr draggable="true" data-doc-id="{{ $doc->id }}" data-doc-type="interno">
-                                                    <td class="ps-4">
-                                                        <div class="d-flex align-items-center gap-3">
-                                                            <div class="p-2 bg-info-subtle text-info rounded-3">
-                                                                <i class="fas fa-file-alt"></i>
-                                                            </div>
-                                                            <div class="fw-bold text-dark text-truncate" style="max-width: 320px;" title="{{ $doc->titulo }}">
-                                                                {{ $doc->titulo }}
-                                                            </div>
+                                        {{-- Nível 3: Mês --}}
+                                        @if($activeTreeKey === 'entradas' && $treeYear == $ano)
+                                            <div class="ps-3 border-start ms-2 my-1">
+                                                @foreach($anoData['months'] as $mStr => $mGroup)
+                                                    <div class="my-1">
+                                                        <div class="d-flex align-items-center justify-content-between py-1 px-2 rounded {{ $activeTreeKey === 'entradas' && $treeYear == $ano && $treeMonth == $mStr && !$treeEspecie ? 'bg-primary-subtle fw-bold text-primary' : 'text-secondary' }}">
+                                                            <a href="{{ route('edms.index', ['tree' => 'entradas', 'year' => $ano, 'month' => $mStr, 'view_mode' => $viewMode]) }}" class="text-decoration-none text-secondary text-truncate" style="font-size: 0.82rem;">
+                                                                <i class="fas fa-folder text-warning opacity-75 me-1"></i> {{ $mGroup['mes_nome'] }}
+                                                            </a>
+                                                            <span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.65rem;">{{ $mGroup['count'] }}</span>
                                                         </div>
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge bg-info-subtle text-info text-uppercase">Interno</span>
-                                                    </td>
-                                                    <td><code>{{ $doc->numero_referencia }}</code></td>
-                                                    <td>{{ $doc->created_at->format('d/m/Y') }}</td>
-                                                    <td>{{ $doc->autor->name ?? 'Sistema' }}</td>
-                                                    <td class="text-end pe-4">
-                                                        <button class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm btn-arquivar"
-                                                            data-bs-toggle="modal" data-bs-target="#arquivarPendenteModal"
-                                                            data-doc-id="{{ $doc->id }}"
-                                                            data-doc-type="interno"
-                                                            data-doc-title="{{ $doc->titulo }}">
-                                                            <i class="fas fa-archive me-1"></i> Arquivar
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            @endforeach
 
-                                            {{-- Pendentes Entrada --}}
-                                            @foreach($pendentesEntrada as $doc)
-                                                <tr draggable="true" data-doc-id="{{ $doc->id }}" data-doc-type="entrada">
-                                                    <td class="ps-4">
-                                                        <div class="d-flex align-items-center gap-3">
-                                                            <div class="p-2 bg-success-subtle text-success rounded-3">
-                                                                <i class="fas fa-file-import"></i>
+                                                        {{-- Nível 4: Espécies Documentais --}}
+                                                        @if($activeTreeKey === 'entradas' && $treeYear == $ano && $treeMonth == $mStr)
+                                                            <div class="ps-3 border-start ms-2 my-1">
+                                                                @foreach($mGroup['species'] as $especieNome => $eCount)
+                                                                    <a href="{{ route('edms.index', ['tree' => 'entradas', 'year' => $ano, 'month' => $mStr, 'especie' => $especieNome, 'view_mode' => $viewMode]) }}" 
+                                                                       class="text-decoration-none d-flex align-items-center justify-content-between py-1 px-2 rounded {{ $activeTreeKey === 'entradas' && $treeYear == $ano && $treeMonth == $mStr && $treeEspecie === $especieNome ? 'bg-primary text-white fw-bold' : 'text-muted' }}" 
+                                                                       style="font-size: 0.78rem;">
+                                                                        <span class="text-truncate me-1"><i class="fas fa-file-alt opacity-50 me-1"></i> {{ $especieNome }}</span>
+                                                                        <span class="badge rounded-pill {{ $treeEspecie === $especieNome ? 'bg-white text-primary' : 'bg-light text-muted' }}" style="font-size: 0.65rem;">{{ $eCount }}</span>
+                                                                    </a>
+                                                                @endforeach
                                                             </div>
-                                                            <div class="fw-bold text-dark text-truncate" style="max-width: 320px;" title="{{ $doc->assunto }}">
-                                                                {{ $doc->assunto }}
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge bg-success-subtle text-success text-uppercase">Entrada</span>
-                                                    </td>
-                                                    <td><code>{{ $doc->numero_sequencial }}/{{ $doc->ano_referencia }}</code></td>
-                                                    <td>{{ $doc->created_at->format('d/m/Y') }}</td>
-                                                    <td>{{ $doc->procedencia }}</td>
-                                                    <td class="text-end pe-4">
-                                                        <button class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm btn-arquivar"
-                                                            data-bs-toggle="modal" data-bs-target="#arquivarPendenteModal"
-                                                            data-doc-id="{{ $doc->id }}"
-                                                            data-doc-type="entrada"
-                                                            data-doc-title="{{ $doc->assunto }}">
-                                                            <i class="fas fa-archive me-1"></i> Arquivar
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div class="p-3 d-flex justify-content-between align-items-center bg-light border-top">
-                                    <div>
-                                        {{ $pendentesInternos->links() }}
-                                    </div>
-                                    <div>
-                                        {{ $pendentesEntrada->links() }}
-                                    </div>
-                                </div>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    @else
-        {{-- VIEWING A FOLDER OR A SEARCH RESULT --}}
-        @if(request('search') || request('type') || request('date_start') || request('date_end'))
-            <div class="alert alert-info border-0 shadow-sm rounded-4 mb-4 d-flex align-items-center">
-                <i class="fas fa-search me-3 fs-4 text-info"></i>
-                <div>
-                    Você está a visualizar resultados da <strong>Pesquisa Avançada</strong> no arquivo.
-                    <a href="{{ route('edms.index', ['folder' => $currentFolder->id ?? null]) }}" class="alert-link ms-2">Limpar busca e retornar</a>
-                </div>
-            </div>
-        @endif
-
-        @if(isset($currentFolder))
-            <div class="card border-0 shadow-sm rounded-4 mb-4" style="background: linear-gradient(135deg, #f8fafd 0%, #f1f5f9 100%); border: 1px solid rgba(0, 123, 255, 0.05) !important;">
-                <div class="card-body p-4">
-                    <h6 class="fw-bold text-dark mb-3"><i class="fas fa-cloud-upload-alt text-primary me-2"></i>Upload Direto de Ficheiro</h6>
-                    <form action="{{ route('edms.upload-file') }}" method="POST" enctype="multipart/form-data" id="edmsUploadForm">
-                        @csrf
-                        <input type="hidden" name="pasta_id" value="{{ $currentFolder->id }}">
-                        <div id="dropzone" class="border border-2 border-dashed rounded-4 p-4 text-center cursor-pointer position-relative transition-all d-flex flex-column align-items-center justify-content-center" style="border-color: #cbd5e1 !important; background: rgba(255, 255, 255, 0.6); min-height: 150px;">
-                            <input type="file" name="file" id="fileInput" class="position-absolute top-0 start-0 w-100 h-100 opacity-0 cursor-pointer" required>
-                            <div class="p-3 bg-white rounded-circle shadow-sm text-primary mb-3">
-                                <i class="fas fa-cloud-upload-alt fs-3"></i>
-                            </div>
-                            <h6 class="fw-bold text-secondary mb-1">Arraste e solte o seu arquivo aqui ou clique para navegar</h6>
-                            <p class="text-muted small mb-0">PDF, PNG, JPG (Max: 20MB)</p>
-                            <div id="fileInfo" class="mt-3 d-none align-items-center gap-2 p-2 bg-white rounded-3 shadow-sm border">
-                                <i class="fas fa-file-pdf text-danger fs-5" id="fileIcon"></i>
-                                <span id="fileName" class="fw-semibold small text-dark"></span>
-                                <button type="button" class="btn-close" id="clearFileBtn" aria-label="Limpar" style="font-size: 0.7rem;"></button>
-                            </div>
-                        </div>
-                        
-                        <div class="row mt-3 g-2 align-items-center justify-content-between">
-                            <div class="col-md-8">
-                                <input type="text" name="titulo" class="form-control rounded-3 border-0 bg-white shadow-sm" placeholder="Título do Ficheiro no Arquivo (Opcional - usa o nome original se vazio)">
-                            </div>
-                            <div class="col-md-4 text-end">
-                                <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm w-100">
-                                    <i class="fas fa-check me-1"></i> Carregar e Arquivar
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        @endif
-
-        {{-- Folders Content Navigator --}}
-        <div class="card border-0 shadow-sm rounded-4 mb-4">
-            <div class="card-header bg-transparent border-0 p-4 pb-0 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
-                <div class="d-flex align-items-center gap-2">
-                    <h5 class="fw-bold text-dark mb-0">Conteúdo do Arquivo</h5>
-                    <span class="badge bg-secondary-subtle text-secondary rounded-pill">
-                        {{ $pastas->count() + $documentosInternos->count() + $documentosEntrada->count() }} itens
-                    </span>
-                </div>
-                {{-- View Mode Switcher (Grid vs Timeline) --}}
-                <ul class="nav nav-pills bg-light p-1 rounded-pill" id="viewModeTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active px-3 py-1 rounded-pill small fw-semibold" id="grid-view-tab" data-bs-toggle="tab" data-bs-target="#grid-view" type="button" role="tab" aria-controls="grid-view" aria-selected="true">
-                            <i class="fas fa-th-large me-1"></i> Grade
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link px-3 py-1 rounded-pill small fw-semibold" id="timeline-view-tab" data-bs-toggle="tab" data-bs-target="#timeline-view" type="button" role="tab" aria-controls="timeline-view" aria-selected="false">
-                            <i class="fas fa-history me-1"></i> Linha do Tempo
-                        </button>
-                    </li>
-                </ul>
-            </div>
-
-            <div class="card-body p-4">
-                <div class="tab-content" id="viewModeTabsContent">
-                    {{-- VIEW: GRID VIEW --}}
-                    <div class="tab-pane fade show active" id="grid-view" role="tabpanel" aria-labelledby="grid-view-tab">
-                        
-                        {{-- Subpastas --}}
-                        @if($pastas->isNotEmpty())
-                            <h6 class="text-muted fw-bold small text-uppercase mb-3"><i class="fas fa-folder text-warning me-2"></i>Subpastas</h6>
-                            <div class="row g-3 mb-4">
-                                @foreach($pastas as $pasta)
-                                    <div class="col-12 col-md-6 col-lg-4 col-xl-3">
-                                        <a href="{{ route('edms.index', ['folder' => $pasta->id]) }}" class="text-decoration-none text-dark">
-                                            <div class="card border-0 shadow-sm rounded-4 bg-light card-hover transition-all">
-                                                <div class="card-body p-3 d-flex align-items-center gap-3">
-                                                    <i class="fas fa-folder{{ $pasta->is_system ? '' : '-open' }} text-warning fs-3"></i>
-                                                    <div class="overflow-hidden">
-                                                        <h6 class="fw-bold mb-1 text-truncate" title="{{ $pasta->nome }}">{{ $pasta->nome }}</h6>
-                                                        <small class="text-muted d-block">{{ $pasta->children_count + $pasta->documentos_internos_count }} itens</small>
+                                                        @endif
                                                     </div>
-                                                </div>
+                                                @endforeach
                                             </div>
+                                        @endif
+                                    </div>
+                                @empty
+                                    <div class="text-muted small ps-2 py-1 italic">Nenhum arquivo de entrada</div>
+                                @endforelse
+                            </div>
+                        </div>
+
+                        {{-- B. DOCUMENTOS INTERNOS (TREE ACCORDION: Tipo -> Ano -> Mês -> Espécie) --}}
+                        <div class="mb-2">
+                            <a href="#treeInternosCollapse" data-bs-toggle="collapse" 
+                               class="list-group-item list-group-item-action border-0 rounded-3 d-flex align-items-center justify-content-between p-2 fw-semibold {{ $activeTreeKey === 'internos' ? 'bg-info-subtle text-dark' : 'text-dark' }}"
+                               aria-expanded="{{ $activeTreeKey === 'internos' ? 'true' : 'false' }}">
+                                <span class="d-flex align-items-center gap-2 text-truncate">
+                                    <i class="fas fa-file-alt text-info fs-6"></i>
+                                    <span>Doc. Internos</span>
+                                </span>
+                                <span class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-info-subtle text-dark rounded-pill">{{ $virtualTree['internos']['total'] ?? 0 }}</span>
+                                    <i class="fas fa-chevron-down nav-arrow opacity-50" style="font-size: 0.75rem;"></i>
+                                </span>
+                            </a>
+
+                            <div class="collapse ps-2 mt-1 {{ $activeTreeKey === 'internos' ? 'show' : '' }}" id="treeInternosCollapse">
+                                @forelse($virtualTree['internos']['years'] ?? [] as $ano => $anoData)
+                                    {{-- Nível 2: Ano --}}
+                                    <div class="mt-1">
+                                        <div class="d-flex align-items-center justify-content-between py-1 px-2 rounded {{ $activeTreeKey === 'internos' && $treeYear == $ano && !$treeMonth && !$treeEspecie ? 'bg-light fw-bold text-primary' : 'text-secondary' }}">
+                                            <a href="{{ route('edms.index', ['tree' => 'internos', 'year' => $ano, 'view_mode' => $viewMode]) }}" class="text-decoration-none text-dark fw-semibold text-truncate">
+                                                <i class="far fa-folder-open text-info me-1"></i> {{ $ano }}
+                                            </a>
+                                            <span class="badge bg-light text-dark rounded-pill border" style="font-size: 0.7rem;">{{ $anoData['count'] }}</span>
+                                        </div>
+
+                                        {{-- Nível 3: Mês --}}
+                                        @if($activeTreeKey === 'internos' && $treeYear == $ano)
+                                            <div class="ps-3 border-start ms-2 my-1">
+                                                @foreach($anoData['months'] as $mStr => $mGroup)
+                                                    <div class="my-1">
+                                                        <div class="d-flex align-items-center justify-content-between py-1 px-2 rounded {{ $activeTreeKey === 'internos' && $treeYear == $ano && $treeMonth == $mStr && !$treeEspecie ? 'bg-primary-subtle fw-bold text-primary' : 'text-secondary' }}">
+                                                            <a href="{{ route('edms.index', ['tree' => 'internos', 'year' => $ano, 'month' => $mStr, 'view_mode' => $viewMode]) }}" class="text-decoration-none text-secondary text-truncate" style="font-size: 0.82rem;">
+                                                                <i class="fas fa-folder text-info opacity-75 me-1"></i> {{ $mGroup['mes_nome'] }}
+                                                            </a>
+                                                            <span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.65rem;">{{ $mGroup['count'] }}</span>
+                                                        </div>
+
+                                                        {{-- Nível 4: Espécies Documentais --}}
+                                                        @if($activeTreeKey === 'internos' && $treeYear == $ano && $treeMonth == $mStr)
+                                                            <div class="ps-3 border-start ms-2 my-1">
+                                                                @foreach($mGroup['species'] as $especieNome => $eCount)
+                                                                    <a href="{{ route('edms.index', ['tree' => 'internos', 'year' => $ano, 'month' => $mStr, 'especie' => $especieNome, 'view_mode' => $viewMode]) }}" 
+                                                                       class="text-decoration-none d-flex align-items-center justify-content-between py-1 px-2 rounded {{ $activeTreeKey === 'internos' && $treeYear == $ano && $treeMonth == $mStr && $treeEspecie === $especieNome ? 'bg-primary text-white fw-bold' : 'text-muted' }}" 
+                                                                       style="font-size: 0.78rem;">
+                                                                        <span class="text-truncate me-1"><i class="fas fa-file-alt opacity-50 me-1"></i> {{ $especieNome }}</span>
+                                                                        <span class="badge rounded-pill {{ $treeEspecie === $especieNome ? 'bg-white text-primary' : 'bg-light text-muted' }}" style="font-size: 0.65rem;">{{ $eCount }}</span>
+                                                                    </a>
+                                                                @endforeach
+                                                            </div>
+                                                        @endif
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </div>
+                                @empty
+                                    <div class="text-muted small ps-2 py-1 italic">Nenhum arquivo interno</div>
+                                @endforelse
+                            </div>
+                        </div>
+
+                        {{-- C. DOSSIÊS & PASTAS MANUAIS (CUSTOM FOLDERS) --}}
+                        <div class="mb-2">
+                            <a href="{{ route('edms.index', ['tree' => 'dossies', 'view_mode' => $viewMode]) }}" 
+                               class="list-group-item list-group-item-action border-0 rounded-3 d-flex align-items-center justify-content-between p-2 fw-semibold {{ $activeTreeKey === 'dossies' ? 'bg-primary-subtle text-primary' : 'text-dark' }}">
+                                <span class="d-flex align-items-center gap-2 text-truncate">
+                                    <i class="fas fa-folder text-primary fs-6"></i>
+                                    <span>Dossiês & Pastas</span>
+                                </span>
+                                <span class="badge bg-light text-dark rounded-pill border">{{ count($pastas) }}</span>
+                            </a>
+
+                            @if(($activeTreeKey === 'dossies' || request()->filled('search')) && count($pastas) > 0)
+                                <div class="ps-3 mt-1">
+                                    @foreach($pastas as $pastaItem)
+                                        <a href="{{ route('edms.index', ['folder' => $pastaItem->id, 'tree' => 'dossies', 'view_mode' => $viewMode]) }}" 
+                                           class="text-decoration-none d-flex align-items-center justify-content-between py-1 px-2 rounded my-1 {{ isset($currentFolder) && $currentFolder->id === $pastaItem->id ? 'bg-primary text-white fw-bold' : 'text-secondary' }}"
+                                           style="font-size: 0.82rem;">
+                                            <span class="text-truncate"><i class="fas fa-folder me-1 text-warning"></i> {{ $pastaItem->nome }}</span>
+                                            <span class="badge rounded-pill {{ isset($currentFolder) && $currentFolder->id === $pastaItem->id ? 'bg-white text-primary' : 'bg-light text-muted' }}" style="font-size: 0.65rem;">
+                                                {{ ($pastaItem->documentos_count ?? 0) + ($pastaItem->documentos_internos_count ?? 0) }}
+                                            </span>
                                         </a>
-                                    </div>
-                                @endforeach
-                            </div>
-                        @endif
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
 
-                        {{-- Arquivos / Documentos --}}
-                        @if($documentosInternos->isNotEmpty() || $documentosEntrada->isNotEmpty())
-                            <h6 class="text-muted fw-bold small text-uppercase mb-3"><i class="fas fa-file-alt text-primary me-2"></i>Documentos Arquivados</h6>
-                            <div class="row g-3">
-                                {{-- Documentos Internos --}}
-                                @foreach($documentosInternos as $doc)
-                                    <div class="col-12 col-md-6 col-lg-4 col-xl-3">
-                                        <div class="card border-0 shadow-sm rounded-4 h-100 bg-white card-hover border-top border-info border-4">
-                                            <div class="card-body p-4 d-flex flex-column h-100">
-                                                <div class="d-flex justify-content-between align-items-start mb-3">
-                                                    <span class="badge bg-info-subtle text-info rounded-pill">v{{ $doc->versao_atual }}</span>
-                                                    <small class="text-muted" style="font-size: 0.75rem">
-                                                        <i class="fas fa-calendar-alt me-1"></i>{{ $doc->arquivado_em ? $doc->arquivado_em->format('d/m/Y') : $doc->created_at->format('d/m/Y') }}
-                                                    </small>
-                                                </div>
-                                                <h6 class="fw-bold text-dark text-truncate mb-1" title="{{ $doc->titulo }}">{{ $doc->titulo }}</h6>
-                                                <small class="text-muted d-block mb-2"><code>{{ $doc->numero_referencia }}</code></small>
-                                                
-                                                {{-- Temporalidade --}}
-                                                @php
-                                                    $schedule = $doc->documentoEspecie ? $doc->documentoEspecie->retentionSchedule : null;
-                                                    $venceu = false;
-                                                    $anosRestantes = null;
-                                                    $mensagemTemporalidade = '';
-                                                    if ($schedule) {
-                                                        $dataCorte = $doc->arquivado_em ? \Carbon\Carbon::parse($doc->arquivado_em) : $doc->created_at;
-                                                        $dataVencimento = $dataCorte->copy()->addYears($schedule->temporalidade_anos);
-                                                        $venceu = now()->greaterThan($dataVencimento);
-                                                        if (!$venceu) {
-                                                            $anosRestantes = now()->diffInYears($dataVencimento);
-                                                            $mensagemTemporalidade = "Guarda: " . ($anosRestantes > 0 ? "{$anosRestantes}a restantes" : "fim este ano") . " (" . ucfirst($schedule->acao_final) . ")";
-                                                        } else {
-                                                            $mensagemTemporalidade = "Vencido: " . ucfirst($schedule->acao_final);
-                                                        }
-                                                    }
-                                                @endphp
-                                                @if($schedule)
-                                                    <div class="mb-3 py-1 px-2 rounded-3 text-start small d-inline-flex align-items-center gap-1 {{ $venceu ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning' }}" style="font-size: 0.7rem; width: fit-content;">
-                                                        <i class="fas {{ $venceu ? 'fa-exclamation-triangle' : 'fa-clock' }}"></i>
-                                                        <span>{{ $mensagemTemporalidade }}</span>
-                                                    </div>
-                                                @endif
+                        {{-- D. PENDENTES DE ARQUIVAMENTO --}}
+                        <div class="mt-2 pt-2 border-top">
+                            <a href="{{ route('edms.index', ['tree' => 'pendentes', 'view_mode' => $viewMode]) }}" 
+                               class="list-group-item list-group-item-action border-0 rounded-3 d-flex align-items-center justify-content-between p-2 fw-semibold {{ $activeTreeKey === 'pendentes' ? 'bg-warning text-dark fw-bold' : 'text-dark' }}">
+                                <span class="d-flex align-items-center gap-2 text-truncate">
+                                    <i class="fas fa-clock text-danger fs-6"></i>
+                                    <span>Pendentes Arquivar</span>
+                                </span>
+                                @if(($pendentesTotal ?? 0) > 0)
+                                    <span class="badge bg-danger text-white rounded-pill shadow-sm">{{ $pendentesTotal }}</span>
+                                @else
+                                    <span class="badge bg-light text-muted rounded-pill">0</span>
+                                @endif
+                            </a>
+                        </div>
 
-                                                <p class="text-muted small text-truncate-3 mb-4" style="font-size: 0.8rem">
-                                                    {!! strip_tags($doc->conteudo_final) !!}
-                                                </p>
-                                                @if(request('search') && $doc->pasta)
-                                                    <div class="bg-light p-2 rounded-3 mb-3 text-truncate small">
-                                                        <i class="fas fa-folder text-warning me-1"></i>
-                                                        <span class="text-muted">Pasta: </span>
-                                                        <strong>{{ $doc->pasta->nome }}</strong>
-                                                    </div>
-                                                @endif
-                                                <div class="mt-auto pt-2 d-flex gap-2">
-                                                    @php
-                                                        $latestVersion = $doc->versoes->sortByDesc('created_at')->first();
-                                                        $mimeType = $latestVersion ? strtolower($latestVersion->mime_type ?? '') : '';
-                                                        $isPreviewable = $latestVersion && (str_contains($mimeType, 'pdf') || str_contains($mimeType, 'image') || str_contains($mimeType, 'png') || str_contains($mimeType, 'jpeg') || str_contains($mimeType, 'jpg'));
-                                                    @endphp
-                                                    
-                                                    @if($isPreviewable)
-                                                        <button class="btn btn-primary btn-sm rounded-pill fw-semibold flex-fill" 
-                                                            data-bs-toggle="modal" data-bs-target="#edmsPreviewModal"
-                                                            data-preview-url="{{ route('edms.stream-version', $latestVersion->id) }}"
-                                                            data-preview-title="{{ $doc->titulo }}"
-                                                            data-preview-type="{{ str_contains($mimeType, 'image') ? 'image' : 'pdf' }}">
-                                                            <i class="fas fa-eye me-1"></i> Ver
-                                                        </button>
-                                                    @endif
-                                                    <a href="{{ route('documentos-internos.show', $doc->id) }}" class="btn btn-outline-info btn-sm rounded-pill fw-semibold flex-fill">
-                                                        <i class="fas fa-info-circle me-1"></i> Detalhes
-                                                    </a>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                @endforeach
-
-                                {{-- Documentos Entrada --}}
-                                @foreach($documentosEntrada as $doc)
-                                    <div class="col-12 col-md-6 col-lg-4 col-xl-3">
-                                        <div class="card border-0 shadow-sm rounded-4 h-100 bg-white card-hover border-top border-success border-4">
-                                            <div class="card-body p-4 d-flex flex-column h-100">
-                                                <div class="d-flex justify-content-between align-items-start mb-3">
-                                                    <span class="badge bg-success-subtle text-success rounded-pill">Entrada</span>
-                                                    <small class="text-muted" style="font-size: 0.75rem">
-                                                        <i class="fas fa-calendar-alt me-1"></i>{{ $doc->arquivado_em ? $doc->arquivado_em->format('d/m/Y') : $doc->created_at->format('d/m/Y') }}
-                                                    </small>
-                                                </div>
-                                                <h6 class="fw-bold text-dark text-truncate mb-1" title="{{ $doc->assunto }}">{{ $doc->assunto }}</h6>
-                                                <small class="text-muted d-block mb-3"><code>{{ $doc->numero_sequencial }}/{{ $doc->ano_referencia }}</code></small>
-                                                <p class="text-muted small mb-3" style="font-size: 0.8rem">
-                                                    <strong>Procedência:</strong> {{ $doc->procedencia }} <br>
-                                                    <span class="text-truncate-2 d-block"><strong>Obs:</strong> {{ $doc->observacoes ?: 'Nenhuma observação.' }}</span>
-                                                </p>
-
-                                                @if($doc->anexos->isNotEmpty())
-                                                    <div class="mb-3">
-                                                        <small class="text-muted fw-bold d-block mb-1" style="font-size: 0.75rem;">Anexos:</small>
-                                                        <div class="d-flex flex-wrap gap-1">
-                                                            @foreach($doc->anexos as $anexo)
-                                                                @php
-                                                                    $anMime = strtolower($anexo->mime_type ?? '');
-                                                                    $anPreviewable = str_contains($anMime, 'pdf') || str_contains($anMime, 'image') || str_contains($anMime, 'png') || str_contains($anMime, 'jpeg') || str_contains($anMime, 'jpg');
-                                                                @endphp
-                                                                @if($anPreviewable)
-                                                                    <button type="button" class="btn btn-xs btn-light text-primary border rounded-pill py-0 px-2 fw-semibold" style="font-size: 0.7rem;"
-                                                                        data-bs-toggle="modal" data-bs-target="#edmsPreviewModal"
-                                                                        data-preview-url="{{ route('edms.stream-attachment', $anexo->id) }}"
-                                                                        data-preview-title="{{ $anexo->nome_original }}"
-                                                                        data-preview-type="{{ str_contains($anMime, 'image') ? 'image' : 'pdf' }}">
-                                                                        <i class="fas fa-eye me-1"></i> {{ Str::limit($anexo->nome_original, 15) }}
-                                                                    </button>
-                                                                @else
-                                                                    <a href="{{ route('documentos-entradas.anexos.download', [$doc->id, $anexo->id]) }}" class="btn btn-xs btn-light border rounded-pill py-0 px-2 text-muted text-decoration-none" style="font-size: 0.7rem;">
-                                                                        <i class="fas fa-download me-1"></i> {{ Str::limit($anexo->nome_original, 15) }}
-                                                                    </a>
-                                                                @endif
-                                                            @endforeach
-                                                        </div>
-                                                    </div>
-                                                @endif
-
-                                                @if(request('search') && $doc->pasta)
-                                                    <div class="bg-light p-2 rounded-3 mb-3 text-truncate small">
-                                                        <i class="fas fa-folder text-warning me-1"></i>
-                                                        <span class="text-muted">Pasta: </span>
-                                                        <strong>{{ $doc->pasta->nome }}</strong>
-                                                    </div>
-                                                @endif
-                                                <div class="mt-auto pt-2 d-grid">
-                                                    <a href="{{ route('documentos-entradas.show', $doc->id) }}" class="btn btn-outline-success btn-sm rounded-pill fw-semibold">
-                                                        <i class="fas fa-eye me-1"></i> Ver Protocolo
-                                                    </a>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                            <div class="d-flex justify-content-between align-items-center mt-4">
-                                <div>@if(method_exists($documentosInternos, 'links')) {{ $documentosInternos->links() }} @endif</div>
-                                <div>@if(method_exists($documentosEntrada, 'links')) {{ $documentosEntrada->links() }} @endif</div>
-                            </div>
-                        @endif
-
-                        {{-- Pasta Vazia --}}
-                        @if($pastas->isEmpty() && $documentosInternos->isEmpty() && $documentosEntrada->isEmpty())
-                            <div class="text-center py-5 text-muted">
-                                <i class="fas fa-folder-open fs-1 mb-3 opacity-50"></i>
-                                <p class="mb-0 fw-semibold">Esta pasta está vazia.</p>
-                            </div>
-                        @endif
-
-                    </div>
-
-                    {{-- VIEW: TIMELINE VIEW --}}
-                    <div class="tab-pane fade" id="timeline-view" role="tabpanel" aria-labelledby="timeline-view-tab">
-                        @php
-                            $todosDocumentos = collect();
-                            foreach($documentosInternos as $doc) {
-                                $doc->tipo_edms = 'interno';
-                                $todosDocumentos->push($doc);
-                            }
-                            foreach($documentosEntrada as $doc) {
-                                $doc->tipo_edms = 'entrada';
-                                $todosDocumentos->push($doc);
-                            }
-                            $todosDocumentos = $todosDocumentos->sortByDesc(function($doc) {
-                                return $doc->arquivado_em ?? $doc->created_at;
-                            });
-                            
-                            $documentosAgrupados = $todosDocumentos->groupBy(function($doc) {
-                                $date = $doc->arquivado_em ?? $doc->created_at;
-                                return $date ? $date->translatedFormat('F \\d\\e Y') : 'Sem Data';
-                            });
-                        @endphp
-
-                        @if($todosDocumentos->isEmpty())
-                            <div class="text-center py-5 text-muted">
-                                <i class="fas fa-calendar-alt fs-1 mb-3 opacity-50"></i>
-                                <p class="mb-0 fw-semibold">Não há documentos arquivados nesta pasta para exibir na linha do tempo.</p>
-                            </div>
-                        @else
-                            <div class="timeline py-3">
-                                @foreach($documentosAgrupados as $mesAno => $docs)
-                                    <div class="timeline-group-header mb-4 mt-2">
-                                        <span class="badge bg-primary px-3 py-2 rounded-pill fw-bold text-uppercase fs-7 shadow-sm">
-                                            <i class="fas fa-calendar-day me-2"></i>{{ $mesAno }}
-                                        </span>
-                                    </div>
-
-                                    <div class="position-relative border-start border-2 border-primary-subtle ms-3 ps-4 pb-4">
-                                        @foreach($docs as $doc)
-                                            <div class="timeline-item mb-4 position-relative">
-                                                {{-- Bullet --}}
-                                                <span class="position-absolute translate-middle-x bg-white rounded-circle border border-3 border-primary shadow-sm" style="left: -33px; top: 12px; width: 16px; height: 16px;"></span>
-                                                
-                                                <div class="card border-0 shadow-sm rounded-4 card-hover transition-all">
-                                                    <div class="card-body p-4">
-                                                        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
-                                                            <div class="d-flex align-items-center gap-3">
-                                                                @if($doc->tipo_edms === 'interno')
-                                                                    <div class="p-3 bg-info-subtle text-info rounded-4">
-                                                                        <i class="fas fa-file-alt fs-4"></i>
-                                                                    </div>
-                                                                    <div>
-                                                                        <h6 class="fw-bold mb-1 text-dark">{{ $doc->titulo }}</h6>
-                                                                        <small class="text-muted d-block">
-                                                                            <span class="badge bg-info-subtle text-info text-uppercase me-2" style="font-size: 0.65rem;">Interno</span>
-                                                                            <code>{{ $doc->numero_referencia }}</code>
-                                                                        </small>
-                                                                    </div>
-                                                                @else
-                                                                    <div class="p-3 bg-success-subtle text-success rounded-4">
-                                                                        <i class="fas fa-file-import fs-4"></i>
-                                                                    </div>
-                                                                    <div>
-                                                                        <h6 class="fw-bold mb-1 text-dark">{{ $doc->assunto }}</h6>
-                                                                        <small class="text-muted d-block">
-                                                                            <span class="badge bg-success-subtle text-success text-uppercase me-2" style="font-size: 0.65rem;">Entrada</span>
-                                                                            <code>{{ $doc->numero_sequencial }}/{{ $doc->ano_referencia }}</code>
-                                                                        </small>
-                                                                    </div>
-                                                                @endif
-                                                            </div>
-                                                            <div class="d-flex align-items-center gap-3 ms-0 ms-sm-auto text-sm-end">
-                                                                <div>
-                                                                    <small class="text-muted d-block">Arquivado em</small>
-                                                                    <span class="fw-semibold text-dark">{{ $doc->arquivado_em ? $doc->arquivado_em->format('d/m/Y H:i') : $doc->created_at->format('d/m/Y H:i') }}</span>
-                                                                </div>
-                                                                <div class="d-flex gap-1">
-                                                                    @if($doc->tipo_edms === 'interno')
-                                                                        @php
-                                                                            $latestVersion = $doc->versoes->sortByDesc('created_at')->first();
-                                                                            $mimeType = $latestVersion ? strtolower($latestVersion->mime_type ?? '') : '';
-                                                                            $isPreviewable = $latestVersion && (str_contains($mimeType, 'pdf') || str_contains($mimeType, 'image') || str_contains($mimeType, 'png') || str_contains($mimeType, 'jpeg') || str_contains($mimeType, 'jpg'));
-                                                                        @endphp
-                                                                        @if($isPreviewable)
-                                                                            <button type="button" class="btn btn-sm btn-light rounded-circle p-2 shadow-sm text-primary" style="width: 38px; height: 38px;"
-                                                                                data-bs-toggle="modal" data-bs-target="#edmsPreviewModal"
-                                                                                data-preview-url="{{ route('edms.stream-version', $latestVersion->id) }}"
-                                                                                data-preview-title="{{ $doc->titulo }}"
-                                                                                data-preview-type="{{ str_contains($mimeType, 'image') ? 'image' : 'pdf' }}"
-                                                                                title="Pré-visualizar">
-                                                                                <i class="fas fa-eye"></i>
-                                                                            </button>
-                                                                        @endif
-                                                                    @elseif($doc->tipo_edms === 'entrada' && $doc->anexos->isNotEmpty())
-                                                                        @php
-                                                                            $firstAnexo = $doc->anexos->first();
-                                                                            $anMime = strtolower($firstAnexo->mime_type ?? '');
-                                                                            $anPreviewable = str_contains($anMime, 'pdf') || str_contains($anMime, 'image') || str_contains($anMime, 'png') || str_contains($anMime, 'jpeg') || str_contains($anMime, 'jpg');
-                                                                        @endphp
-                                                                        @if($anPreviewable)
-                                                                            <button type="button" class="btn btn-sm btn-light rounded-circle p-2 shadow-sm text-primary" style="width: 38px; height: 38px;"
-                                                                                data-bs-toggle="modal" data-bs-target="#edmsPreviewModal"
-                                                                                data-preview-url="{{ route('edms.stream-attachment', $firstAnexo->id) }}"
-                                                                                data-preview-title="{{ $firstAnexo->nome_original }}"
-                                                                                data-preview-type="{{ str_contains($anMime, 'image') ? 'image' : 'pdf' }}"
-                                                                                title="Pré-visualizar Primeiro Anexo">
-                                                                                <i class="fas fa-eye"></i>
-                                                                            </button>
-                                                                        @endif
-                                                                    @endif
-                                                                    <a href="{{ $doc->tipo_edms === 'interno' ? route('documentos-internos.show', $doc->id) : route('documentos-entradas.show', $doc->id) }}" class="btn btn-light rounded-circle p-2 shadow-sm text-secondary" title="Ver Detalhes" style="width: 38px; height: 38px;">
-                                                                        <i class="fas fa-info-circle"></i>
-                                                                    </a>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                @endforeach
-                            </div>
-                        @endif
                     </div>
                 </div>
             </div>
         </div>
-    @endif
+
+        {{-- 2. RIGHT WORKSPACE AREA: MAIN DATA TABLE & GRID (3/4 Width) --}}
+        <div class="col-lg-9">
+
+            {{-- A. SEÇÃO: PENDENTES DE ARQUIVAMENTO (Se selecionado ou se na raiz com itens pendentes) --}}
+            @if($activeTreeKey === 'pendentes' || (!isset($currentFolder) && !request()->filled('search') && !request()->filled('year') && !request()->filled('month') && !request()->filled('especie') && $pendentesTotal > 0))
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-header bg-warning-subtle border-0 py-3 px-4 rounded-top-4">
+                        <h6 class="fw-bold text-dark mb-0 d-flex align-items-center">
+                            <i class="fas fa-clock text-danger me-2 fs-5"></i>
+                            <span>Documentos Concluídos Pendentes de Classificação / Arquivamento</span>
+                        </h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light small text-uppercase fw-bold">
+                                    <tr>
+                                        <th class="ps-4">Tipo / Ref</th>
+                                        <th>Assunto / Título</th>
+                                        <th>Departamento</th>
+                                        <th>Data Conclusão</th>
+                                        <th class="text-end pe-4">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{-- Pendentes de Entrada --}}
+                                    @forelse($pendentesEntrada as $docEnt)
+                                        <tr>
+                                            <td class="ps-4">
+                                                <span class="badge bg-warning-subtle text-dark border me-1">Entrada</span>
+                                                <span class="fw-bold text-dark">#{{ $docEnt->numero_sequencial }}/{{ $docEnt->ano_referencia }}</span>
+                                            </td>
+                                            <td class="fw-semibold text-dark text-wrap" style="max-width: 320px;">
+                                                {{ $docEnt->assunto }}
+                                            </td>
+                                            <td><span class="small text-muted">{{ optional($docEnt->departamento)->nome ?? 'N/D' }}</span></td>
+                                            <td><span class="small text-muted">{{ $docEnt->created_at ? $docEnt->created_at->format('d/m/Y H:i') : '-' }}</span></td>
+                                            <td class="text-end pe-4">
+                                                <button class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#arquivarEntradaModal{{ $docEnt->id }}">
+                                                    <i class="fas fa-archive me-1"></i> Classificar & Arquivar
+                                                </button>
+                                            </td>
+                                        </tr>
+
+                                        {{-- Modal de Arquivamento de Entrada --}}
+                                        <div class="modal fade" id="arquivarEntradaModal{{ $docEnt->id }}" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog">
+                                                <form action="{{ route('pastas.arquivar', $docEnt->id) }}" method="POST">
+                                                    @csrf
+                                                    <input type="hidden" name="tipo_documento" value="entrada">
+                                                    <div class="modal-content rounded-4 border-0 shadow">
+                                                        <div class="modal-header border-0 pb-0">
+                                                            <h5 class="modal-title fw-bold">Arquivar Entrada #{{ $docEnt->numero_sequencial }}/{{ $docEnt->ano_referencia }}</h5>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                        </div>
+                                                        <div class="modal-body">
+                                                            <p class="small text-muted mb-3">{{ $docEnt->assunto }}</p>
+                                                            <div class="mb-3">
+                                                                <label class="form-label fw-bold small">Selecione a Pasta de Destino</label>
+                                                                <select name="pasta_id" class="form-select" required>
+                                                                    <option value="">-- Selecione uma pasta --</option>
+                                                                    @foreach($pastas as $pOp)
+                                                                        <option value="{{ $pOp->id }}">{{ $pOp->nome }}</option>
+                                                                    @endforeach
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div class="modal-footer border-0 pt-0">
+                                                            <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">Cancelar</button>
+                                                            <button type="submit" class="btn btn-primary rounded-pill px-4">Arquivar</button>
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    @empty
+                                    @endforelse
+
+                                    {{-- Pendentes Internos --}}
+                                    @forelse($pendentesInternos as $docInt)
+                                        <tr>
+                                            <td class="ps-4">
+                                                <span class="badge bg-info-subtle text-dark border me-1">Interno</span>
+                                                <span class="fw-bold text-dark">{{ $docInt->numero_referencia ?? 'S/Ref' }}</span>
+                                            </td>
+                                            <td class="fw-semibold text-dark text-wrap" style="max-width: 320px;">
+                                                {{ $docInt->titulo }}
+                                            </td>
+                                            <td><span class="small text-muted">{{ optional($docInt->departamento)->nome ?? 'N/D' }}</span></td>
+                                            <td><span class="small text-muted">{{ $docInt->updated_at ? $docInt->updated_at->format('d/m/Y H:i') : '-' }}</span></td>
+                                            <td class="text-end pe-4">
+                                                <button class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#arquivarInternoModal{{ $docInt->id }}">
+                                                    <i class="fas fa-archive me-1"></i> Classificar & Arquivar
+                                                </button>
+                                            </td>
+                                        </tr>
+
+                                        {{-- Modal Arquivar Interno --}}
+                                        <div class="modal fade" id="arquivarInternoModal{{ $docInt->id }}" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog">
+                                                <form action="{{ route('pastas.arquivar', $docInt->id) }}" method="POST">
+                                                    @csrf
+                                                    <input type="hidden" name="tipo_documento" value="interno">
+                                                    <div class="modal-content rounded-4 border-0 shadow">
+                                                        <div class="modal-header border-0 pb-0">
+                                                            <h5 class="modal-title fw-bold">Arquivar Doc. Interno</h5>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                        </div>
+                                                        <div class="modal-body">
+                                                            <p class="small text-muted mb-3">{{ $docInt->titulo }}</p>
+                                                            <div class="mb-3">
+                                                                <label class="form-label fw-bold small">Selecione a Pasta de Destino</label>
+                                                                <select name="pasta_id" class="form-select" required>
+                                                                    <option value="">-- Selecione uma pasta --</option>
+                                                                    @foreach($pastas as $pOp)
+                                                                        <option value="{{ $pOp->id }}">{{ $pOp->nome }}</option>
+                                                                    @endforeach
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div class="modal-footer border-0 pt-0">
+                                                            <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">Cancelar</button>
+                                                            <button type="submit" class="btn btn-primary rounded-pill px-4">Arquivar</button>
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    @empty
+                                    @endforelse
+
+                                    @if(count($pendentesEntrada) === 0 && count($pendentesInternos) === 0)
+                                        <tr>
+                                            <td colspan="5" class="text-center py-4 text-muted">
+                                                <i class="fas fa-check-circle fs-3 text-success d-block mb-2"></i>
+                                                Não há documentos pendentes de arquivamento no seu departamento.
+                                            </td>
+                                        </tr>
+                                    @endif
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
+            {{-- B. SEÇÃO PRINCIPAL DE CONTEÚDO: TABELA MODERNA vs GRID AMPLO --}}
+            @if($viewMode === 'table')
+                
+                {{-- TABELA MODERNA (TEXTO COMPLETO SEM CORTE / TRUNCAMENTO) --}}
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-header bg-white border-0 py-3 px-4 rounded-top-4 d-flex justify-content-between align-items-center">
+                        <h6 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                            <i class="fas fa-list text-primary"></i>
+                            <span>Acervo de Documentos Arquivados</span>
+                        </h6>
+                        <span class="small text-muted fw-semibold">
+                            Exibindo {{ $documentosEntrada->total() + $documentosInternos->total() }} registros
+                        </span>
+                    </div>
+
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" style="font-size: 0.9rem;">
+                                <thead class="table-light small text-uppercase fw-bold text-secondary">
+                                    <tr>
+                                        <th class="ps-4" style="min-width: 140px;">Referência / Nº</th>
+                                        <th style="min-width: 280px;">Assunto / Título Completo</th>
+                                        <th style="min-width: 130px;">Espécie</th>
+                                        <th style="min-width: 160px;">Origem / Destino</th>
+                                        <th style="min-width: 130px;">Data Arquivado</th>
+                                        <th style="min-width: 100px;">Anexo</th>
+                                        <th class="text-end pe-4" style="min-width: 120px;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    
+                                    {{-- Listagem de Documentos de Entrada --}}
+                                    @foreach($documentosEntrada as $docEnt)
+                                        <tr>
+                                            <td class="ps-4">
+                                                <div class="d-flex align-items-center gap-1">
+                                                    <span class="badge bg-warning-subtle text-dark border" style="font-size: 0.7rem;">Entrada</span>
+                                                    <span class="fw-bold text-dark">#{{ $docEnt->numero_sequencial }}/{{ $docEnt->ano_referencia }}</span>
+                                                </div>
+                                                @if($docEnt->classificacao_ref_numero)
+                                                    <small class="text-muted d-block mt-1">Ref: {{ $docEnt->classificacao_ref_numero }}</small>
+                                                @endif
+                                            </td>
+
+                                            {{-- Assunto sem truncamento (sem limit) --}}
+                                            <td class="fw-semibold text-dark text-wrap" style="max-width: 400px; word-break: break-word;">
+                                                {{ $docEnt->assunto }}
+                                                @if($docEnt->pasta)
+                                                    <span class="d-block text-muted small fw-normal mt-1"><i class="fas fa-folder text-warning me-1"></i> {{ $docEnt->pasta->nome }}</span>
+                                                @endif
+                                            </td>
+
+                                            <td>
+                                                <span class="badge bg-light text-dark border fw-semibold px-2 py-1">
+                                                    {{ $docEnt->classificacao_especie ?? 'Geral' }}
+                                                </span>
+                                            </td>
+
+                                            <td>
+                                                <span class="text-dark small d-block">{{ $docEnt->procedencia ?? 'Externa' }}</span>
+                                                <small class="text-muted">{{ optional($docEnt->departamento)->nome }}</small>
+                                            </td>
+
+                                            <td>
+                                                <span class="small text-muted">{{ $docEnt->arquivado_em ? $docEnt->arquivado_em->format('d/m/Y H:i') : ($docEnt->created_at ? $docEnt->created_at->format('d/m/Y') : '-') }}</span>
+                                            </td>
+
+                                            <td>
+                                                @if($docEnt->anexos && $docEnt->anexos->count() > 0)
+                                                    <a href="{{ route('documentos-entradas.anexos.download', [$docEnt->id, $docEnt->anexos->first()->id]) }}" class="btn btn-sm btn-outline-danger border-0 rounded-circle" title="Baixar PDF Principal">
+                                                        <i class="fas fa-file-pdf fs-5"></i>
+                                                    </a>
+                                                @else
+                                                    <span class="text-muted small">-</span>
+                                                @endif
+                                            </td>
+
+                                            <td class="text-end pe-4">
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <a href="{{ route('documentos-entradas.show', $docEnt->id) }}" class="btn btn-light text-primary border" title="Ver Detalhes">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                    @if($docEnt->arquivo_caminho)
+                                                        <a href="{{ route('documentos-entradas.arquivo.download', $docEnt->id) }}" class="btn btn-light text-success border" title="Download">
+                                                            <i class="fas fa-download"></i>
+                                                        </a>
+                                                    @endif
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+
+                                    {{-- Listagem de Documentos Internos --}}
+                                    @foreach($documentosInternos as $docInt)
+                                        <tr>
+                                            <td class="ps-4">
+                                                <div class="d-flex align-items-center gap-1">
+                                                    <span class="badge bg-info-subtle text-dark border" style="font-size: 0.7rem;">Interno</span>
+                                                    <span class="fw-bold text-dark">{{ $docInt->numero_referencia ?? 'S/Ref' }}</span>
+                                                </div>
+                                            </td>
+
+                                            {{-- Título sem truncamento (texto completo) --}}
+                                            <td class="fw-semibold text-dark text-wrap" style="max-width: 400px; word-break: break-word;">
+                                                {{ $docInt->titulo }}
+                                                @if($docInt->pasta)
+                                                    <span class="d-block text-muted small fw-normal mt-1"><i class="fas fa-folder text-warning me-1"></i> {{ $docInt->pasta->nome }}</span>
+                                                @endif
+                                            </td>
+
+                                            <td>
+                                                <span class="badge bg-light text-dark border fw-semibold px-2 py-1">
+                                                    {{ optional($docInt->documentoEspecie)->nome ?? 'Interno' }}
+                                                </span>
+                                            </td>
+
+                                            <td>
+                                                <span class="text-dark small d-block">{{ optional($docInt->departamento)->nome }}</span>
+                                                <small class="text-muted">Autor: {{ optional($docInt->autor)->name }}</small>
+                                            </td>
+
+                                            <td>
+                                                <span class="small text-muted">{{ $docInt->arquivado_em ? $docInt->arquivado_em->format('d/m/Y H:i') : ($docInt->created_at ? $docInt->created_at->format('d/m/Y') : '-') }}</span>
+                                            </td>
+
+                                            <td>
+                                                @if($docInt->versoes && $docInt->versoes->count() > 0)
+                                                    <a href="{{ route('edms.stream-version', $docInt->versoes->first()->id) }}" target="_blank" class="btn btn-sm btn-outline-danger border-0 rounded-circle" title="Visualizar PDF">
+                                                        <i class="fas fa-file-pdf fs-5"></i>
+                                                    </a>
+                                                @else
+                                                    <span class="text-muted small">-</span>
+                                                @endif
+                                            </td>
+
+                                            <td class="text-end pe-4">
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <a href="{{ route('documentos-internos.show', $docInt->id) }}" class="btn btn-light text-primary border" title="Ver Detalhes">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                    <a href="{{ route('documentos-internos.pdf', $docInt->id) }}" class="btn btn-light text-success border" title="Baixar PDF">
+                                                        <i class="fas fa-download"></i>
+                                                    </a>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+
+                                    @if(count($documentosEntrada) === 0 && count($documentosInternos) === 0)
+                                        <tr>
+                                            <td colspan="7" class="text-center py-5 text-muted">
+                                                <i class="fas fa-folder-open fs-1 text-muted d-block mb-3 opacity-50"></i>
+                                                Nenhum documento arquivado encontrado nesta pasta ou seleção de filtro.
+                                            </td>
+                                        </tr>
+                                    @endif
+
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            @else
+                
+                {{-- GRID DE PASTAS LARGAS (CARDS EXPANDIDOS SEM NOME TRUNCADO) --}}
+                <div class="row g-3 mb-4">
+                    @forelse($pastas as $pastaItem)
+                        <div class="col-md-6 col-xl-4">
+                            <div class="card border-0 shadow-sm rounded-4 h-100 p-3 hover-shadow transition">
+                                <div class="d-flex align-items-start justify-content-between mb-3">
+                                    <div class="p-3 bg-warning-subtle text-warning rounded-3 me-3">
+                                        <i class="fas fa-folder fs-3"></i>
+                                    </div>
+                                    <span class="badge bg-light text-dark border rounded-pill px-3 py-1">
+                                        {{ ($pastaItem->documentos_count ?? 0) + ($pastaItem->documentos_internos_count ?? 0) }} ficheiros
+                                    </span>
+                                </div>
+                                <h6 class="fw-bold text-dark mb-1 text-wrap" style="word-break: break-word;">
+                                    <a href="{{ route('edms.index', ['folder' => $pastaItem->id, 'tree' => 'dossies', 'view_mode' => 'grid']) }}" class="text-decoration-none text-dark">
+                                        {{ $pastaItem->nome }}
+                                    </a>
+                                </h6>
+                                @if($pastaItem->descricao)
+                                    <p class="small text-muted mb-3 text-wrap" style="word-break: break-word;">{{ $pastaItem->descricao }}</p>
+                                @endif
+                                <div class="mt-auto pt-2 border-top d-flex justify-content-between align-items-center small text-muted">
+                                    <span><i class="fas fa-building me-1"></i> {{ optional($pastaItem->departamento)->nome ?? 'Gabinete' }}</span>
+                                    <a href="{{ route('edms.index', ['folder' => $pastaItem->id, 'tree' => 'dossies']) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">Abrir</a>
+                                </div>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="col-12">
+                            <div class="alert alert-light border shadow-sm rounded-4 p-4 text-center text-muted">
+                                <i class="fas fa-folder-open fs-2 mb-2 d-block"></i>
+                                Nenhuma pasta manual criada neste diretório.
+                            </div>
+                        </div>
+                    @endforelse
+                </div>
+
+            @endif
+
+            {{-- Paginação --}}
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <div class="small text-muted">
+                    Mostrando resultados paginados
+                </div>
+                <div>
+                    @if(method_exists($documentosEntrada, 'links'))
+                        {{ $documentosEntrada->links() }}
+                    @endif
+                    @if(method_exists($documentosInternos, 'links'))
+                        {{ $documentosInternos->links() }}
+                    @endif
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
 </div>
 
-{{-- Arquivamento por arrastar-e-soltar dos pendentes (tipo lido de cada linha) --}}
-<x-archive-dropzone />
+{{-- MODAIS DO SISTEMA --}}
 
-{{-- Modals --}}
-
-{{-- Create Folder Modal --}}
-<div class="modal fade" id="createFolderModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+{{-- 1. Modal Criar Pasta --}}
+<div class="modal fade" id="createFolderModal" tabindex="-1" aria-labelledby="createFolderModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
         <form action="{{ route('edms.create-folder') }}" method="POST">
             @csrf
-            <input type="hidden" name="parent_id" value="{{ $currentFolder->id ?? '' }}">
-            <div class="modal-content border-0 shadow-lg rounded-4">
-                <div class="modal-header border-0 bg-primary text-white p-4 rounded-top-4">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-folder-plus me-2"></i>Criar Nova Pasta</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            @if(isset($currentFolder))
+                <input type="hidden" name="parent_id" value="{{ $currentFolder->id }}">
+            @endif
+            <div class="modal-content rounded-4 border-0 shadow">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold" id="createFolderModalLabel">Nova Pasta / Dossiê</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body p-4">
+                <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label small text-muted fw-semibold">Nome da Pasta</label>
-                        <input type="text" name="nome" class="form-control bg-light border-0 py-2" required placeholder="Ex: Despachos Gabinete 2026">
+                        <label class="form-label fw-bold small">Nome da Pasta</label>
+                        <input type="text" name="nome" class="form-control rounded-3" required placeholder="Ex: Contratos 2026, Relatórios Técnicos...">
                     </div>
-                    <div class="mb-0">
-                        <label class="form-label small text-muted fw-semibold">Descrição (Opcional)</label>
-                        <textarea name="descricao" class="form-control bg-light border-0 py-2" rows="3" placeholder="Insira informações sobre o conteúdo desta pasta..."></textarea>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">Descrição / Observações</label>
+                        <textarea name="descricao" class="form-control rounded-3" rows="3" placeholder="Finalidade ou conteúdo desta pasta..."></textarea>
                     </div>
                 </div>
-                <div class="modal-footer border-0 p-4 pt-0">
-                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm">Criar Pasta</button>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4">Criar Pasta</button>
                 </div>
             </div>
         </form>
     </div>
 </div>
 
-{{-- Archive Pending Document Modal (Single Dynamic Modal) --}}
-<div class="modal fade" id="arquivarPendenteModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <form action="" method="POST">
-                @csrf
-                <input type="hidden" name="tipo" id="modal-doc-type" value="interno">
-                <div class="modal-header border-0 bg-primary text-white p-4 rounded-top-4">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-archive me-2"></i>Arquivar Documento</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                </div>
-                <div class="modal-body p-4">
-                    <div class="alert alert-info border-0 rounded-4 d-flex align-items-center mb-3">
-                        <i class="fas fa-file-signature me-3 fs-5"></i>
-                        <div>
-                            <span class="small text-muted d-block">Documento selecionado:</span>
-                            <strong id="modal-doc-title-text" class="text-dark"></strong>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small text-muted fw-semibold">Selecione a Pasta de Destino</label>
-                        <select name="pasta_id" id="modal-pasta-id" class="form-select bg-light border-0 py-2" required>
-                            <option value="auto" selected>✨ Arquivamento Automático (Organização Cronológica)</option>
-                            <option value="">-- Ou selecione uma pasta manualmente --</option>
-                            @inject('pastaService', 'App\Services\PastaService')
-                            @foreach ($pastaService->getFolderTreeOptions(auth()->user()) as $id => $nome)
-                                <option value="{{ $id }}">{{ $nome }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <p class="text-muted small mb-0">
-                        <i class="fas fa-info-circle me-1"></i> O documento será categorizado e arquivado eletronicamente, garantindo a sua rastreabilidade cronológica.
-                    </p>
-                </div>
-                <div class="modal-footer border-0 p-4 pt-0">
-                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm">Arquivar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-{{-- Premium Preview Modal --}}
-<div class="modal fade" id="edmsPreviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered" style="max-height: 90vh;">
-        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-            <div class="modal-header border-0 bg-dark text-white p-4">
-                <h5 class="modal-title fw-bold" id="previewModalTitle"><i class="fas fa-eye me-2"></i>Visualizador de Documento</h5>
-                <div class="d-flex align-items-center gap-2">
-                    <a href="" id="previewDownloadBtn" class="btn btn-outline-light btn-sm rounded-pill px-3 me-2" download>
-                        <i class="fas fa-download me-1"></i> Baixar Original
-                    </a>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                </div>
-            </div>
-            <div class="modal-body p-0 bg-secondary position-relative" style="height: 70vh;">
-                <!-- Elegant Spinner Loader -->
-                <div id="previewLoader" class="position-absolute top-50 start-50 translate-middle d-flex flex-column align-items-center text-white">
-                    <div class="spinner-border text-light mb-2" role="status" style="width: 3rem; height: 3rem;">
-                        <span class="visually-hidden">A carregar...</span>
-                    </div>
-                    <span class="fw-semibold">A decriptografar e carregar documento...</span>
-                </div>
-                <!-- Preview Frame -->
-                <iframe id="previewIframe" src="" class="w-100 h-100 d-none" style="border: none;"></iframe>
-                <!-- Fallback Preview Image -->
-                <div id="previewImageContainer" class="w-100 h-100 d-none justify-content-center align-items-center bg-dark p-3">
-                    <img id="previewImage" src="" class="img-fluid rounded shadow-sm" style="max-height: 100%; object-fit: contain;">
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
+{{-- 2. Modal Partilhar Pasta --}}
 @if(isset($currentFolder))
-    @php
-        $sharedDepts = [];
-        $sharedMeta = $currentFolder->metadata()->where('key', 'shared_departments')->first();
-        if ($sharedMeta) {
-            $sharedDepts = json_decode($sharedMeta->value, true) ?: [];
-        }
-    @endphp
-    {{-- Partilhar Pasta Modal --}}
     <div class="modal fade" id="shareFolderModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog">
             <form action="{{ route('edms.share-folder', $currentFolder->id) }}" method="POST">
                 @csrf
-                <div class="modal-content border-0 shadow-lg rounded-4">
-                    <div class="modal-header border-0 bg-warning text-dark p-4 rounded-top-4">
-                        <h5 class="modal-title fw-bold"><i class="fas fa-share-alt me-2"></i>Partilhar Pasta</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                <div class="modal-content rounded-4 border-0 shadow">
+                    <div class="modal-header border-0 pb-0">
+                        <h5 class="modal-title fw-bold">Partilhar Pasta: {{ $currentFolder->nome }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="modal-body p-4">
-                        <p class="text-muted small mb-3">Selecione os departamentos que terão acesso de visualização a esta pasta e aos seus documentos arquivados.</p>
-                        
+                    <div class="modal-body">
+                        <p class="small text-muted">Selecione os departamentos que terão acesso de leitura a esta pasta:</p>
                         <div class="mb-3" style="max-height: 250px; overflow-y: auto;">
-                            <label class="form-label small text-muted fw-semibold mb-2">Departamentos</label>
-                            @foreach($departamentos as $dept)
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="checkbox" name="departamento_ids[]" value="{{ $dept->id }}" id="deptShare_{{ $dept->id }}"
-                                        {{ in_array($dept->id, $sharedDepts) ? 'checked' : '' }}>
-                                    <label class="form-check-label text-dark" for="deptShare_{{ $dept->id }}">
-                                        {{ $dept->nome }} ({{ $dept->sigla }})
+                            @foreach($departamentos as $dep)
+                                <div class="form-check py-1">
+                                    <input class="form-check-input" type="checkbox" name="departamento_ids[]" value="{{ $dep->id }}" id="depShare{{ $dep->id }}">
+                                    <label class="form-check-label small" for="depShare{{ $dep->id }}">
+                                        {{ $dep->nome }}
                                     </label>
                                 </div>
                             @endforeach
                         </div>
                     </div>
-                    <div class="modal-footer border-0 p-4 pt-0">
-                        <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-warning rounded-pill px-4 shadow-sm text-dark fw-bold">Salvar Partilha</button>
+                    <div class="modal-footer border-0 pt-0">
+                        <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-warning rounded-pill px-4">Salvar Partilha</button>
                     </div>
                 </div>
             </form>
         </div>
     </div>
-
-    {{-- Folder History Modal --}}
-    <div class="modal fade" id="folderHistoryModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content border-0 shadow-lg rounded-4">
-                <div class="modal-header border-0 bg-secondary text-white p-4 rounded-top-4">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-history me-2"></i>Histórico e Trilha de Auditoria</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
-                </div>
-                <div class="modal-body p-4">
-                    <div class="table-responsive" style="max-height: 400px;" id="folderHistoryTableContainer">
-                        <table class="table table-hover align-middle mb-0" id="folderHistoryTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Utilizador</th>
-                                    <th>Ação</th>
-                                    <th>IP</th>
-                                    <th>Data</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Loaded via Javascript -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <!-- Loader inside History Modal -->
-                    <div id="historyLoader" class="d-none text-center py-4">
-                        <div class="spinner-border text-secondary" role="status">
-                            <span class="visually-hidden">Carregando...</span>
-                        </div>
-                        <p class="text-muted small mt-2">A obter dados de auditoria...</p>
-                    </div>
-                    <!-- Empty history state -->
-                    <div id="historyEmptyState" class="d-none text-center py-4 text-muted">
-                        <i class="fas fa-info-circle fs-3 mb-2"></i>
-                        <p class="mb-0 small">Sem registros de atividade nesta pasta.</p>
-                    </div>
-                </div>
-                <div class="modal-footer border-0 p-4 pt-0">
-                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Fechar</button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endif
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Dinamizar o modal de arquivamento para pendentes
-    const arquivarButtons = document.querySelectorAll('.btn-arquivar');
-    const modal = document.getElementById('arquivarPendenteModal');
-    
-    if (modal) {
-        modal.addEventListener('show.bs.modal', function(event) {
-            const button = event.relatedTarget;
-            const docId = button.getAttribute('data-doc-id');
-            const docType = button.getAttribute('data-doc-type');
-            const docTitle = button.getAttribute('data-doc-title');
-            
-            modal.querySelector('#modal-doc-id-input')?.remove(); // limpar se existir anterior
-            
-            // Injetar input extra para ID
-            const hiddenId = document.createElement('input');
-            hiddenId.type = 'hidden';
-            hiddenId.name = 'id';
-            hiddenId.id = 'modal-doc-id-input';
-            hiddenId.value = docId;
-            modal.querySelector('form').appendChild(hiddenId);
-            
-            modal.querySelector('#modal-doc-type').value = docType;
-            modal.querySelector('#modal-doc-title-text').textContent = docTitle;
-            
-            // Set form action route
-            modal.querySelector('form').action = `/pastas/${docId}/arquivar`;
-            
-            // Sugestões inteligentes de pastas padrão baseadas no tipo de documento
-            const pastaSelect = modal.querySelector('#modal-pasta-id');
-            
-            if (docType === 'entrada') {
-                pastaSelect.value = 'auto';
-            } else {
-                // Para documentos internos, tenta pré-selecionar Despachos
-                let selected = false;
-                for (let i = 0; i < pastaSelect.options.length; i++) {
-                    const optText = pastaSelect.options[i].text.toLowerCase();
-                    if (optText.includes('interno') && optText.includes('despachos')) {
-                        pastaSelect.selectedIndex = i;
-                        selected = true;
-                        break;
-                    }
-                }
-                if (!selected) {
-                    pastaSelect.value = 'auto';
-                }
-            }
-        });
-    }
-
-    // Drag-and-drop Dropzone para upload direto
-    const dropzone = document.getElementById('dropzone');
-    const fileInput = document.getElementById('fileInput');
-    const fileInfo = document.getElementById('fileInfo');
-    const fileName = document.getElementById('fileName');
-    const fileIcon = document.getElementById('fileIcon');
-    const clearFileBtn = document.getElementById('clearFileBtn');
-    
-    if (dropzone && fileInput) {
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropzone.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                dropzone.classList.add('dragover');
-            }, false);
-        });
-        
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropzone.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                dropzone.classList.remove('dragover');
-            }, false);
-        });
-        
-        fileInput.addEventListener('change', (e) => {
-            if (fileInput.files.length > 0) {
-                const file = fileInput.files[0];
-                fileName.textContent = file.name;
-                
-                // Set icon based on extension
-                const extension = file.name.split('.').pop().toLowerCase();
-                if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) {
-                    fileIcon.className = 'fas fa-file-image text-warning fs-5';
-                } else if (extension === 'pdf') {
-                    fileIcon.className = 'fas fa-file-pdf text-danger fs-5';
-                } else {
-                    fileIcon.className = 'fas fa-file text-secondary fs-5';
-                }
-                
-                fileInfo.classList.remove('d-none');
-                fileInfo.classList.add('d-flex');
-            }
-        });
-        
-        clearFileBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            fileInput.value = '';
-            fileInfo.classList.add('d-none');
-            fileInfo.classList.remove('d-flex');
-        });
-    }
-
-    // Visualizador de Documentos (PDF/Imagem)
-    const previewModal = document.getElementById('edmsPreviewModal');
-    if (previewModal) {
-        previewModal.addEventListener('show.bs.modal', function(event) {
-            const button = event.relatedTarget;
-            const url = button.getAttribute('data-preview-url');
-            const title = button.getAttribute('data-preview-title');
-            const type = button.getAttribute('data-preview-type') || 'pdf';
-            
-            const iframe = document.getElementById('previewIframe');
-            const imgContainer = document.getElementById('previewImageContainer');
-            const img = document.getElementById('previewImage');
-            const loader = document.getElementById('previewLoader');
-            const downloadBtn = document.getElementById('previewDownloadBtn');
-            const modalTitle = document.getElementById('previewModalTitle');
-            
-            modalTitle.innerHTML = `<i class="fas fa-eye me-2"></i> ${title}`;
-            downloadBtn.href = url + '?download=1';
-            
-            loader.classList.remove('d-none');
-            iframe.classList.add('d-none');
-            imgContainer.classList.add('d-none');
-            
-            if (type === 'image') {
-                img.src = url;
-                img.onload = function() {
-                    loader.classList.add('d-none');
-                    imgContainer.classList.remove('d-none');
-                    imgContainer.classList.add('d-flex');
-                };
-            } else {
-                iframe.src = url;
-                iframe.onload = function() {
-                    loader.classList.add('d-none');
-                    iframe.classList.remove('d-none');
-                };
-            }
-        });
-        
-        previewModal.addEventListener('hide.bs.modal', function() {
-            document.getElementById('previewIframe').src = '';
-            document.getElementById('previewImage').src = '';
-        });
-    }
-
-    // Modal de Histórico de Pasta (Auditoria via AJAX)
-    const folderHistoryModal = document.getElementById('folderHistoryModal');
-    if (folderHistoryModal) {
-        folderHistoryModal.addEventListener('show.bs.modal', function(event) {
-            const button = event.relatedTarget;
-            const folderId = button.getAttribute('data-folder-id');
-            
-            const tableBody = document.querySelector('#folderHistoryTable tbody');
-            const loader = document.getElementById('historyLoader');
-            const tableContainer = document.getElementById('folderHistoryTableContainer');
-            const emptyState = document.getElementById('historyEmptyState');
-            
-            tableBody.innerHTML = '';
-            loader.classList.remove('d-none');
-            tableContainer.classList.add('d-none');
-            emptyState.classList.add('d-none');
-            
-            fetch(`/edms/folder/${folderId}/history`)
-                .then(res => res.json())
-                .then(data => {
-                    loader.classList.add('d-none');
-                    if (data.length === 0) {
-                        emptyState.classList.remove('d-none');
-                    } else {
-                        data.forEach(log => {
-                            const tr = document.createElement('tr');
-                            
-                            let details = '';
-                            if (log.details && log.details.titulo) {
-                                details = ` (${log.details.titulo})`;
-                            } else if (log.details && log.details.nome) {
-                                details = ` (${log.details.nome})`;
-                            } else if (log.details && log.details.file_name) {
-                                details = ` (${log.details.file_name})`;
-                            }
-                            
-                            tr.innerHTML = `
-                                <td class="fw-semibold text-dark">${log.user_name}</td>
-                                <td><span class="badge bg-secondary-subtle text-secondary text-uppercase">${log.action}</span>${details}</td>
-                                <td><code class="small text-muted">${log.ip || 'N/A'}</code></td>
-                                <td class="small text-muted">${log.date}</td>
-                            `;
-                            tableBody.appendChild(tr);
-                        });
-                        tableContainer.classList.remove('d-none');
-                    }
-                })
-                .catch(err => {
-                    loader.classList.add('d-none');
-                    emptyState.classList.remove('d-none');
-                    emptyState.innerHTML = '<i class="fas fa-times-circle text-danger fs-3 mb-2"></i><p class="mb-0 text-danger">Erro ao carregar histórico.</p>';
-                });
-        });
-    }
-});
-</script>
-
-<style>
-    .card-hover {
-        transition: all 0.25s ease-in-out;
-    }
-    .card-hover:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 .75rem 1.5rem rgba(0, 0, 0, .075) !important;
-    }
-    .border-start-system {
-        border-left-width: 4px !important;
-    }
-    .text-truncate-3 {
-        display: -webkit-box;
-        -webkit-line-clamp: 3;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-    .text-truncate-2 {
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-    .fs-7 {
-        font-size: 0.8rem !important;
-    }
-    
-    /* Timeline styling */
-    .timeline {
-        position: relative;
-    }
-    .timeline-item {
-        position: relative;
-    }
-    #dropzone {
-        transition: all 0.2s ease-in-out;
-    }
-    #dropzone:hover, #dropzone.dragover {
-        border-color: #0d6efd !important;
-        background-color: rgba(13, 110, 253, 0.05) !important;
-        transform: scale(1.005);
-    }
-    .btn-xs {
-        padding: 0.15rem 0.4rem;
-        font-size: 0.75rem;
-    }
-</style>
 @endsection
-

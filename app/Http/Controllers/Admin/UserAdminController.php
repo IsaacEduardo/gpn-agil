@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Departamento;
 use App\Models\Gabinete;
 use App\Models\Role;
@@ -259,6 +260,22 @@ class UserAdminController extends Controller
             }
         }
 
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'admin.user.create',
+            'auditable_type' => User::class,
+            'auditable_id' => $user->id,
+            'old_values' => null,
+            'new_values' => [
+                'name' => $user->name,
+                'email' => $user->email,
+                'role_id' => $user->role_id,
+                'departamento_id' => $user->departamento_id,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
         return redirect()->route('admin.users.index')->with('success', 'Usuário criado com sucesso.');
     }
 
@@ -475,6 +492,22 @@ class UserAdminController extends Controller
         Cache::forget("user_{$user->id}_departments");
         Cache::forget("user_{$user->id}_responsible_gabinetes");
 
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'admin.user.update',
+            'auditable_type' => User::class,
+            'auditable_id' => $user->id,
+            'old_values' => null,
+            'new_values' => [
+                'name' => $user->name,
+                'email' => $user->email,
+                'role_id' => $user->role_id,
+                'departamento_id' => $user->departamento_id,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
         return redirect()->route('admin.users.index')->with('success', 'Usuário atualizado com sucesso.');
     }
 
@@ -505,6 +538,21 @@ class UserAdminController extends Controller
                 abort(403, 'Você não pode excluir usuários com este nível de acesso.');
             }
         }
+
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'admin.user.delete',
+            'auditable_type' => User::class,
+            'auditable_id' => $user->id,
+            'old_values' => [
+                'name' => $user->name,
+                'email' => $user->email,
+                'role_id' => $user->role_id,
+            ],
+            'new_values' => null,
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
 
         $user->delete();
 

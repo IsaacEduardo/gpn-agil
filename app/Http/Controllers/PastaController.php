@@ -190,6 +190,8 @@ class PastaController extends Controller
             'departamento.gabinete',
         ])->findOrFail($id);
 
+        $this->authorize('view', $pasta);
+
         return view('pastas.show', compact('pasta'));
     }
 
@@ -201,6 +203,8 @@ class PastaController extends Controller
         ]);
 
         $pasta = Pasta::findOrFail($id);
+        $this->authorize('update', $pasta);
+
         $pasta->update($request->only('nome', 'descricao'));
 
         return redirect()->route('pastas.index')->with('success', 'Pasta atualizada com sucesso.');
@@ -209,6 +213,8 @@ class PastaController extends Controller
     public function destroy($id)
     {
         $pasta = Pasta::findOrFail($id);
+        $this->authorize('delete', $pasta);
+
         $pasta->delete();
 
         return redirect()->route('pastas.index')->with('success', 'Pasta excluída com sucesso.');

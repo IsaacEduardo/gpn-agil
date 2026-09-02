@@ -63,6 +63,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="text-uppercase small fw-bold text-muted">ID</th>
+                                    <th class="text-uppercase small fw-bold text-muted">Tipo</th>
                                     <th class="text-uppercase small fw-bold text-muted">Beneficiário</th>
                                     <th class="text-uppercase small fw-bold text-muted">Viatura</th>
                                     <th class="text-uppercase small fw-bold text-muted">Documento (BI)</th>
@@ -77,6 +78,17 @@
                                             <span class="badge bg-light text-dark border">
                                                 {{ $credencial->id }}
                                             </span>
+                                        </td>
+                                        <td>
+                                            @if (($credencial->tipo_credencial ?? '') === 'seguir_viagem')
+                                                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                                                    <i class="fas fa-route me-1"></i> Seguir Viagem
+                                                </span>
+                                            @else
+                                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
+                                                    <i class="fas fa-car me-1"></i> Utilização Normal
+                                                </span>
+                                            @endif
                                         </td>
                                         <td class="fw-medium">{{ $credencial->beneficiario_nome ?? '—' }}</td>
                                         <td>

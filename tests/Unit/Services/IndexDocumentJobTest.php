@@ -17,6 +17,7 @@ class IndexDocumentJobTest extends TestCase
     public function test_document_observer_dispatches_index_job_to_queue()
     {
         Queue::fake();
+        DocumentoInterno::observe(\App\Chatbot\Observers\DocumentoInternoObserver::class);
 
         $user = User::factory()->create();
         $especie = \App\Models\DocumentoEspecie::create(['nome' => 'Ofício Teste', 'sigla' => 'OFI']);

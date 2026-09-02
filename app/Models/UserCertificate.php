@@ -20,6 +20,10 @@ class UserCertificate extends Model
         'valid_to',
     ];
 
+    protected $hidden = [
+        'encrypted_p12',
+    ];
+
     protected $casts = [
         'valid_from' => 'datetime',
         'valid_to' => 'datetime',

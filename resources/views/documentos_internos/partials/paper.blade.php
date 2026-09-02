@@ -3,6 +3,7 @@
     @include('partials.document-header', [
         'logoSrc' => $dadosInstituicao->logo_url,
         'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->departamento?->gabinete),
+        'documentoInterno' => $documentoInterno,
     ])
 </div>
 

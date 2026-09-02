@@ -240,6 +240,14 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <div class="alert alert-info border-info border-opacity-25 d-flex align-items-center mb-3 p-3 rounded-3">
+                    <i class="fas fa-magic fs-4 me-3 text-info"></i>
+                    <div>
+                        <strong class="d-block mb-0.5">Aprovação Automática por Delegação:</strong>
+                        <div class="small opacity-90">Ao delegar esta tarefa, este documento externo será automaticamente aprovado e marcado como <strong>Tratado</strong> pelo Gabinete.</div>
+                    </div>
+                </div>
+
                 <form id="form-designar-tarefa" action="{{ route('documentos-entradas.tarefas.store', $doc) }}" method="POST" class="row g-3">
                     @csrf
                     <div class="col-md-12">

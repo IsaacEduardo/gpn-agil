@@ -128,6 +128,7 @@
             @include('partials.document-header', [
                 'logoSrc' => base64_encode_image($dadosInstituicao->logo_absolute_path),
                 'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->departamento?->gabinete),
+                'documentoInterno' => $documentoInterno,
             ])
         </div>
 

@@ -43,6 +43,7 @@ Route::get('/', function () {
 });
 
 Auth::routes();
+Route::match(['get', 'post'], '/logout', [\App\Http\Controllers\Auth\LoginController::class, 'logout'])->name('logout');
 
 // Rota pública de verificação de autenticidade de documentos (acesso externo via hash)
 // throttle impede enumeração/brute-force de hashes
@@ -53,6 +54,8 @@ Route::get('/verificar/documento/{hash}', [DocumentoInternoController::class, 'v
 // A partir daqui, todas as rotas exigem autenticação
 Route::middleware(['auth'])->group(function () {
     Route::get('/home', [HomeController::class, 'index'])->name('home');
+    Route::get('/inicio', [HomeController::class, 'index'])->name('inicio');
+    Route::get('/dashboard', [HomeController::class, 'index'])->name('dashboard.main');
     Route::get('/global-search', [SearchController::class, 'index'])->name('global.search');
 
     // Rotas para o módulo de Feedbacks
@@ -60,8 +63,8 @@ Route::middleware(['auth'])->group(function () {
 
     // Rotas para o módulo de Viaturas
     Route::resource('viaturas', ViaturaController::class);
-    Route::get('viaturas-export/pdf', [ViaturaReportController::class, 'exportPDF'])->name('viaturas.export.pdf');
-    Route::get('viaturas-export/excel', [ViaturaReportController::class, 'exportExcel'])->name('viaturas.export.excel');
+    Route::get('viaturas-export/pdf', [ViaturaReportController::class, 'exportPDF'])->middleware('throttle:heavy-exports')->name('viaturas.export.pdf');
+    Route::get('viaturas-export/excel', [ViaturaReportController::class, 'exportExcel'])->middleware('throttle:heavy-exports')->name('viaturas.export.excel');
 
     // Rotas para o módulo de Empresas
     Route::resource('empresas', EmpresaController::class);
@@ -97,10 +100,18 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('documentos-entradas', DocumentoEntradaController::class)->names('documentos-entradas');
     Route::get('documentos-entradas/{documento}/preview-ajax', [DocumentoEntradaController::class, 'previewAjax'])
         ->name('documentos-entradas.preview-ajax');
+    Route::post('documentos-entradas/{documento}/quick-action', [DocumentoEntradaController::class, 'quickAction'])
+        ->name('documentos-entradas.quick-action');
+    Route::post('documentos-entradas/{documento}/despachar', [DocumentoEntradaController::class, 'despachar'])
+        ->name('documentos-entradas.despachar');
+    Route::post('documentos-entradas/{documento}/encaminhar-tratado', [DocumentoEntradaController::class, 'encaminhar'])
+        ->name('documentos-entradas.encaminhar-tratado');
     Route::get('documentos-entradas/{documento}/protocolo', [DocumentoEntradaProtocoloController::class, 'protocolo'])
         ->name('documentos-entradas.protocolo');
     Route::get('documentos-entradas/{documento}/protocolo/pdf', [DocumentoEntradaProtocoloController::class, 'protocoloPdf'])
         ->name('documentos-entradas.protocolo.pdf');
+    Route::get('documentos-entradas/{documento}/protocolo/etiqueta', [DocumentoEntradaProtocoloController::class, 'protocoloEtiqueta'])
+        ->name('documentos-entradas.protocolo.etiqueta');
     Route::patch('documentos-entradas/{documento}/protocolo/impresso', [DocumentoEntradaProtocoloController::class, 'marcarImpresso'])
         ->name('documentos-entradas.protocolo.impresso');
     Route::post('documentos-entradas/{documento}/encaminhar', [DocumentoEntradaEncaminhamentoController::class, 'encaminhar'])
@@ -119,6 +130,9 @@ Route::middleware(['auth'])->group(function () {
         ->name('documentos-entradas.anexos.download');
     Route::get('documentos-entradas/{documento}/anexos/{anexo}/ocr', [DocumentoEntradaController::class, 'getOcrText'])
         ->name('documentos-entradas.anexos.ocr');
+    Route::post('documentos-entradas/{documento}/anexos/{anexo}/reprocessar-ocr', [DocumentoEntradaController::class, 'reprocessOcr'])
+        ->middleware('throttle:ocr-processing')
+        ->name('documentos-entradas.anexos.reprocessar-ocr');
     Route::patch('documentos-entradas/{documento}/visto/aprovar', [DocumentoEntradaController::class, 'vistoAprovar'])
         ->name('documentos-entradas.visto.aprovar');
     Route::patch('documentos-entradas/{documento}/visto/rejeitar', [DocumentoEntradaController::class, 'vistoRejeitar'])
@@ -131,19 +145,22 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('documentos-entradas/{documento}/relacionar/{relacionado}', [DocumentoEntradaController::class, 'desrelacionar'])->name('documentos-entradas.desrelacionar');
     Route::post('documentos-entradas/{documento}/tarefas', [DocumentoEntradaTarefaController::class, 'store'])
         ->name('documentos-entradas.tarefas.store');
-    Route::patch('documentos-entradas/{documento}/tarefas/{tarefa}/concluir', [DocumentoEntradaTarefaController::class, 'concluir'])
+    Route::match(['post', 'patch'], 'documentos-entradas/{documento}/tarefas/{tarefa}/concluir', [DocumentoEntradaTarefaController::class, 'concluir'])
         ->name('documentos-entradas.tarefas.concluir');
     Route::patch('documentos-entradas/{documento}/tarefas/{tarefa}/cancelar', [DocumentoEntradaTarefaController::class, 'cancelar'])
         ->name('documentos-entradas.tarefas.cancelar');
     Route::get('documentos-entradas-export/pdf', [DocumentoEntradaProtocoloController::class, 'exportPDF'])
+        ->middleware('throttle:heavy-exports')
         ->name('documentos-entradas.export.pdf');
     Route::get('documentos-entradas-export/excel', [DocumentoEntradaProtocoloController::class, 'exportExcel'])
+        ->middleware('throttle:heavy-exports')
         ->name('documentos-entradas.export.excel');
 
     // Minhas Tarefas
     Route::get('/tarefas', [TarefaController::class, 'index'])->name('tarefas.index');
 
     // EDMS (Novo Sistema de Arquivos)
+    Route::get('/api/edms/arvore-pastas', [EdmsController::class, 'arvorePastas'])->name('api.edms.arvore-pastas');
     Route::get('/edms/{folder?}', [EdmsController::class, 'index'])->name('edms.index');
     Route::post('/edms/folder/create', [EdmsController::class, 'createFolder'])->name('edms.create-folder');
     Route::post('/edms/file/upload', [EdmsController::class, 'uploadFile'])->name('edms.upload-file');
@@ -239,6 +256,7 @@ Route::post('/webhooks/mail/bounce', [\App\Http\Controllers\MailBounceWebhookCon
 // Rotas de Notificações e Web Push
 Route::middleware(['auth'])->group(function () {
     // Página dedicada de notificações
+    Route::get('/notificacoes', [NotificationController::class, 'page'])->name('notificacoes.index');
     Route::get('/notifications/all', [NotificationController::class, 'page'])->name('notifications.page');
 
     // API JSON do dropdown
@@ -255,12 +273,18 @@ Route::middleware(['auth'])->group(function () {
 
     // Documentos Internos e Modelos
     Route::resource('modelos', ModeloDocumentoController::class);
-    Route::get('documentos-internos-export/pdf', [DocumentoInternoController::class, 'exportPdf'])->name('documentos-internos.export.pdf');
-    Route::get('documentos-internos-export/excel', [DocumentoInternoController::class, 'exportExcel'])->name('documentos-internos.export.excel');
+    Route::get('documentos-internos-export/pdf', [DocumentoInternoController::class, 'exportPdf'])
+        ->middleware('throttle:heavy-exports')
+        ->name('documentos-internos.export.pdf');
+    Route::get('documentos-internos-export/excel', [DocumentoInternoController::class, 'exportExcel'])
+        ->middleware('throttle:heavy-exports')
+        ->name('documentos-internos.export.excel');
     Route::post('documentos-internos/preview', [DocumentoInternoController::class, 'preview'])->name('documentos-internos.preview');
     Route::post('documentos-internos/{documentoInterno}/sign', [DocumentoInternoController::class, 'sign'])->name('documentos-internos.sign');
     Route::post('documentos-internos/{documentoInterno}/restore/{version}', [DocumentoInternoController::class, 'restore'])->name('documentos-internos.restore');
-    Route::post('documentos-internos/batch-zip', [DocumentoInternoController::class, 'batchDownloadZip'])->name('documentos-internos.batch-zip');
+    Route::post('documentos-internos/batch-zip', [DocumentoInternoController::class, 'batchDownloadZip'])
+        ->middleware('throttle:heavy-exports')
+        ->name('documentos-internos.batch-zip');
     Route::post('documentos-internos/auto-save/{documentoInterno?}', [DocumentoInternoController::class, 'autoSave'])->name('documentos-internos.auto-save');
     Route::get('/empresas/{empresa}/json', [EmpresaController::class, 'apiDetails'])->name('empresas.json');
     Route::get('documentos-internos/{documentoInterno}/pdf', [DocumentoInternoController::class, 'downloadPdf'])->name('documentos-internos.pdf');
@@ -272,6 +296,11 @@ Route::middleware(['auth'])->group(function () {
 
     Route::resource('documentos-internos', DocumentoInternoController::class)
         ->parameters(['documentos-internos' => 'documentoInterno']);
+
+    // Vínculos N:N de Documentos
+    Route::post('documentos/{tipo}/{id}/vincular', [\App\Http\Controllers\DocumentoVinculoController::class, 'store'])->name('documentos.vincular');
+    Route::delete('documentos/vinculos/{vinculo_id}', [\App\Http\Controllers\DocumentoVinculoController::class, 'destroy'])->name('documentos.desvincular');
+
 
     // Gabinete Dashboard
     Route::get('/gabinete/dashboard', [GabineteDashboardController::class, 'index'])
@@ -317,9 +346,11 @@ if (config('app.feature_collab')) {
 
 // Assistente de IA sobre documentos (gated por feature flag + permissão; acesso por documento é re-verificado no controller)
 if (config('app.feature_assistente')) {
-    Route::middleware(['auth', 'can:assistente.usar'])->group(function () {
+    Route::middleware(['auth', 'can:assistente.usar', 'throttle:ai-assistant'])->group(function () {
         Route::get('/assistente', [AssistenteController::class, 'index'])->name('assistente.index');
         Route::post('/assistente/perguntar', [AssistenteController::class, 'perguntarGlobal'])->name('assistente.perguntar');
+        Route::post('/assistente/resumir', [AssistenteController::class, 'resumirDocumento'])->name('assistente.resumir');
+        Route::post('/api/ia/resumir-documento', [AssistenteController::class, 'resumirDocumento'])->name('api.ia.resumir');
         Route::post('documentos-entradas/{documento}/assistente', [AssistenteController::class, 'perguntarEntrada'])->name('assistente.entrada');
         Route::post('documentos-entradas/{documento}/gerar-nota-gab', [DocumentoEntradaController::class, 'generateCabinetNote'])->name('documentos-entradas.gerar-nota-gab');
         Route::post('documentos-entradas/{documento}/sugerir-acoes', [DocumentoEntradaController::class, 'suggestActions'])->name('documentos-entradas.sugerir-acoes');
@@ -380,4 +411,4 @@ Route::get('/deploy-setup', function (Request $request) {
     } catch (Exception $e) {
         return 'Erro crítico durante o setup: '.$e->getMessage();
     }
-})->middleware('throttle:6,1');
+})->middleware('throttle:5,1');

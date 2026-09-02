@@ -40,26 +40,35 @@ class DocumentoInternoController extends Controller
 
     public function index(Request $request)
     {
-        // Use the hierarchical scope instead of hardcoded department check
-        $query = DocumentoInterno::accessibleBy(Auth::user())
+        $user = Auth::user();
+        $profile = $user ? $this->service->getUserWorkflowProfile($user) : 'gabinete';
+        $workflowTabs = $this->service->getRoleWorkflowTabs($user, $request);
+        $activeTab = $request->input('tab') ?: $this->service->getDefaultTabForProfile($profile);
+
+        // Query com isolamento de visibilidade por perfil/hierarquia
+        $query = DocumentoInterno::accessibleBy($user)
             ->with(['especie', 'autor', 'departamento'])
-            ->withExists(['favoritadoPor as is_favorited' => function ($q) {
-                $q->where('user_id', Auth::id());
+            ->withExists(['favoritadoPor as is_favorited' => function ($q) use ($user) {
+                $q->where('user_id', $user->id);
             }]);
 
-        // Filtro por Texto (Título ou Referência)
+        // Aplica o filtro de ciclo de vida da aba ativa
+        $this->service->applyRoleTabFilter($query, $activeTab, $user, $profile);
+
+        // Filtro por Texto (Título, Referência ou Conteúdo)
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('titulo', 'like', "%{$search}%")
-                    ->orWhere('numero_referencia', 'like', "%{$search}%");
+                    ->orWhere('numero_referencia', 'like', "%{$search}%")
+                    ->orWhere('conteudo_final', 'like', "%{$search}%");
             });
         }
 
         // Filtro por Favoritos
         if ($request->boolean('favoritos')) {
-            $query->whereHas('favoritadoPor', function ($q) {
-                $q->where('user_id', Auth::id());
+            $query->whereHas('favoritadoPor', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
             });
         }
 
@@ -68,9 +77,14 @@ class DocumentoInternoController extends Controller
             $query->where('documento_especie_id', $request->especie_id);
         }
 
-        // Filtro por Status
+        // Filtro por Status explícito
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        // Filtro por Departamento (visível para Chefe de Gabinete / Admin)
+        if ($request->filled('departamento_id')) {
+            $query->where('departamento_id', $request->departamento_id);
         }
 
         // Filtro por Data
@@ -102,10 +116,38 @@ class DocumentoInternoController extends Controller
 
         $especies = DocumentoEspecie::where('ativo', true)->orderBy('nome')->get();
 
-        // Autores (apenas do departamento do usuário para consistência)
-        $autores = User::where('departamento_id', Auth::user()->departamento_id)->orderBy('name')->get();
+        // Departamentos para filtro (apenas para Chefe de Gabinete / Admin)
+        $isChefeGabinete = $user->isAdmin() || $user->isChefeGabinete() || $user->isSuperChefeGabinete();
+        $departamentos = collect();
+        if ($isChefeGabinete) {
+            if ($user->isAdmin()) {
+                $departamentos = \App\Models\Departamento::orderBy('nome')->get();
+            } elseif ($user->gabineteGerenciado) {
+                $departamentos = \App\Models\Departamento::where('gabinete_id', $user->gabineteGerenciado->id)->orderBy('nome')->get();
+            } elseif ($user->gabineteSuperGerenciado) {
+                $departamentos = \App\Models\Departamento::where('gabinete_id', $user->gabineteSuperGerenciado->id)->orderBy('nome')->get();
+            }
+        }
 
-        return view('documentos_internos.index', compact('documentos', 'especies', 'autores'));
+        // Autores disponíveis para filtro
+        $autoresQuery = User::query();
+        if ($isChefeGabinete && $departamentos->isNotEmpty()) {
+            $autoresQuery->whereIn('departamento_id', $departamentos->pluck('id'));
+        } elseif ($user->departamento_id) {
+            $autoresQuery->where('departamento_id', $user->departamento_id);
+        }
+        $autores = $autoresQuery->orderBy('name')->get();
+
+        return view('documentos_internos.index', compact(
+            'documentos',
+            'especies',
+            'autores',
+            'departamentos',
+            'workflowTabs',
+            'profile',
+            'activeTab',
+            'isChefeGabinete'
+        ));
     }
 
     public function exportExcel(Request $request)
@@ -115,15 +157,22 @@ class DocumentoInternoController extends Controller
 
     public function exportPdf(Request $request)
     {
-        $query = DocumentoInterno::accessibleBy(Auth::user())
+        $user = Auth::user();
+        $profile = $user ? $this->service->getUserWorkflowProfile($user) : 'gabinete';
+        $activeTab = $request->input('tab') ?: $this->service->getDefaultTabForProfile($profile);
+
+        $query = DocumentoInterno::accessibleBy($user)
             ->with(['especie', 'autor', 'departamento']);
+
+        $this->service->applyRoleTabFilter($query, $activeTab, $user, $profile);
 
         // Apply same filters as index
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('titulo', 'like', "%{$search}%")
-                    ->orWhere('numero_referencia', 'like', "%{$search}%");
+                    ->orWhere('numero_referencia', 'like', "%{$search}%")
+                    ->orWhere('conteudo_final', 'like', "%{$search}%");
             });
         }
 
@@ -133,6 +182,10 @@ class DocumentoInternoController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+
+        if ($request->filled('departamento_id')) {
+            $query->where('departamento_id', $request->departamento_id);
         }
 
         if ($request->filled('data_inicio')) {
@@ -167,10 +220,10 @@ class DocumentoInternoController extends Controller
         }
 
         $especies = DocumentoEspecie::where('ativo', true)->orderBy('nome')->get();
-        // $modelos = ModeloDocumento::where('ativo', true)->get()->groupBy('documento_especie_id');
         $modelos = $this->service->getTemplatesForUser(Auth::user())->groupBy('documento_especie_id');
+        $chefesDepartamento = $this->service->getChefesDepartamentoForUser(Auth::user());
 
-        return view('documentos_internos.create', compact('documentoEntrada', 'especies', 'modelos'));
+        return view('documentos_internos.create', compact('documentoEntrada', 'especies', 'modelos', 'chefesDepartamento'));
     }
 
     public function preview(Request $request)
@@ -219,6 +272,23 @@ class DocumentoInternoController extends Controller
 
         $doc->save();
 
+        // Persistir Vínculo N:N automaticamente se gerado a partir de uma Entrada
+        if (! empty($validated['documento_entrada_id'])) {
+            $tipoRelacao = $request->input('tipo_relacao', 'RESPOSTA');
+            $justificativa = $request->input('vinculo_justificativa', 'Resposta ou parecer gerado para a entrada');
+
+            \App\Models\DocumentoVinculo::firstOrCreate([
+                'origem_tipo' => 'EXTERNO',
+                'origem_id' => (int) $validated['documento_entrada_id'],
+                'destino_tipo' => 'INTERNO',
+                'destino_id' => (int) $doc->id,
+            ], [
+                'tipo_relacao' => strtoupper($tipoRelacao),
+                'vinculado_por_id' => Auth::id(),
+                'justificativa' => $justificativa,
+            ]);
+        }
+
         return redirect()->route('documentos-internos.index')
             ->with('success', 'Documento interno criado com sucesso: '.$doc->numero_referencia);
     }
@@ -244,8 +314,9 @@ class DocumentoInternoController extends Controller
 
     public function edit(DocumentoInterno $documentoInterno)
     {
-        // Check permissions
-        if ($documentoInterno->status !== DocumentoStatus::RASCUNHO) {
+        $this->authorize('update', $documentoInterno);
+
+        if ($documentoInterno->status !== DocumentoStatus::RASCUNHO && $documentoInterno->status !== 'rascunho') {
             return back()->with('error', 'Apenas rascunhos podem ser editados.');
         }
 
@@ -256,7 +327,8 @@ class DocumentoInternoController extends Controller
 
     public function update(Request $request, DocumentoInterno $documentoInterno)
     {
-        // Check permissions
+        $this->authorize('update', $documentoInterno);
+
         if ($documentoInterno->bloqueado_edicao) {
             return back()->with('error', 'Documento assinado não pode ser editado.');
         }
@@ -282,6 +354,8 @@ class DocumentoInternoController extends Controller
 
     public function submit(DocumentoInterno $documentoInterno)
     {
+        $this->authorize('update', $documentoInterno);
+
         try {
             $this->workflowService->submitForReview($documentoInterno, Auth::user());
 
@@ -318,6 +392,8 @@ class DocumentoInternoController extends Controller
 
     public function restore(DocumentoInterno $documentoInterno, int $version)
     {
+        $this->authorize('update', $documentoInterno);
+
         if ($documentoInterno->bloqueado_edicao) {
             return back()->with('error', 'Documento assinado não pode ser restaurado.');
         }
@@ -368,6 +444,8 @@ class DocumentoInternoController extends Controller
 
     public function downloadPdf(DocumentoInterno $documentoInterno, Request $request)
     {
+        $this->authorize('view', $documentoInterno);
+
         $documentoInterno->logAudit('download');
         $documentoInterno->load(['especie', 'departamento.gabinete', 'autor']);
 

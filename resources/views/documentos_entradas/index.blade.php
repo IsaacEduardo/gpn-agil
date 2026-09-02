@@ -77,6 +77,70 @@ tr.keyboard-selected {
     outline-offset: -2px;
     background-color: rgba(59, 130, 246, 0.04) !important;
 }
+
+/* Corporate Underline Navigation Tabs System */
+.corporate-underline-nav {
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.corporate-underline-nav::-webkit-scrollbar {
+    display: none;
+}
+
+.corporate-underline-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #6b7280;
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.2s ease, border-color 0.2s ease;
+    white-space: nowrap;
+}
+
+.corporate-underline-tab:hover:not(.active) {
+    color: #111827;
+    border-bottom-color: #d1d5db;
+}
+
+.corporate-underline-tab.active {
+    color: #111827;
+    font-weight: 600;
+    border-bottom-color: var(--primary-accent, #0d6efd);
+}
+
+.corporate-underline-tab .tab-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    line-height: 1.2;
+    transition: all 0.2s ease;
+}
+
+.tab-badge-warning {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.tab-badge-info {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+.tab-badge-neutral {
+    background-color: #f3f4f6;
+    color: #4b5563;
+}
 </style>
 @endsection
 
@@ -136,47 +200,86 @@ tr.keyboard-selected {
 
         {{-- Main Card --}}
         <div class="card shadow-sm border-0 rounded-3 overflow-hidden">
-            {{-- Toolbar / Quick Filters --}}
-            <div
-                class="card-header bg-white p-3 border-bottom d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
+            {{-- Corporate Underline Tabs Header --}}
+            <div class="card-header bg-white px-3 pt-2 pb-0 border-bottom">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
 
-                {{-- Tabs-like Filters --}}
-                <div class="nav nav-pills p-1 bg-light rounded-pill" role="tablist">
-                    <a href="{{ route('documentos-entradas.index') }}"
-                        class="nav-link rounded-pill px-3 py-1 small fw-medium {{ !request('meus') ? 'active bg-white text-primary shadow-sm' : 'text-muted' }}">
-                        Todos
-                    </a>
-                    <a href="{{ route('documentos-entradas.index', ['meus' => 'pendentes_recebimento'] + request()->except('page')) }}"
-                        class="nav-link rounded-pill px-3 py-1 small fw-medium {{ request('meus') === 'pendentes_recebimento' ? 'active bg-white text-primary shadow-sm' : 'text-muted' }}">
-                        Por Receber
-                    </a>
-                    <a href="{{ route('documentos-entradas.index', ['meus' => 'visto_pendente'] + request()->except('page')) }}"
-                        class="nav-link rounded-pill px-3 py-1 small fw-medium {{ request('meus') === 'visto_pendente' ? 'active bg-white text-primary shadow-sm' : 'text-muted' }}">
-                        Visto Pendente
-                    </a>
-                    <a href="{{ route('documentos-entradas.index', ['meus' => 'visto_gabinete_pendente'] + request()->except('page')) }}"
-                        class="nav-link rounded-pill px-3 py-1 small fw-medium {{ request('meus') === 'visto_gabinete_pendente' ? 'active bg-white text-primary shadow-sm' : 'text-muted' }}">
-                        Visto Gab. Pendente
-                    </a>
-                </div>
-
-                {{-- Advanced Filter Toggle & Search --}}
-                <div class="d-flex gap-2 w-100 w-md-auto">
-                    <div class="input-group input-group-sm w-100 w-md-auto" style="min-width: 200px;">
-                        <span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span>
-                        <form action="{{ route('documentos-entradas.index') }}" method="GET" class="flex-grow-1">
-                            @if (request('meus'))
-                                <input type="hidden" name="meus" value="{{ request('meus') }}">
-                            @endif
-                            <input type="text" name="search" value="{{ request('search') }}"
-                                class="form-control border-start-0 bg-light" placeholder="Pesquisar..."
-                                style="border-top-right-radius: 0; border-bottom-right-radius: 0;">
-                        </form>
+                    {{-- Left Aligned Dynamic Workflow Navigation Tabs --}}
+                    <div class="corporate-underline-nav flex-grow-1">
+                        @if (isset($workflowTabs) && count($workflowTabs))
+                            @foreach ($workflowTabs as $tab)
+                                <a href="{{ route('documentos-entradas.index', ['tab' => $tab['key']] + request()->except('tab', 'page', 'meus')) }}"
+                                    class="corporate-underline-tab {{ $tab['is_active'] ? 'active' : '' }}">
+                                    @if (!empty($tab['icon']))
+                                        <i class="{{ $tab['icon'] }} me-1 opacity-75"></i>
+                                    @endif
+                                    <span>{{ $tab['label'] }}</span>
+                                    <span class="tab-badge {{ $tab['badge_class'] }}">
+                                        {{ number_format($tab['count'], 0, ',', '.') }}
+                                    </span>
+                                </a>
+                            @endforeach
+                        @endif
                     </div>
-                    <button class="btn btn-sm btn-outline-secondary d-flex align-items-center" type="button"
-                        data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false">
-                        <i class="fas fa-filter me-1"></i> Filtros
-                    </button>
+
+                    {{-- Right Aligned Expandable Search & Filter Toggle --}}
+                    <div class="d-flex gap-2 align-items-center mb-2 mb-md-0 ms-auto">
+                        <div class="expandable-search-wrapper position-relative d-flex align-items-center">
+                            @php($hasSearch = !empty(request('search')))
+                            
+                            {{-- Search Trigger Button (Collapsed) --}}
+                            <button type="button" 
+                                id="btn-trigger-search" 
+                                class="btn btn-sm text-secondary bg-transparent border-0 rounded-3 d-flex align-items-center justify-content-center p-0 {{ $hasSearch ? 'd-none' : '' }}"
+                                style="width: 36px; height: 36px; transition: background-color 0.2s;"
+                                title="Pesquisar">
+                                <i class="fas fa-search fs-6"></i>
+                            </button>
+
+                            {{-- Expanded Search Form Input --}}
+                            <form action="{{ route('documentos-entradas.index') }}" method="GET" 
+                                id="form-expandable-search" 
+                                class="expandable-search-form d-flex align-items-center {{ $hasSearch ? 'expanded' : '' }}">
+                                @if (request('meus'))
+                                    <input type="hidden" name="meus" value="{{ request('meus') }}">
+                                @endif
+                                @if (request('tab'))
+                                    <input type="hidden" name="tab" value="{{ request('tab') }}">
+                                @endif
+
+                                <div class="position-relative d-flex align-items-center">
+                                    <i class="fas fa-search position-absolute text-muted small" style="left: 10px; pointer-events: none; z-index: 5;"></i>
+                                    <input type="text" 
+                                        name="search" 
+                                        id="input-expandable-search"
+                                        value="{{ request('search') }}"
+                                        placeholder="Pesquisar..." 
+                                        class="form-control form-control-sm rounded-3 shadow-none text-dark bg-white" 
+                                        style="padding-left: 30px; padding-right: 28px; height: 36px; width: {{ $hasSearch ? '240px' : '0px' }}; opacity: {{ $hasSearch ? '1' : '0' }}; transition: width 0.25s ease-in-out, opacity 0.2s ease-in-out; border: 1px solid #d1d5db;"
+                                        autocomplete="off">
+                                    <button type="button" 
+                                        id="btn-close-search" 
+                                        class="btn btn-sm p-0 position-absolute text-muted border-0 bg-transparent" 
+                                        style="right: 8px; font-size: 11px; display: {{ $hasSearch ? 'block' : 'none' }}; z-index: 5;"
+                                        title="Fechar e limpar">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        {{-- Advanced Filter Button --}}
+                        <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 shadow-none rounded-3" 
+                            type="button" 
+                            style="height: 36px;"
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#filterCollapse" 
+                            aria-expanded="false">
+                            <i class="fas fa-filter text-muted small"></i>
+                            <span class="small fw-medium">Filtros</span>
+                        </button>
+                    </div>
+
                 </div>
             </div>
 
@@ -236,6 +339,19 @@ tr.keyboard-selected {
                             <button type="submit" class="btn btn-primary btn-sm px-4">Aplicar Filtros</button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            {{-- Toast Container para Notificações Rápida Reativas --}}
+            <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1090;">
+                <div id="quickActionToast" class="toast align-items-center text-white bg-success border-0 shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body d-flex align-items-center gap-2" id="quickActionToastBody">
+                            <i class="fas fa-check-circle fs-5"></i>
+                            <span id="quickActionToastMessage">Ação realizada com sucesso!</span>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Fechar"></button>
+                    </div>
                 </div>
             </div>
 
@@ -330,12 +446,16 @@ tr.keyboard-selected {
                             <th class="ps-4 py-3 border-bottom" style="width: 40px;">
                                 <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
                             </th>
-                            <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Nº / Ano</th>
-                            <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Procedência / Assunto
-                            </th>
-                            <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Status / Vistos</th>
-                            <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Localização</th>
-                            <th class="py-3 border-bottom text-uppercase small fw-bold text-muted text-end pe-4">Ações</th>
+                            <th class="py-3 border-bottom text-uppercase small fw-bold text-muted" style="width: 130px;">Nº / Ano</th>
+                            <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Procedência / Assunto</th>
+                            @if ($activeTab === 'atribuidos_mim')
+                                <th class="py-3 border-bottom text-uppercase small fw-bold text-muted" style="min-width: 260px;">Minha Tarefa / Instruções</th>
+                                <th class="py-3 border-bottom text-uppercase small fw-bold text-muted" style="width: 160px;">Prazo</th>
+                            @else
+                                <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Status / Vistos</th>
+                                <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Localização</th>
+                            @endif
+                            <th class="py-3 border-bottom text-uppercase small fw-bold text-muted text-end pe-4" style="width: {{ $activeTab === 'atribuidos_mim' ? '190px' : '100px' }};">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -388,123 +508,207 @@ tr.keyboard-selected {
                                                 {{ $doc->classificacao_ref_numero }}</span>
                                         @endif
                                     </div>
-                                </td>
+                                                            @if ($activeTab === 'atribuidos_mim')
+                                    @php($t = $doc->minha_tarefa)
+                                    <td style="max-width: 320px;">
+                                        @if ($t)
+                                            <div class="fw-semibold text-dark mb-0.5">{{ $t->titulo }}</div>
+                                            @if ($t->descricao)
+                                                <div class="small text-muted fst-italic text-truncate" style="max-width: 280px;" title="{{ $t->descricao }}">
+                                                    <i class="far fa-comment-alt me-1 opacity-75"></i>{{ $t->descricao }}
+                                                </div>
+                                            @endif
+                                            @if ($t->assignedBy)
+                                                <div class="mt-1">
+                                                    <span class="badge bg-light text-secondary border fw-normal" style="font-size: 0.72rem;">
+                                                        <i class="fas fa-user-shield me-1 text-primary"></i>Chefia: {{ $t->assignedBy->name }}
+                                                    </span>
+                                                </div>
+                                            @endif
+                                        @else
+                                            <span class="text-muted small">Sem tarefa ativa</span>
+                                        @endif
+                                    </td>
 
-                                <td>
-                                    {{-- Vistos Badges --}}
-                                    <div class="d-flex gap-1 mb-1">
-                                        @php($depStatus = $doc->visto_departamento_status ?? 'pendente')
-                                        @php($depColor = $depStatus === 'aprovado' ? 'success' : ($depStatus === 'rejeitado' ? 'danger' : 'secondary'))
-                                        <span
-                                            class="badge bg-{{ $depColor }}-subtle text-{{ $depColor }} border border-{{ $depColor }}-subtle rounded-pill"
-                                            title="Visto Departamento: {{ ucfirst($depStatus) }}">
-                                            <i
-                                                class="fas {{ $depStatus === 'aprovado' ? 'fa-check' : 'fa-clock' }} me-1"></i>Dep.
-                                        </span>
-
-                                        @php($gabStatus = $doc->visto_gabinete_status ?? 'pendente')
-                                        @php($gabColor = $gabStatus === 'aprovado' ? 'success' : ($gabStatus === 'rejeitado' ? 'danger' : 'secondary'))
-                                        <span
-                                            class="badge bg-{{ $gabColor }}-subtle text-{{ $gabColor }} border border-{{ $gabColor }}-subtle rounded-pill"
-                                            title="Visto Gabinete: {{ ucfirst($gabStatus) }}">
-                                            <i
-                                                class="fas {{ $gabStatus === 'aprovado' ? 'fa-check' : 'fa-clock' }} me-1"></i>Gab.
-                                        </span>
-                                    </div>
-                                    @if ($doc->saida_gabinete_data)
-                                        <div class="badge bg-dark-subtle text-dark border border-dark-subtle rounded-pill">
-                                            <i class="fas fa-sign-out-alt me-1"></i>Saiu Gab.
-                                        </div>
-                                    @endif
-                                    
-                                    @php($sla = $doc->sla_status)
-                                    @if ($sla === 'critical')
-                                        <div class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill mt-1" title="SLA Crítico: {{ $doc->dias_decorridos }} dias decorridos">
-                                            <i class="fas fa-exclamation-triangle me-1"></i>Crítico
-                                        </div>
-                                    @elseif ($sla === 'warning')
-                                        <div class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill mt-1" title="SLA Excedido: {{ $doc->dias_decorridos }} dias decorridos">
-                                            <i class="fas fa-exclamation-circle me-1"></i>Atrasado
-                                        </div>
-                                    @endif
-                                </td>
-
-                                <td class="loc-cell">
-                                    @if ($enc)
-                                        <div class="d-flex flex-column small">
-                                            <span
-                                                class="fw-medium text-dark">{{ optional($enc->destinoDepartamento)->nome ?? '—' }}</span>
-                                            @if ($enc->recebido_em)
-                                                <span class="text-success"><i
-                                                        class="fas fa-check-circle me-1"></i>Recebido
-                                                    {{ \Carbon\Carbon::parse($enc->recebido_em)->format('d/m') }}</span>
+                                    <td>
+                                        @if ($t && $t->prazo_at)
+                                            @php($prazo = \Carbon\Carbon::parse($t->prazo_at))
+                                            @php($isOverdue = $prazo->isPast() && !$prazo->isToday())
+                                            @php($isTodayTomorrow = $prazo->isToday() || $prazo->isTomorrow())
+                                            @if ($isOverdue)
+                                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle fw-bold rounded-pill px-2 py-1" title="Prazo Vencido">
+                                                    <i class="far fa-clock me-1"></i>Vencido ({{ $prazo->format('d/m/Y') }})
+                                                </span>
+                                            @elseif ($isTodayTomorrow)
+                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-bold rounded-pill px-2 py-1">
+                                                    <i class="far fa-clock me-1"></i>{{ $prazo->isToday() ? 'Vence Hoje' : 'Vence Amanhã' }}
+                                                </span>
                                             @else
-                                                <span class="text-warning"><i
-                                                        class="fas fa-paper-plane me-1"></i>Encaminhado
-                                                    {{ optional($enc->encaminhado_em)->format('d/m') }}</span>
+                                                <span class="badge bg-light text-secondary border rounded-pill px-2 py-1">
+                                                    <i class="far fa-calendar-alt me-1"></i>{{ $prazo->format('d/m/Y') }}
+                                                </span>
                                             @endif
-                                        </div>
-                                    @else
-                                        <span class="text-muted small">—</span>
-                                    @endif
-                                </td>
+                                        @else
+                                            <span class="text-muted small">—</span>
+                                        @endif
+                                    </td>
 
-                                <td class="text-end pe-4" onclick="event.stopPropagation()">
-                                    <div class="dropdown">
-                                        <button
-                                            class="btn btn-icon btn-sm btn-light rounded-circle shadow-sm dropdown-action-btn"
-                                            type="button" data-bs-toggle="dropdown" aria-expanded="false"
-                                            style="width: 32px; height: 32px;">
-                                            <i class="fas fa-ellipsis-v text-muted"></i>
-                                        </button>
-                                        <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0">
-                                            <li>
-                                                <h6 class="dropdown-header text-uppercase small fw-bold">Gerenciar</h6>
-                                            </li>
-                                            <li><a class="dropdown-item"
-                                                    href="{{ route('documentos-entradas.show', $doc) }}"><i
-                                                        class="fas fa-eye me-2 text-primary w-20"></i>Detalhes</a></li>
-                                            <li><a class="dropdown-item"
-                                                    href="{{ route('documentos-entradas.edit', $doc) }}"><i
-                                                        class="fas fa-edit me-2 text-secondary w-20"></i>Editar</a></li>
-                                            @if ($doc->arquivo_caminho)
-                                                <li><a class="dropdown-item"
-                                                        href="{{ route('documentos-entradas.arquivo.download', $doc) }}"
-                                                        target="_blank"><i
-                                                            class="fas fa-download me-2 text-info w-20"></i>Baixar</a></li>
+                                    <td class="text-end pe-4" onclick="event.stopPropagation()">
+                                        <div class="d-flex justify-content-end align-items-center gap-1">
+                                            @if ($t)
+                                                <button type="button" 
+                                                    class="btn btn-sm btn-success fw-bold px-2 py-1 shadow-sm rounded-2 d-inline-flex align-items-center"
+                                                    onclick="event.stopPropagation(); openExecutarTarefa(this);"
+                                                    data-doc-id="{{ $doc->id }}"
+                                                    data-tarefa-id="{{ $t->id }}"
+                                                    data-tarefa-titulo="{{ $t->titulo }}"
+                                                    data-doc-numero="{{ $doc->numero_sequencial }}/{{ $doc->ano_referencia }}">
+                                                    <i class="fas fa-play me-1"></i> Executar
+                                                </button>
                                             @endif
-                                            <li>
-                                                <hr class="dropdown-divider">
-                                            </li>
-                                            @if ($doc->can_forward)
+                                            <a href="{{ route('documentos-entradas.show', $doc) }}" 
+                                               class="btn btn-sm btn-outline-secondary px-2 py-1 rounded-2" 
+                                               title="Ver Documento">
+                                                <i class="far fa-eye me-1"></i> Ver
+                                            </a>
+                                        </div>
+                                    </td>
+                                @else
+                                    <td>
+                                        {{-- Vistos Badges --}}
+                                        <div class="d-flex gap-1 mb-1">
+                                            @php($depStatus = $doc->visto_departamento_status ?? 'pendente')
+                                            @php($depColor = $depStatus === 'aprovado' ? 'success' : ($depStatus === 'rejeitado' ? 'danger' : 'secondary'))
+                                            <span
+                                                class="badge bg-{{ $depColor }}-subtle text-{{ $depColor }} border border-{{ $depColor }}-subtle rounded-pill"
+                                                title="Visto Departamento: {{ ucfirst($depStatus) }}">
+                                                <i
+                                                    class="fas {{ $depStatus === 'aprovado' ? 'fa-check' : 'fa-clock' }} me-1"></i>Dep.
+                                            </span>
+
+                                            @php($gabStatus = $doc->visto_gabinete_status ?? 'pendente')
+                                            @php($gabColor = $gabStatus === 'aprovado' ? 'success' : ($gabStatus === 'rejeitado' ? 'danger' : 'secondary'))
+                                            <span
+                                                class="badge bg-{{ $gabColor }}-subtle text-{{ $gabColor }} border border-{{ $gabColor }}-subtle rounded-pill"
+                                                title="Visto Gabinete: {{ ucfirst($gabStatus) }}">
+                                                <i
+                                                    class="fas {{ $gabStatus === 'aprovado' ? 'fa-check' : 'fa-clock' }} me-1"></i>Gab.
+                                            </span>
+                                        </div>
+                                        @if ($doc->saida_gabinete_data)
+                                            <div class="badge bg-dark-subtle text-dark border border-dark-subtle rounded-pill">
+                                                <i class="fas fa-sign-out-alt me-1"></i>Saiu Gab.
+                                            </div>
+                                        @endif
+                                        
+                                        @php($sla = $doc->sla_status)
+                                        @if ($sla === 'critical')
+                                            <div class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill mt-1" title="SLA Crítico: {{ $doc->dias_decorridos }} dias decorridos">
+                                                <i class="fas fa-exclamation-triangle me-1"></i>Crítico
+                                            </div>
+                                        @elseif ($sla === 'warning')
+                                            <div class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill mt-1" title="SLA Excedido: {{ $doc->dias_decorridos }} dias decorridos">
+                                                <i class="fas fa-exclamation-circle me-1"></i>Atrasado
+                                            </div>
+                                        @endif
+                                    </td>
+
+                                    <td class="loc-cell">
+                                        @if ($enc)
+                                            <div class="d-flex flex-column small">
+                                                <span
+                                                    class="fw-medium text-dark">{{ optional($enc->destinoDepartamento)->nome ?? '—' }}</span>
+                                                @if ($enc->recebido_em)
+                                                    <span class="text-success"><i
+                                                            class="fas fa-check-circle me-1"></i>Recebido
+                                                        {{ \Carbon\Carbon::parse($enc->recebido_em)->format('d/m') }}</span>
+                                                @else
+                                                    <span class="text-warning"><i
+                                                            class="fas fa-paper-plane me-1"></i>Encaminhado
+                                                        {{ optional($enc->encaminhado_em)->format('d/m') }}</span>
+                                                @endif
+                                            </div>
+                                        @else
+                                            <span class="text-muted small">—</span>
+                                        @endif
+                                    </td>
+
+                                    <td class="text-end pe-4" onclick="event.stopPropagation()">
+                                        <div class="dropdown">
+                                            <button
+                                                class="btn btn-icon btn-sm btn-light rounded-circle shadow-sm dropdown-action-btn"
+                                                type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                                                style="width: 32px; height: 32px;">
+                                                <i class="fas fa-ellipsis-v text-muted"></i>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0">
                                                 <li>
-                                                    <button type="button" class="dropdown-item text-primary fw-medium"
-                                                        onclick="openEncaminhar({{ $doc->id }}, {{ $doc->departamento_id }})"><i
-                                                            class="fas fa-paper-plane me-2 w-20"></i>Encaminhar</button>
+                                                    <h6 class="dropdown-header text-uppercase small fw-bold">Gerenciar</h6>
                                                 </li>
-                                            @endif
-                                            @if ($doc->can_receive)
+                                                <li><a class="dropdown-item"
+                                                        href="{{ route('documentos-entradas.show', $doc) }}"><i
+                                                            class="fas fa-eye me-2 text-primary w-20"></i>Detalhes</a></li>
+                                                <li><a class="dropdown-item"
+                                                        href="{{ route('documentos-entradas.edit', $doc) }}"><i
+                                                            class="fas fa-edit me-2 text-secondary w-20"></i>Editar</a></li>
+                                                @if ($doc->arquivo_caminho)
+                                                    <li><a class="dropdown-item"
+                                                            href="{{ route('documentos-entradas.arquivo.download', $doc) }}"
+                                                            target="_blank"><i
+                                                                class="fas fa-download me-2 text-info w-20"></i>Baixar</a></li>
+                                                @endif
                                                 <li>
-                                                    <form
-                                                        action="{{ route('documentos-entradas.encaminhamentos.receber', ['documento' => $doc->id, 'encaminhamento' => $enc->id]) }}"
-                                                        method="POST" class="js-ajax-receber">
-                                                        @csrf @method('PATCH')
-                                                        <button class="dropdown-item text-success fw-medium"
-                                                            type="submit"><i
-                                                                class="fas fa-inbox me-2 w-20"></i>Receber</button>
+                                                    <hr class="dropdown-divider">
+                                                </li>
+                                                @if ($doc->can_despachar && in_array($doc->status, ['pendente_tratamento', 'registrado']))
+                                                    <li>
+                                                        <button type="button" class="dropdown-item text-warning fw-bold"
+                                                            data-bs-toggle="modal" data-bs-target="#modalDespacho{{ $doc->id }}">
+                                                            <i class="fas fa-file-signature me-2 w-20"></i>Despachar Documento
+                                                        </button>
+                                                    </li>
+                                                @endif
+                                                @if ($doc->can_encaminhar_tratado && $doc->status === 'tratado')
+                                                    <li>
+                                                        <form action="{{ route('documentos-entradas.encaminhar-tratado', $doc) }}" method="POST">
+                                                            @csrf
+                                                            <button type="submit" class="dropdown-item text-success fw-bold" onclick="return confirm('Confirma o encaminhamento deste documento tratado para os departamentos selecionados?')">
+                                                                <i class="fas fa-paper-plane me-2 w-20"></i>Encaminhar para Destinos
+                                                            </button>
+                                                        </form>
+                                                    </li>
+                                                @endif
+                                                @if ($doc->can_forward)
+                                                    <li>
+                                                        <button type="button" class="dropdown-item text-primary fw-medium"
+                                                            onclick="openEncaminhar({{ $doc->id }}, {{ $doc->departamento_id }})"><i
+                                                                class="fas fa-paper-plane me-2 w-20"></i>Encaminhar Direto</button>
+                                                    </li>
+                                                @endif
+                                                @if ($doc->can_receive)
+                                                    <li>
+                                                        <form
+                                                            action="{{ route('documentos-entradas.encaminhamentos.receber', ['documento' => $doc->id, 'encaminhamento' => $enc->id]) }}"
+                                                            method="POST" class="js-ajax-receber">
+                                                            @csrf @method('PATCH')
+                                                            <button class="dropdown-item text-success fw-medium"
+                                                                type="submit"><i
+                                                                    class="fas fa-inbox me-2 w-20"></i>Receber</button>
+                                                        </form>
+                                                    </li>
+                                                @endif
+                                                <li>
+                                                    <form action="{{ route('documentos-entradas.destroy', $doc) }}"
+                                                        method="POST" onsubmit="return confirm('Tem certeza?');">
+                                                        @csrf @method('DELETE')
+                                                        <button class="dropdown-item text-danger" type="submit"><i
+                                                                class="fas fa-trash-alt me-2 w-20"></i>Eliminar</button>
                                                     </form>
                                                 </li>
-                                            @endif
-                                            <li>
-                                                <form action="{{ route('documentos-entradas.destroy', $doc) }}"
-                                                    method="POST" onsubmit="return confirm('Tem certeza?');">
-                                                    @csrf @method('DELETE')
-                                                    <button class="dropdown-item text-danger" type="submit"><i
-                                                            class="fas fa-trash-alt me-2 w-20"></i>Eliminar</button>
-                                                </form>
-                                            </li>
-                                        </ul>
-                                    </div>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                @endif                     @include('documentos_entradas.partials.modal-despacho', ['doc' => $doc, 'departamentos' => $departamentos])
                                 </td>
                             </tr>
                         @empty
@@ -836,4 +1040,193 @@ tr.keyboard-selected {
             </div>
         </div>
     </div>
+
+    <!-- Modal Concluir / Responder Tarefa Direta da Esteira -->
+    <div class="modal fade" id="modalExecutarTarefaDirect" tabindex="-1" aria-hidden="true" style="z-index: 1070;">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title fw-bold" id="modalExecutarTarefaTitulo">
+                        <i class="fas fa-check-circle me-2"></i> Concluir / Responder Demanda
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <form id="formExecutarTarefaDirect" method="POST" action="">
+                    @csrf
+                    @method('PATCH')
+                    <div class="modal-body p-4">
+                        <div class="mb-3 p-3 bg-light rounded border">
+                            <div class="small text-muted text-uppercase fw-bold">Documento de Entrada</div>
+                            <div class="fw-bold text-dark fs-6" id="modalExecutarDocNumero">—</div>
+                            <div class="small text-success mt-1 fw-bold" id="modalExecutarTarefaNome">—</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="executar_resposta" class="form-label fw-bold small text-uppercase text-muted">
+                                Parecer / Resposta do Técnico <span class="text-danger">*</span>
+                            </label>
+                            <textarea name="observacao" id="executar_resposta" class="form-control" rows="4" placeholder="Descreva o parecer técnico, parecer emitido ou resolução desta tarefa..." required></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light px-4 py-3">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success fw-bold px-4">
+                            <i class="fas fa-paper-plane me-1"></i> Concluir Demanda
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 @endsection
+
+@section('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const triggerBtn = document.getElementById('btn-trigger-search');
+    const searchForm = document.getElementById('form-expandable-search');
+    const searchInput = document.getElementById('input-expandable-search');
+    const closeBtn = document.getElementById('btn-close-search');
+
+    if (triggerBtn && searchInput && searchForm) {
+        function openSearch() {
+            triggerBtn.classList.add('d-none');
+            searchForm.classList.add('expanded');
+            searchInput.style.width = '240px';
+            searchInput.style.opacity = '1';
+            if (closeBtn) closeBtn.style.display = 'block';
+            setTimeout(() => searchInput.focus(), 50);
+        }
+
+        function closeSearch() {
+            if (searchInput.value.trim() !== '') {
+                searchInput.value = '';
+                searchForm.submit();
+            } else {
+                searchInput.style.width = '0px';
+                searchInput.style.opacity = '0';
+                if (closeBtn) closeBtn.style.display = 'none';
+                searchForm.classList.remove('expanded');
+                setTimeout(() => triggerBtn.classList.remove('d-none'), 200);
+            }
+        }
+
+        triggerBtn.addEventListener('click', openSearch);
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                closeSearch();
+            });
+        }
+
+        searchInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeSearch();
+            }
+        });
+
+        if (searchInput.value.trim() !== '') {
+            openSearch();
+        }
+    }
+
+});
+
+// Função global para abrir o modal de Executar/Concluir Tarefa na aba Atribuídos a Mim
+window.openExecutarTarefa = function(btn) {
+    if (!btn) return;
+    const docId = btn.getAttribute('data-doc-id');
+    const tarefaId = btn.getAttribute('data-tarefa-id');
+    const tarefaTitulo = btn.getAttribute('data-tarefa-titulo');
+    const docNumero = btn.getAttribute('data-doc-numero');
+
+    const form = document.getElementById('formExecutarTarefaDirect');
+    if (form) {
+        form.action = `/documentos-entradas/${docId}/tarefas/${tarefaId}/concluir`;
+        document.getElementById('modalExecutarDocNumero').textContent = 'Documento N.º ' + docNumero;
+        document.getElementById('modalExecutarTarefaNome').textContent = 'Tarefa: ' + tarefaTitulo;
+        document.getElementById('executar_resposta').value = '';
+
+        const modalEl = document.getElementById('modalExecutarTarefaDirect');
+        if (modalEl) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+    }
+};
+
+// Função global para submissão AJAX da Gaveta Lateral (Preview-and-Act)
+window.submitDrawerQuickAction = function(form) {
+    if (!form) return;
+    const btn = document.getElementById('btnSubmitDrawerQuickAction');
+    const originalBtnHtml = btn ? btn.innerHTML : '';
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Processando...';
+    }
+
+    fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(err => { throw new Error(err.error || err.message || 'Erro ao processar.'); });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            showQuickToast(data.message || 'Despacho/Delegação realizada com sucesso!');
+            closePreviewDrawer();
+
+            if (data.tabs && Array.isArray(data.tabs)) {
+                data.tabs.forEach(tab => {
+                    const badge = document.querySelector(`.corporate-underline-tab[href*="tab=${tab.key}"] .tab-badge`);
+                    if (badge) {
+                        badge.textContent = tab.count;
+                    }
+                });
+            }
+
+            setTimeout(() => {
+                window.location.reload();
+            }, 600);
+        } else {
+            if (window.Toast) {
+                window.Toast.error('Atenção', data.error || 'Erro ao processar solicitação.');
+            }
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        if (window.Toast) {
+            window.Toast.error('Erro de Comunicação', err.message || 'Falha ao conectar com o servidor.');
+        }
+    })
+    .finally(() => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalBtnHtml;
+        }
+    });
+};
+
+function showQuickToast(msg) {
+    const toastEl = document.getElementById('quickActionToast');
+    const msgEl = document.getElementById('quickActionToastMessage');
+    if (toastEl && msgEl) {
+        msgEl.textContent = msg;
+        const toast = new bootstrap.Toast(toastEl, { delay: 4000 });
+        toast.show();
+    }
+}
+</script>
+@endsection
+

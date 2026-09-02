@@ -62,8 +62,8 @@
 </head>
 
 <body class="gov-app">
-    <!-- Toast Container -->
-    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 2000;"></div>
+    {{-- Toast Portal & Engine Universal --}}
+    @include('components.toast-container')
 
     @auth
         @include('layouts.partials.gov-header')
@@ -73,34 +73,13 @@
     <main class="gov-main">
         <div class="gov-container">
             @yield('breadcrumbs')
-
-            @if (session('success'))
-                <div class="alert alert-success alert-dismissible fade show shadow-sm border-0 rounded-3 mb-4" role="alert">
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-check-circle fs-4 me-3"></i>
-                        <div>{{ session('success') }}</div>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            @endif
-
-            @if (session('error'))
-                <div class="alert alert-danger alert-dismissible fade show shadow-sm border-0 rounded-3 mb-4" role="alert">
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-times-circle fs-4 me-3"></i>
-                        <div>{{ session('error') }}</div>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            @endif
-
             @yield('content')
         </div>
     </main>
 
     <footer class="gov-footer">
         <div class="gov-footer__inner">
-            &copy; {{ date('Y') }} {{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial do Namibe' }} &mdash; Gabinete do Vice-Governador Para o Sector Politico, Social e Económico. Todos os direitos reservados.
+            &copy; {{ date('Y') }} {{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial' }} &mdash; {{ date('d/m/Y') }}
         </div>
     </footer>
 
@@ -215,34 +194,6 @@
                     }, 500);
                 });
             }, 5000); // 5 seconds delay
-        // UX P4: Global Toast Notification Helper
-        window.showToast = function(message, type = 'success', duration = 4000) {
-            const container = document.querySelector('.toast-container');
-            if (!container) return;
-
-            const toastId = 'toast-' + Date.now();
-            const bgClass = type === 'success' ? 'bg-success' : (type === 'error' ? 'bg-danger' : 'bg-primary');
-            const iconClass = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-triangle' : 'fa-info-circle');
-
-            const toastHtml = `
-                <div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0 shadow-lg mb-2" role="alert" aria-live="assertive" aria-atomic="true">
-                    <div class="d-flex">
-                        <div class="toast-body d-flex align-items-center fs-6">
-                            <i class="fas ${iconClass} me-2"></i>
-                            ${message}
-                        </div>
-                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                    </div>
-                </div>
-            `;
-
-            container.insertAdjacentHTML('beforeend', toastHtml);
-            const toastEl = document.getElementById(toastId);
-            if (window.bootstrap && window.bootstrap.Toast) {
-                const toast = new window.bootstrap.Toast(toastEl, { delay: duration });
-                toast.show();
-            }
-        };
 
         // UX P4: Global Keyboard Shortcuts (Ctrl+S / Ctrl+P)
         document.addEventListener('keydown', function(e) {

@@ -152,10 +152,11 @@ class ViaturaController extends Controller
             'observacoes'      => $request->input('observacoes'),
         ], fn($v) => $v !== null));
 
-        // Processa o upload de fotos
+        // Processa o upload de fotos com nomenclatura segura (UUID + MIME extension)
         if ($request->hasFile('fotos')) {
             foreach ($request->file('fotos') as $foto) {
-                $nomeArquivo = time().'_'.uniqid().'.'.$foto->getClientOriginalExtension();
+                $ext = $foto->extension() ?: 'jpg';
+                $nomeArquivo = (string) Str::uuid().'.'.$ext;
                 $caminho = $foto->storeAs('viaturas/fotos', $nomeArquivo, 'public');
 
                 ViaturaFoto::create([
@@ -166,10 +167,11 @@ class ViaturaController extends Controller
             }
         }
 
-        // Processa o upload de documentos
+        // Processa o upload de documentos com nomenclatura segura
         if ($request->hasFile('documentos')) {
             foreach ($request->file('documentos') as $documento) {
-                $nomeArquivo = time().'_'.uniqid().'.'.$documento->getClientOriginalExtension();
+                $ext = $documento->extension() ?: 'pdf';
+                $nomeArquivo = (string) Str::uuid().'.'.$ext;
                 $caminho = $documento->storeAs('viaturas/documentos', $nomeArquivo, 'public');
 
                 ViaturaFoto::create([
@@ -285,10 +287,11 @@ class ViaturaController extends Controller
             }
         }
 
-        // Processa o upload de novas fotos
+        // Processa o upload de novas fotos com nomenclatura segura
         if ($request->hasFile('fotos')) {
             foreach ($request->file('fotos') as $foto) {
-                $nomeArquivo = time().'_'.uniqid().'.'.$foto->getClientOriginalExtension();
+                $ext = $foto->extension() ?: 'jpg';
+                $nomeArquivo = (string) Str::uuid().'.'.$ext;
                 $caminho = $foto->storeAs('viaturas/fotos', $nomeArquivo, 'public');
 
                 ViaturaFoto::create([
@@ -299,10 +302,11 @@ class ViaturaController extends Controller
             }
         }
 
-        // Processa o upload de novos documentos
+        // Processa o upload de novos documentos com nomenclatura segura
         if ($request->hasFile('documentos')) {
             foreach ($request->file('documentos') as $documento) {
-                $nomeArquivo = time().'_'.uniqid().'.'.$documento->getClientOriginalExtension();
+                $ext = $documento->extension() ?: 'pdf';
+                $nomeArquivo = (string) Str::uuid().'.'.$ext;
                 $caminho = $documento->storeAs('viaturas/documentos', $nomeArquivo, 'public');
 
                 ViaturaFoto::create([

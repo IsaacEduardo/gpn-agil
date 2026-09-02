@@ -6,6 +6,7 @@ use App\Enums\DocumentoStatus;
 use App\Models\DocumentoInterno;
 use App\Models\User;
 use App\Services\DocumentoCollaborationService;
+use App\Services\DocumentoPermissionService;
 use App\Services\SignatureService;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
@@ -15,7 +16,7 @@ class DocumentoInternoPolicy
 
     public function before(User $user, $ability)
     {
-        if ($user->isAdmin()) {
+        if ($user->isAdmin() || ($user->role && $user->role->name === 'admin')) {
             return true;
         }
     }
@@ -32,8 +33,11 @@ class DocumentoInternoPolicy
             return true;
         }
 
-        // Mesmo Departamento
-        if ($doc->departamento_id === $user->departamento_id) {
+        // Departamentos do utilizador
+        $permissionService = app(DocumentoPermissionService::class);
+        $userDeps = $permissionService->getUserDepartments($user);
+
+        if ($doc->departamento_id && in_array((int) $doc->departamento_id, $userDeps, true)) {
             return true;
         }
 
@@ -55,12 +59,18 @@ class DocumentoInternoPolicy
 
         // Permissão delegada
         if ($user->hasPermissionTo('gabinete.view_all')) {
-            if ($user->departamento && $doc->departamento->gabinete_id === $user->departamento->gabinete_id) {
+            $userGabId = optional($user->departamento)->gabinete_id;
+            if ($userGabId && optional($doc->departamento)->gabinete_id === $userGabId) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    public function download(User $user, DocumentoInterno $doc)
+    {
+        return $this->view($user, $doc);
     }
 
     public function create(User $user)
@@ -75,17 +85,19 @@ class DocumentoInternoPolicy
         }
 
         // Apenas rascunhos podem ser editados (regra geral)
-        if ($doc->status !== DocumentoStatus::RASCUNHO) {
+        if ($doc->status !== DocumentoStatus::RASCUNHO && $doc->status !== 'rascunho') {
             return false;
         }
 
-        // Autor ou Chefe Depto
+        // Autor
         if ($doc->criado_por === $user->id) {
             return true;
         }
 
-        // Chefe de Depto pode editar? Geralmente não, ele aprova/rejeita. Mas vamos permitir edição corretiva.
-        if (($user->hasRole('chefe_departamento') || $user->hasRole('chefe-departamento')) && $doc->departamento_id === $user->departamento_id) {
+        // Chefe de Depto do mesmo departamento
+        $permissionService = app(DocumentoPermissionService::class);
+        $userDeps = $permissionService->getUserDepartments($user);
+        if ($permissionService->isChefeDepartamento($user) && in_array((int) $doc->departamento_id, $userDeps, true)) {
             return true;
         }
 
@@ -99,26 +111,29 @@ class DocumentoInternoPolicy
         }
 
         // Apenas Autor pode excluir rascunho
-        return $doc->criado_por === $user->id;
+        return (int) $doc->criado_por === (int) $user->id;
     }
 
     // Ações de Workflow
 
     public function approve(User $user, DocumentoInterno $doc)
     {
-        if ($doc->status !== DocumentoStatus::EM_ANALISE) {
+        if ($doc->status !== DocumentoStatus::EM_ANALISE && $doc->status !== 'em_analise') {
             return false;
         }
 
+        $permissionService = app(DocumentoPermissionService::class);
+        $userDeps = $permissionService->getUserDepartments($user);
+
         // Chefe do Departamento do documento
-        if (($user->hasRole('chefe_departamento') || $user->hasRole('chefe-departamento')) && $doc->departamento_id === $user->departamento_id) {
+        if ($permissionService->isChefeDepartamento($user) && in_array((int) $doc->departamento_id, $userDeps, true)) {
             return true;
         }
 
         // Chefe de Gabinete também pode aprovar (override)
         if ($user->isChefeGabinete()) {
             $gabinete = $user->gabineteGerenciado;
-            if ($doc->departamento->gabinete_id === $gabinete->id) {
+            if ($gabinete && optional($doc->departamento)->gabinete_id === $gabinete->id) {
                 return true;
             }
         }
@@ -136,18 +151,19 @@ class DocumentoInternoPolicy
      */
     public function archive(User $user, DocumentoInterno $doc)
     {
-        // Admins can archive any
-        if ($user->isAdmin()) {
-            return true;
-        }
         // Owner can archive own draft
-        if ($doc->criado_por === $user->id && $doc->status === DocumentoStatus::RASCUNHO) {
+        if ($doc->criado_por === $user->id && ($doc->status === DocumentoStatus::RASCUNHO || $doc->status === 'rascunho')) {
             return true;
         }
+
+        $permissionService = app(DocumentoPermissionService::class);
+        $userDeps = $permissionService->getUserDepartments($user);
+
         // Department head can archive documents of their department
-        if (($user->hasRole('chefe_departamento') || $user->hasRole('chefe-departamento')) && $doc->departamento_id === $user->departamento_id) {
+        if ($permissionService->isChefeDepartamento($user) && in_array((int) $doc->departamento_id, $userDeps, true)) {
             return true;
         }
+
         // Chefe de Gabinete can archive documents belonging to his gabinete
         if ($user->isChefeGabinete()) {
             $gabinete = $user->gabineteGerenciado;
@@ -167,7 +183,7 @@ class DocumentoInternoPolicy
      */
     public function collaborate(User $user, DocumentoInterno $doc)
     {
-        if ($doc->status !== DocumentoStatus::RASCUNHO || $doc->bloqueado_edicao) {
+        if ($doc->status !== DocumentoStatus::RASCUNHO && $doc->status !== 'rascunho' || $doc->bloqueado_edicao) {
             return false;
         }
 
@@ -179,7 +195,7 @@ class DocumentoInternoPolicy
      */
     public function manageCollaborators(User $user, DocumentoInterno $doc)
     {
-        if ($doc->status !== DocumentoStatus::RASCUNHO || $doc->bloqueado_edicao) {
+        if ($doc->status !== DocumentoStatus::RASCUNHO && $doc->status !== 'rascunho' || $doc->bloqueado_edicao) {
             return false;
         }
 

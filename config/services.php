@@ -37,6 +37,13 @@ return [
 
     'ocr' => [
         'path' => env('OCR_BINARY_PATH'),
+        'tessdata_path' => env('OCR_TESSDATA_PATH', storage_path('app/tessdata')),
+        'languages' => env('OCR_LANGUAGES', 'por+eng'),
+        'min_native_words' => (int) env('OCR_MIN_NATIVE_WORDS', 50),
+        'pdftoppm_path' => env('OCR_PDFTOPPM_PATH'),
+        'gs_path' => env('OCR_GS_PATH'),
+        'magick_path' => env('OCR_MAGICK_PATH'),
+        'dpi' => (int) env('OCR_DPI', 300),
     ],
 
     // Webhook de bounces/reclamações de e-mail. Defina um token partilhado com o
@@ -45,9 +52,27 @@ return [
         'token' => env('MAIL_WEBHOOK_TOKEN'),
     ],
 
+    'deepseek' => [
+        'driver' => 'deepseek',
+        'key' => env('DEEPSEEK_API_KEY'),
+        'base_url' => env('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'),
+        'model' => env('ASSISTENTE_MODEL', 'deepseek-chat'),
+        'max_tokens' => (int) env('ASSISTENTE_MAX_TOKENS', 1024),
+        'timeout' => (int) env('ASSISTENTE_TIMEOUT', 60),
+    ],
+
+    'openai' => [
+        'driver' => 'openai',
+        'key' => env('OPENAI_API_KEY'),
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+        'model' => env('ASSISTENTE_MODEL', 'gpt-4o-mini'),
+        'max_tokens' => (int) env('ASSISTENTE_MAX_TOKENS', 1024),
+        'timeout' => (int) env('ASSISTENTE_TIMEOUT', 60),
+    ],
+
     'anthropic' => [
-        // Driver do provedor de IA: 'anthropic' (produção), 'kimi' (Kimi AI / Moonshot) ou 'fake'.
-        'driver' => env('ASSISTENTE_DRIVER', 'anthropic'),
+        // Driver do provedor de IA: 'deepseek' (DeepSeek), 'openai' (OpenAI / ChatGPT), 'anthropic' (produção), 'kimi' (Kimi AI / Moonshot) ou 'fake'.
+        'driver' => env('ASSISTENTE_DRIVER', 'deepseek'),
         'key' => env('ANTHROPIC_API_KEY'),
         'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
         'version' => env('ANTHROPIC_VERSION', '2023-06-01'),

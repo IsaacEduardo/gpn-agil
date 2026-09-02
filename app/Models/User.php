@@ -307,4 +307,29 @@ class User extends Authenticatable
 
         return $superGabinete && (int) $superGabinete->id === $gabineteId;
     }
+
+    /**
+     * Verifica se o usuário é Chefe de Departamento
+     */
+    public function isChefeDepartamento(): bool
+    {
+        if ($this->hasRole('chefe-departamento') || $this->hasRole('Chefe de Departamento')) {
+            return true;
+        }
+
+        $dep = $this->departamento;
+        if ($dep && (int) $dep->responsavel_id === (int) $this->id) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Verifica se o usuário é Técnico de Departamento
+     */
+    public function isTecnico(): bool
+    {
+        return ! $this->isAdmin() && ! $this->isChefeGabinete() && ! $this->isSuperChefeGabinete() && ! $this->isChefeDepartamento();
+    }
 }

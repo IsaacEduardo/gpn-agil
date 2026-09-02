@@ -36,6 +36,33 @@ class DocumentoEntradaProtocoloController extends Controller
         return view('documentos_entradas.protocolo', compact('documento', 'protocolo', 'consultaUrl'));
     }
 
+    public function protocoloEtiqueta(DocumentoEntrada $documento, Request $request)
+    {
+        $documento->load(['departamento.gabinete', 'usuario', 'protocolo']);
+
+        $this->ensureProtocolo($documento);
+
+        $consultaUrl = $documento->protocolo->url_consulta ?? route('documentos-entradas.protocolo', $documento);
+        $protocolo = $documento->protocolo;
+
+        $autoPrint = $request->boolean('auto_print', false);
+
+        // QR Code SVG inline alta definição
+        try {
+            $qrCodeSvg = (string) QrCode::size(90)->margin(0)->generate($consultaUrl);
+        } catch (\Exception $e) {
+            $qrCodeSvg = '';
+        }
+
+        return view('documentos_entradas.protocolo_etiqueta', compact(
+            'documento',
+            'protocolo',
+            'consultaUrl',
+            'qrCodeSvg',
+            'autoPrint'
+        ));
+    }
+
     public function protocoloPdf(DocumentoEntrada $documento)
     {
         $documento->load(['departamento', 'usuario', 'protocolo']);

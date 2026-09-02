@@ -72,11 +72,13 @@
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-12">
-                            <label class="form-label">Procedência</label>
-                            <input type="text" name="procedencia" value="{{ old('procedencia', $doc->procedencia) }}"
-                                class="form-control @error('procedencia') is-invalid @enderror" />
+                            <label class="form-label fw-bold text-muted small mb-1">Procedência / Origem</label>
+                            <x-procedencia-combobox name="procedencia_id" :procedencias="$procedencias ?? null" :selected="old('procedencia_id', $doc->procedencia_id)" />
+                            @error('procedencia_id')
+                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                            @enderror
                             @error('procedencia')
-                                <div class="invalid-feedback">{{ $message }}</div>
+                                <div class="invalid-feedback d-block">{{ $message }}</div>
                             @enderror
                         </div>
                         <div class="col-md-12">

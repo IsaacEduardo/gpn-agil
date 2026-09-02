@@ -12,6 +12,7 @@ use App\Services\Ai\LlmException;
 use App\Services\DocumentoPermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 
 class AssistenteController extends Controller
@@ -33,7 +34,7 @@ class AssistenteController extends Controller
     }
 
     /**
-     * Pergunta global: recuperação restrita às permissões + resposta com citações.
+     * Pergunta global: RAG + Function Calling com DeepSeek respeitando o RBAC.
      */
     public function perguntarGlobal(Request $request)
     {
@@ -41,12 +42,13 @@ class AssistenteController extends Controller
         $this->throttle($request);
 
         try {
-            // Busca semântica (RAG) quando o chatbot está configurado; caso contrário, palavra-chave.
-            $result = $this->chatbot->isAvailable()
-                ? $this->chatbot->askGlobal($request->user(), $data['pergunta'], $data['historico'] ?? [])
-                : $this->assistant->askGlobal($request->user(), $data['pergunta'], $data['historico'] ?? []);
+            $result = $this->assistant->askGlobal($request->user(), $data['pergunta'], $data['historico'] ?? []);
         } catch (LlmException|EmbeddingException $e) {
             return response()->json(['erro' => $e->getMessage()], 503);
+        } catch (\Throwable $e) {
+            Log::error('Assistente Global: erro inesperado: '.$e->getMessage());
+
+            return response()->json(['erro' => 'Erro ao processar consulta com o assistente: '.$e->getMessage()], 500);
         }
 
         $this->logConsulta($request, 'assistente.global', null, null, $data['pergunta']);
@@ -99,6 +101,45 @@ class AssistenteController extends Controller
     }
 
     /**
+     * Gera o Resumo Executivo em 3 blocos (Contexto, Histórico, Ação Pendente) para um documento.
+     */
+    public function resumirDocumento(Request $request)
+    {
+        $validated = $request->validate([
+            'documento_id' => ['required', 'integer'],
+            'tipo' => ['required', 'string', 'in:EXTERNO,INTERNO,externo,interno,entrada,ENTRADA'],
+        ]);
+
+        $this->throttle($request);
+
+        try {
+            $result = $this->assistant->summarizeDocument(
+                $request->user(),
+                (int) $validated['documento_id'],
+                (string) $validated['tipo']
+            );
+        } catch (LlmException $e) {
+            return response()->json(['success' => false, 'erro' => $e->getMessage()], 503);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao resumir documento: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'erro' => 'Não foi possível gerar o resumo do documento: '.$e->getMessage()], 500);
+        }
+
+        $tipoDoc = in_array(strtoupper($validated['tipo']), ['INTERNO']) ? DocumentoInterno::class : DocumentoEntrada::class;
+
+        $this->logConsulta(
+            $request,
+            'assistente.resumo',
+            $tipoDoc,
+            (int) $validated['documento_id'],
+            'Solicitação de Resumo Executivo com IA'
+        );
+
+        return response()->json($result);
+    }
+
+    /**
      * @return array{pergunta:string, historico?:array}
      */
     private function validatePergunta(Request $request): array
@@ -112,13 +153,13 @@ class AssistenteController extends Controller
     }
 
     /**
-     * Rate limit por utilizador para conter custo/abuso (20 perguntas/min).
+     * Rate limit por utilizador para conter custo/abuso (30 perguntas/min).
      */
     private function throttle(Request $request): void
     {
         $key = 'assistente:'.$request->user()->id;
-        if (RateLimiter::tooManyAttempts($key, 20)) {
-            abort(429, 'Muitas perguntas em pouco tempo. Aguarde um momento e tente novamente.');
+        if (RateLimiter::tooManyAttempts($key, 30)) {
+            abort(429, 'Muitas solicitações ao assistente em pouco tempo. Aguarde alguns instantes e tente novamente.');
         }
         RateLimiter::hit($key, 60);
     }

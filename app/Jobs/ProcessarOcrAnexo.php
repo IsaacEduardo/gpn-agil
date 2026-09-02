@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Anexo;
+use App\Services\Ocr\OcrService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
@@ -10,14 +11,33 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Smalot\PdfParser\Parser;
-use thiagoalessio\TesseractOCR\TesseractOCR;
+use Illuminate\Support\Str;
 
 class ProcessarOcrAnexo implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $anexoId;
+    public int $anexoId;
+
+    /**
+     * Número máximo de tentativas do job.
+     */
+    public int $tries = 3;
+
+    /**
+     * Tempo limite de execução em segundos.
+     */
+    public int $timeout = 300;
+
+    /**
+     * Intervalo de retentativa exponencial em segundos.
+     *
+     * @return int[]
+     */
+    public function backoff(): array
+    {
+        return [10, 30, 60];
+    }
 
     /**
      * Create a new job instance.
@@ -25,97 +45,91 @@ class ProcessarOcrAnexo implements ShouldQueue
     public function __construct(int $anexoId)
     {
         $this->anexoId = $anexoId;
-        
+
         // Ensure the job is dispatched only after the active database transaction commits.
-        // This prevents a race condition with Redis queue workers.
+        // This prevents race conditions with Redis queue workers.
         $this->afterCommit = true;
     }
 
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(?OcrService $ocrService = null): void
     {
+        $ocrService = $ocrService ?: app(OcrService::class);
         $anexo = Anexo::find($this->anexoId);
 
         if (! $anexo) {
             return;
         }
 
+        // Se o anexo não for PDF nem imagem, marcar como NÃO_APLICÁVEL
+        if (! $anexo->isOcrAplicavel()) {
+            $anexo->update([
+                'ocr_status' => 'NAO_APLICAVEL',
+                'ocr_processado_em' => now(),
+            ]);
+
+            return;
+        }
+
         $disk = config('filesystems.docs_disk', 'public');
         if (! Storage::disk($disk)->exists($anexo->caminho_arquivo)) {
-            Log::warning("OCR: Arquivo não encontrado para Anexo ID {$this->anexoId}");
+            Log::warning("OCR: Arquivo não encontrado no disco '{$disk}' para Anexo ID {$this->anexoId}", [
+                'caminho' => $anexo->caminho_arquivo,
+            ]);
+
+            $anexo->update([
+                'ocr_status' => 'FALHA',
+                'ocr_erro' => "Arquivo não localizado no disco de armazenamento ({$anexo->caminho_arquivo}).",
+                'ocr_processado_em' => now(),
+            ]);
 
             return;
         }
 
         $fullPath = Storage::disk($disk)->path($anexo->caminho_arquivo);
-        $mime = $anexo->mime_type;
+        $mime = $anexo->mime_type ?: 'application/octet-stream';
+
+        // 1. Atualiza status para PROCESSANDO
+        $anexo->update([
+            'ocr_status' => 'PROCESSANDO',
+            'ocr_tentativas' => ($anexo->ocr_tentativas ?? 0) + 1,
+            'ocr_erro' => null,
+        ]);
 
         try {
-            $text = '';
+            // 2. Executa o pipeline de OCR com Smart Fallback e sanitização
+            $result = $ocrService->processFile($fullPath, $mime);
 
-            if (str_starts_with($mime, 'image/')) {
-                $text = $this->performOcr($fullPath);
-            } elseif ($mime === 'application/pdf') {
-                try {
-                    // 1. Try native text extraction (Searchable PDF)
-                    $parser = new Parser;
-                    $pdf = $parser->parseFile($fullPath);
-                    $text = $pdf->getText();
-                    $text = trim($text);
-                } catch (\Throwable $e) {
-                    Log::warning("PDF Parser falhou para Anexo ID {$this->anexoId}: ".$e->getMessage());
-                }
+            // 3. Persiste o resultado e status CONCLUIDO
+            $anexo->update([
+                'texto_extraido' => $result['text'] ?: null,
+                'ocr_status' => 'CONCLUIDO',
+                'ocr_metodo' => $result['method'],
+                'ocr_palavras_count' => $result['words_count'],
+                'ocr_processado_em' => now(),
+                'ocr_erro' => null,
+            ]);
 
-                // 2. If no text, try OCR (Scanned PDF)
-                if (empty($text)) {
-                    Log::info("PDF sem texto detectado (possível imagem). Tentando OCR via Tesseract para Anexo ID {$this->anexoId}...");
-                    $text = $this->performOcr($fullPath);
-                }
-            }
-
-            if (! empty($text)) {
-                $anexo->texto_extraido = $text;
-                $anexo->save();
-            }
+            Log::info("OCR: Processamento concluído com sucesso para Anexo ID {$this->anexoId}", [
+                'metodo' => $result['method'],
+                'palavras' => $result['words_count'],
+                'arquivo' => $anexo->nome_original,
+            ]);
 
         } catch (\Throwable $e) {
-            Log::error("OCR Falhou para Anexo ID {$this->anexoId}: ".$e->getMessage());
-        }
-    }
+            Log::error("OCR: Falha ao processar Anexo ID {$this->anexoId}: ".$e->getMessage(), [
+                'arquivo' => $anexo->nome_original,
+                'caminho' => $fullPath,
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-    protected function performOcr(string $path): string
-    {
-        try {
-            $tesseract = new TesseractOCR($path);
-
-            // 1. Configured Path
-            $configPath = config('services.ocr.path');
-            if ($configPath && file_exists($configPath)) {
-                $tesseract->executable($configPath);
-            }
-            // 2. Common Windows Paths (Fallback)
-            elseif (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-                $commonPaths = [
-                    'C:\\Program Files\\Tesseract-OCR\\tesseract.exe',
-                    'C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe',
-                    getenv('LOCALAPPDATA').'\\Tesseract-OCR\\tesseract.exe',
-                ];
-
-                foreach ($commonPaths as $p) {
-                    if (file_exists($p)) {
-                        $tesseract->executable($p);
-                        break;
-                    }
-                }
-            }
-            // 3. Linux/Mac usually is in PATH, so no executable() call needed unless specific.
-
-            return $tesseract->lang('por', 'eng')->run();
-        } catch (\Throwable $e) {
-            // Re-throw to be caught by handle
-            throw $e;
+            $anexo->update([
+                'ocr_status' => 'FALHA',
+                'ocr_erro' => Str::limit($e->getMessage(), 1000),
+                'ocr_processado_em' => now(),
+            ]);
         }
     }
 }

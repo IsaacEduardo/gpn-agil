@@ -44,13 +44,15 @@ class DocumentoEntradaTarefaController extends Controller
         $docGabId = optional($documento->departamento)->gabinete_id;
         $isSuperChefe = $actor->isSuperChefeDoGabinete($docGabId);
 
+        $usuariosValidos = [];
+        $destinoDep = null;
+
         if ($tipo === 'usuario') {
             $destinoIds = $request->destino_ids ?? [];
             if (empty($destinoIds)) {
                 return back()->withErrors(['destino_ids' => 'Selecione pelo menos um usuário de destino.']);
             }
 
-            $usuariosValidos = [];
             foreach ($destinoIds as $userId) {
                 $user = User::find($userId);
                 if (! $user) {
@@ -84,20 +86,6 @@ class DocumentoEntradaTarefaController extends Controller
                 }
                 $usuariosValidos[] = $user;
             }
-
-            // Gerar UUID comum para agrupar as tarefas
-            $grupoUuid = (count($usuariosValidos) > 1) ? (string) Str::uuid() : null;
-
-            foreach ($usuariosValidos as $user) {
-                $data = [
-                    'titulo' => $validated['titulo'],
-                    'descricao' => $validated['descricao'] ?? null,
-                    'prazo_at' => $validated['prazo_at'] ?? null,
-                    'assigned_to_user_id' => $user->id,
-                    'grupo_tarefa_uuid' => $grupoUuid,
-                ];
-                $this->documentoService->createTask($documento, $data, $actor);
-            }
         } else {
             // departamento
             $destinoId = (int) $validated['destino_id'];
@@ -105,8 +93,8 @@ class DocumentoEntradaTarefaController extends Controller
                 return back()->withErrors(['tipo' => 'O Super Chefe apenas pode delegar tarefas a utilizadores específicos.']);
             }
 
-            $dep = Departamento::find($destinoId);
-            if (! $dep) {
+            $destinoDep = Departamento::find($destinoId);
+            if (! $destinoDep) {
                 return back()->withErrors(['destino_id' => 'Departamento não encontrado.']);
             }
 
@@ -115,20 +103,38 @@ class DocumentoEntradaTarefaController extends Controller
             if (! $isGabResp) {
                 return back()->withErrors(['tipo' => 'Apenas responsável do gabinete pode designar ao departamento.']);
             }
-            if ((int) $dep->gabinete_id !== (int) $docGabId) {
+            if ((int) $destinoDep->gabinete_id !== (int) $docGabId) {
                 return back()->withErrors(['destino_id' => 'Selecione departamento do seu gabinete.']);
             }
-
-            $data = [
-                'titulo' => $validated['titulo'],
-                'descricao' => $validated['descricao'] ?? null,
-                'prazo_at' => $validated['prazo_at'] ?? null,
-                'assigned_to_departamento_id' => $dep->id,
-            ];
-            $this->documentoService->createTask($documento, $data, $actor);
         }
 
-        return redirect()->route('documentos-entradas.show', $documento)->with('success', 'Tarefa designada com sucesso.');
+        // Executar a criação da tarefa e a aprovação automática do documento dentro da mesma transação
+        \Illuminate\Support\Facades\DB::transaction(function () use ($tipo, $usuariosValidos, $destinoDep, $validated, $documento, $actor) {
+            if ($tipo === 'usuario') {
+                $grupoUuid = (count($usuariosValidos) > 1) ? (string) Str::uuid() : null;
+
+                foreach ($usuariosValidos as $user) {
+                    $data = [
+                        'titulo' => $validated['titulo'],
+                        'descricao' => $validated['descricao'] ?? null,
+                        'prazo_at' => $validated['prazo_at'] ?? null,
+                        'assigned_to_user_id' => $user->id,
+                        'grupo_tarefa_uuid' => $grupoUuid,
+                    ];
+                    $this->documentoService->createTask($documento, $data, $actor);
+                }
+            } else {
+                $data = [
+                    'titulo' => $validated['titulo'],
+                    'descricao' => $validated['descricao'] ?? null,
+                    'prazo_at' => $validated['prazo_at'] ?? null,
+                    'assigned_to_departamento_id' => $destinoDep->id,
+                ];
+                $this->documentoService->createTask($documento, $data, $actor);
+            }
+        });
+
+        return redirect()->route('documentos-entradas.show', $documento)->with('success', 'Tarefa designada com sucesso e Documento Externo aprovado.');
     }
 
     public function concluir(Request $request, DocumentoEntrada $documento, DocumentoTarefa $tarefa)

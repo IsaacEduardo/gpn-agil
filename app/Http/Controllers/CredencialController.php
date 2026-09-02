@@ -41,9 +41,10 @@ class CredencialController extends Controller
      */
     public function create()
     {
-        $viaturas = CatalogCache::viaturasList();
+        $viaturas = Viatura::orderBy('identificacao')->get();
+        $users = \App\Models\User::with('departamento')->orderBy('name')->get();
 
-        return view('credenciais.create', compact('viaturas'));
+        return view('credenciais.create', compact('viaturas', 'users'));
     }
 
     /**
@@ -52,49 +53,89 @@ class CredencialController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'tipo_credencial' => 'required|in:utilizacao_normal,seguir_viagem',
             'beneficiario_nome' => 'required|string|max:255',
             'beneficiario_documento' => 'required|string|max:50',
             'beneficiario_documento_emitido_em' => 'required|date',
             'beneficiario_documento_emitido_local' => 'required|string|max:100',
             'beneficiario_setor' => 'nullable|string|max:100',
+            'origem_viagem' => 'required_if:tipo_credencial,seguir_viagem|nullable|string|max:100',
+            'destino_viagem' => 'required_if:tipo_credencial,seguir_viagem|nullable|string|max:100',
+            'instituicao_vinculo' => 'nullable|string|max:150',
+            'motor_numero' => 'nullable|string|max:100',
+            'cor_viatura' => 'nullable|string|max:50',
             'observacoes' => 'nullable|string|max:1000',
             'viatura_id' => 'required|exists:viaturas,id',
         ]);
 
         $viatura = Viatura::find($validated['viatura_id']);
 
+        // Se o número do motor ou cor foram fornecidos e a viatura não possuía, salvar na viatura
+        if (! empty($validated['motor_numero']) && empty($viatura->motor_numero)) {
+            $viatura->motor_numero = $validated['motor_numero'];
+            $viatura->save();
+        }
+        if (! empty($validated['cor_viatura']) && empty($viatura->cor)) {
+            $viatura->cor = $validated['cor_viatura'];
+            $viatura->save();
+        }
+
+        $user = Auth::user();
+        $responsavel = $user->departamento?->gabinete?->responsavel
+            ?? $user->departamento?->gabinete?->superChefe
+            ?? $user->departamento?->responsavel
+            ?? $user;
+        $nomeSignatario = $request->input('nome_signatario', $responsavel->name);
+
         // Objeto para a view PDF
         $termoBase = (object) [
             'tipo' => 'credencial',
+            'tipo_credencial' => $validated['tipo_credencial'],
             'beneficiario_nome' => $validated['beneficiario_nome'],
             'beneficiario_documento' => $validated['beneficiario_documento'],
             'beneficiario_documento_emitido_em' => $validated['beneficiario_documento_emitido_em'],
             'beneficiario_documento_emitido_local' => $validated['beneficiario_documento_emitido_local'],
             'beneficiario_setor' => $validated['beneficiario_setor'] ?? null,
+            'origem_viagem' => $validated['origem_viagem'] ?? null,
+            'destino_viagem' => $validated['destino_viagem'] ?? null,
+            'instituicao_vinculo' => $validated['instituicao_vinculo'] ?? ($validated['beneficiario_setor'] ?? null),
+            'motor_numero' => $validated['motor_numero'] ?? ($viatura->motor_numero ?? null),
+            'cor_viatura' => $validated['cor_viatura'] ?? ($viatura->cor ?? null),
+            'nome_signatario' => $nomeSignatario,
+            'cargo_signatario' => $request->input('cargo_signatario', 'O Secretário Geral'),
             'observacoes' => $validated['observacoes'] ?? null,
         ];
 
         // Gerar PDF e salvar registro dentro de transação
         $novoTermo = DB::transaction(function () use ($termoBase, $validated, $viatura) {
+            $dadosInstituicao = \App\Models\DadosInstituicao::first() ?? new \App\Models\DadosInstituicao;
+
             $data = [
                 'termo' => $termoBase,
-                'viatura' => $viatura, // Passando viatura singular para a view
-                'viaturas' => collect([$viatura]), // Mantendo compatibilidade caso a view espere collection
+                'viatura' => $viatura,
+                'viaturas' => collect([$viatura]),
+                'dadosInstituicao' => $dadosInstituicao,
             ];
 
             $pdf = PDF::loadView('termos.credencial', $data);
-            $nomeArquivo = 'credencial_'.now()->format('Ymd_His').'.pdf';
-            $caminho = 'termos/'.$nomeArquivo; // Mantendo no mesmo diretório de termos por simplicidade
+            $nomeArquivo = 'credencial_'.$validated['tipo_credencial'].'_'.now()->format('Ymd_His').'.pdf';
+            $caminho = 'termos/'.$nomeArquivo;
             Storage::disk('public')->put($caminho, $pdf->output());
 
             return TermoEntrega::create([
                 'tipo' => 'credencial',
+                'tipo_credencial' => $validated['tipo_credencial'],
                 'caminho_arquivo' => $caminho,
                 'beneficiario_nome' => $validated['beneficiario_nome'],
                 'beneficiario_documento' => $validated['beneficiario_documento'],
                 'beneficiario_documento_emitido_em' => $validated['beneficiario_documento_emitido_em'],
                 'beneficiario_documento_emitido_local' => $validated['beneficiario_documento_emitido_local'],
                 'beneficiario_setor' => $validated['beneficiario_setor'] ?? null,
+                'origem_viagem' => $validated['origem_viagem'] ?? null,
+                'destino_viagem' => $validated['destino_viagem'] ?? null,
+                'instituicao_vinculo' => $validated['instituicao_vinculo'] ?? null,
+                'motor_numero' => $validated['motor_numero'] ?? ($viatura->motor_numero ?? null),
+                'cor_viatura' => $validated['cor_viatura'] ?? ($viatura->cor ?? null),
                 'observacoes' => $validated['observacoes'] ?? null,
                 'viatura_id' => $validated['viatura_id'],
             ]);

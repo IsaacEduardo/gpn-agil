@@ -37,6 +37,13 @@
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                 </div>
+                <div class="mb-3 form-check form-switch p-3 bg-light rounded border">
+                    <input class="form-check-input ms-0 me-2" type="checkbox" name="is_area_expediente" id="is_area_expediente" value="1" {{ old('is_area_expediente') ? 'checked' : '' }}>
+                    <label class="form-check-label fw-bold" for="is_area_expediente">
+                        <i class="fas fa-inbox me-1 text-primary"></i> É Área de Expediente do Gabinete?
+                    </label>
+                    <div class="form-text small">Usuários vinculados a este setor herdam privilégios operacionais para registrar protocolo de entrada e encaminhar documentos tratados.</div>
+                </div>
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary">Salvar</button>
                     <a href="{{ route('departamentos.index') }}" class="btn btn-outline-secondary">Cancelar</a>

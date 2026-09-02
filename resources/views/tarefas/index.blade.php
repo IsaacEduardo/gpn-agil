@@ -589,13 +589,20 @@
                                         item.classList.add('opacity-75');
                                         item.querySelector('.card-title').classList.add(
                                             'text-decoration-line-through', 'text-muted');
+                                        if (window.Toast) {
+                                            window.Toast.success('Tarefa Concluída', 'A tarefa foi marcada como concluída com sucesso.');
+                                        }
                                     } else {
                                         const data = await res.json().catch(() => ({}));
-                                        alert(data.message || 'Erro ao atualizar tarefa.');
+                                        if (window.Toast) {
+                                            window.Toast.error('Atenção', data.message || 'Erro ao atualizar tarefa.');
+                                        }
                                         evt.from.appendChild(item); // Revert
                                     }
                                 }).catch(() => {
-                                    alert('Erro de conexão.');
+                                    if (window.Toast) {
+                                        window.Toast.error('Erro de Conexão', 'Não foi possível comunicar com o servidor.');
+                                    }
                                     evt.from.appendChild(item);
                                 });
                             } else {

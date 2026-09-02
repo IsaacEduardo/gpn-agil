@@ -9,7 +9,7 @@ use Tests\TestCase; // Use TestCase to have application context (helpers like no
 
 class DocumentoInternoServiceTest extends TestCase
 {
-    // use RefreshDatabase; // Not needed if we mock User/Models
+    use RefreshDatabase;
 
     public function test_processar_template_injects_date_line_before_signature()
     {

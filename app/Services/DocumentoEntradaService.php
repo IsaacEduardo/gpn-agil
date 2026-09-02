@@ -75,6 +75,12 @@ class DocumentoEntradaService
                                 $subQ->whereIn('de.destino_departamento_id', $visibleDeps)
                                     ->orWhereIn('de.origem_departamento_id', $visibleDeps);
                             });
+                    })
+                    ->orWhereExists(function ($sub) use ($visibleDeps) {
+                        $sub->selectRaw(1)
+                            ->from('documento_entrada_departamentos_destino as ded')
+                            ->whereColumn('ded.documento_entrada_id', 'documentos_entradas.id')
+                            ->whereIn('ded.departamento_id', $visibleDeps);
                     });
             });
         } else {
@@ -110,6 +116,8 @@ class DocumentoEntradaService
             $query->where('arquivado', false);
         }
 
+        $query->distinct();
+
         // Authorization Scopes
         if ($user) {
             $this->applyVisibilityScope($query, $user);
@@ -118,21 +126,82 @@ class DocumentoEntradaService
         // Standard Filters
         if ($request->filled('search')) {
             $s = trim($request->input('search'));
-            $query->where(function ($q) use ($s) {
-                $q->where('assunto', 'like', "%$s%")
-                    ->orWhere('procedencia', 'like', "%$s%")
-                    ->orWhere('classificacao_especie', 'like', "%$s%")
-                    ->orWhere('classificacao_ref_numero', 'like', "%$s%")
-                    ->orWhereHas('tags', function ($t) use ($s) {
-                        $t->where('nome', 'like', "%$s%");
-                    })
-                    ->orWhereHas('anexos', function ($a) use ($s) {
-                        $a->where('texto_extraido', 'like', "%$s%");
+
+            $numSearch = null;
+            $anoSearch = null;
+            if (str_contains($s, '/')) {
+                $parts = explode('/', $s);
+                $cleanNum = preg_replace('/[^0-9]/', '', $parts[0]);
+                $cleanAno = isset($parts[1]) ? preg_replace('/[^0-9]/', '', $parts[1]) : '';
+                if ($cleanNum !== '') {
+                    $numSearch = (int) $cleanNum;
+                }
+                if ($cleanAno !== '') {
+                    $anoSearch = (int) $cleanAno;
+                }
+            } elseif (is_numeric($s)) {
+                $numSearch = (int) $s;
+            }
+
+            $driver = DB::connection()->getDriverName();
+            if ($driver === 'sqlite') {
+                $concatExpr1 = "numero_sequencial || '/' || ano_referencia";
+                $concatExpr2 = "printf('%03d', numero_sequencial) || '/' || ano_referencia";
+            } elseif ($driver === 'pgsql') {
+                $concatExpr1 = "CONCAT(numero_sequencial, '/', ano_referencia)";
+                $concatExpr2 = "CONCAT(LPAD(numero_sequencial::text, 3, '0'), '/', ano_referencia)";
+            } else {
+                $concatExpr1 = "CONCAT(numero_sequencial, '/', ano_referencia)";
+                $concatExpr2 = "CONCAT(LPAD(numero_sequencial, 3, '0'), '/', ano_referencia)";
+            }
+
+            $query->where(function ($q) use ($s, $numSearch, $anoSearch, $concatExpr1, $concatExpr2) {
+                if ($numSearch !== null && $anoSearch !== null) {
+                    $q->orWhere(function ($qNumAno) use ($numSearch, $anoSearch) {
+                        $qNumAno->where('numero_sequencial', $numSearch)
+                                ->where('ano_referencia', $anoSearch);
                     });
+                } elseif ($numSearch !== null) {
+                    $q->orWhere('numero_sequencial', $numSearch)
+                      ->orWhere('ano_referencia', $numSearch);
+                }
+
+                $q->orWhere(DB::raw($concatExpr1), 'like', "%$s%")
+                  ->orWhere(DB::raw($concatExpr2), 'like', "%$s%")
+                  ->orWhere('assunto', 'like', "%$s%")
+                  ->orWhere('procedencia', 'like', "%$s%")
+                  ->orWhere('classificacao_especie', 'like', "%$s%")
+                  ->orWhere('classificacao_ref_numero', 'like', "%$s%")
+                  ->orWhereHas('protocolo', function ($p) use ($s) {
+                      $p->where('codigo', 'like', "%$s%");
+                  })
+                  ->orWhereHas('tags', function ($t) use ($s) {
+                      $t->where('nome', 'like', "%$s%");
+                  })
+                  ->orWhereHas('anexos', function ($a) use ($s) {
+                      $a->where('texto_extraido', 'like', "%$s%");
+                  });
             });
         }
 
-        if ($request->filled('status')) {
+        // Role-Based Workflow Tab Filter
+        if ($user) {
+            $profile = $this->permissionService->getUserWorkflowProfile($user);
+            $activeTab = $request->input('tab') ?: $this->getDefaultTabForProfile($profile);
+            $this->applyRoleTabFilter($query, $activeTab, $user, $profile);
+        } elseif ($request->filled('tab') && $request->input('tab') !== 'todos') {
+            switch ($request->input('tab')) {
+                case 'carecer_tratamento':
+                    $query->whereIn('status', [DocumentoStatus::PENDENTE_TRATAMENTO->value, DocumentoStatus::REGISTRADO->value]);
+                    break;
+                case 'tratados':
+                    $query->where('status', DocumentoStatus::TRATADO->value);
+                    break;
+                case 'encaminhados':
+                    $query->whereIn('status', [DocumentoStatus::ENCAMINHADO->value, DocumentoStatus::RECEBIDO->value]);
+                    break;
+            }
+        } elseif ($request->filled('status')) {
             $query->where('status', $request->input('status'));
         }
         if ($request->filled('departamento_id')) {
@@ -149,74 +218,7 @@ class DocumentoEntradaService
         }
 
         // Special Views ("Meus")
-        if ($user && $meus = $request->input('meus')) {
-            $deps = $this->permissionService->getUserDepartments($user);
-            $actorGabIds = $this->permissionService->getUserResponsibleGabinetes($user);
-
-            switch ($meus) {
-                case 'pendentes_recebimento':
-                    if (count($deps)) {
-                        $query->whereExists(function ($sub) use ($deps) {
-                            $sub->selectRaw(1)
-                                ->from('documento_encaminhamentos as de')
-                                ->whereColumn('de.documento_entrada_id', 'documentos_entradas.id')
-                                ->whereNull('de.recebido_em')
-                                ->whereIn('de.destino_departamento_id', $deps);
-                        });
-                    }
-                    break;
-                case 'visto_pendente':
-                    if (count($deps)) {
-                        $query->whereNull('visto_departamento_status')
-                            ->where('status', DocumentoStatus::RECEBIDO->value)
-                            ->whereIn('departamento_id', $deps);
-                    }
-                    break;
-                case 'visto_aprovado':
-                    if (count($deps)) {
-                        $query->where('visto_departamento_status', 'aprovado')->whereIn('departamento_id', $deps);
-                    }
-                    break;
-                case 'visto_rejeitado':
-                    if (count($deps)) {
-                        $query->where('visto_departamento_status', 'rejeitado')->whereIn('departamento_id', $deps);
-                    }
-                    break;
-                case 'visto_gabinete_pendente':
-                    if (count($actorGabIds)) {
-                        $query->whereNull('visto_gabinete_status')
-                            ->whereHas('departamento', function ($q) use ($actorGabIds) {
-                                $q->whereIn('gabinete_id', $actorGabIds);
-                            });
-                    }
-                    break;
-                case 'visto_gabinete_aprovado':
-                    if (count($actorGabIds)) {
-                        $query->where('visto_gabinete_status', 'aprovado')
-                            ->whereHas('departamento', function ($q) use ($actorGabIds) {
-                                $q->whereIn('gabinete_id', $actorGabIds);
-                            });
-                    }
-                    break;
-                case 'visto_gabinete_rejeitado':
-                    if (count($actorGabIds)) {
-                        $query->where('visto_gabinete_status', 'rejeitado')
-                            ->whereHas('departamento', function ($q) use ($actorGabIds) {
-                                $q->whereIn('gabinete_id', $actorGabIds);
-                            });
-                    }
-                    break;
-                case 'tarefas_responsavel_pendente':
-                    $query->whereExists(function ($sub) use ($user) {
-                        $sub->selectRaw(1)
-                            ->from('documento_tarefas as dt')
-                            ->whereColumn('dt.documento_entrada_id', 'documentos_entradas.id')
-                            ->where('dt.responsavel_user_id', $user->id)
-                            ->where('dt.status', 'pendente');
-                    });
-                    break;
-            }
-        }
+        $this->applySpecialViewFilters($query, $request, $user);
 
         // Sort
         $sort = $request->input('sort', 'data_entrada');
@@ -285,6 +287,21 @@ class DocumentoEntradaService
             ->lockForUpdate()
             ->first();
 
+        $procedenciaId = $data['procedencia_id'] ?? null;
+        $procedenciaNome = $data['procedencia'] ?? null;
+
+        if ($procedenciaId && !$procedenciaNome) {
+            $pObj = \App\Models\Procedencia::find($procedenciaId);
+            if ($pObj) {
+                $procedenciaNome = $pObj->nome;
+            }
+        } elseif ($procedenciaNome && !$procedenciaId) {
+            $pObj = \App\Models\Procedencia::whereRaw('LOWER(TRIM(nome)) = ?', [mb_strtolower(trim($procedenciaNome))])->first();
+            if ($pObj) {
+                $procedenciaId = $pObj->id;
+            }
+        }
+
         $lastSeq = $lastDoc ? $lastDoc->numero_sequencial : 0;
         $seq = $lastSeq + 1;
 
@@ -295,7 +312,8 @@ class DocumentoEntradaService
             'classificacao_especie' => $data['classificacao_especie'] ?? null,
             'classificacao_ref_numero' => $data['classificacao_ref_numero'] ?? null,
             'data_documento' => $data['data_documento'] ?? null,
-            'procedencia' => $data['procedencia'] ?? null,
+            'procedencia' => $procedenciaNome,
+            'procedencia_id' => $procedenciaId,
             'assunto' => $data['assunto'],
             'observacoes' => $data['observacoes'] ?? null,
             'saida_gabinete_data' => $data['saida_gabinete_data'] ?? null,
@@ -304,7 +322,7 @@ class DocumentoEntradaService
             'encaminhamento_data' => null,
             'departamento_id' => $data['departamento_id'],
             'user_id' => Auth::id(),
-            'status' => DocumentoStatus::REGISTRADO->value,
+            'status' => DocumentoStatus::PENDENTE_TRATAMENTO->value,
             'arquivo_caminho' => null,
         ]);
 
@@ -349,17 +367,23 @@ class DocumentoEntradaService
             foreach ($attachments as $file) {
                 $ordem++;
                 $storedPath = $file->store($base, $docsDisk);
+                $mime = $file->getMimeType();
+                $isOcr = ($mime === 'application/pdf' || str_starts_with((string) $mime, 'image/'));
+
                 $anexo = $doc->anexos()->create([
                     'nome_original' => $file->getClientOriginalName(),
                     'caminho_arquivo' => $storedPath,
-                    'mime_type' => $file->getMimeType(),
+                    'mime_type' => $mime,
                     'tamanho_bytes' => $file->getSize(),
                     'descricao' => null,
                     'ordem' => $ordem,
                     'user_id' => Auth::id(),
+                    'ocr_status' => $isOcr ? 'PENDENTE' : 'NAO_APLICAVEL',
                 ]);
 
-                \App\Jobs\ProcessarOcrAnexo::dispatch($anexo->id);
+                if ($isOcr) {
+                    \App\Jobs\ProcessarOcrAnexo::dispatch($anexo->id);
+                }
 
                 if (! $doc->arquivo_caminho && $ordem === 1) {
                     $doc->arquivo_caminho = $storedPath;
@@ -373,24 +397,49 @@ class DocumentoEntradaService
 
     public function createTask(DocumentoEntrada $documento, array $data, User $actor)
     {
-        $tarefa = DocumentoTarefa::create([
-            'documento_entrada_id' => $documento->id,
-            'titulo' => $data['titulo'],
-            'descricao' => $data['descricao'] ?? null,
-            'assigned_by_id' => $actor->id,
-            'assigned_to_user_id' => $data['assigned_to_user_id'] ?? null,
-            'assigned_to_departamento_id' => $data['assigned_to_departamento_id'] ?? null,
-            'prazo_at' => $data['prazo_at'] ?? null,
-            'status' => 'pendente',
-            'grupo_tarefa_uuid' => $data['grupo_tarefa_uuid'] ?? null,
-        ]);
+        return DB::transaction(function () use ($documento, $data, $actor) {
+            $tarefa = DocumentoTarefa::create([
+                'documento_entrada_id' => $documento->id,
+                'titulo' => $data['titulo'],
+                'descricao' => $data['descricao'] ?? null,
+                'assigned_by_id' => $actor->id,
+                'assigned_to_user_id' => $data['assigned_to_user_id'] ?? null,
+                'assigned_to_departamento_id' => $data['assigned_to_departamento_id'] ?? null,
+                'prazo_at' => $data['prazo_at'] ?? null,
+                'status' => 'pendente',
+                'grupo_tarefa_uuid' => $data['grupo_tarefa_uuid'] ?? null,
+            ]);
 
-        // A notificação de atribuição (in-app + broadcast + e-mail) é tratada de forma
-        // unificada pelo listener SendTaskAssignedNotification via TarefaDelegadaNotification,
-        // evitando o duplo caminho (in-app genérico + e-mail) que existia antes.
-        event(new \App\Events\TaskAssigned($tarefa));
+            // Regra de Negócio Específica (Documentos Externos):
+            // Quando a chefia delega uma tarefa, o documento externo é automaticamente aprovado/marcado como TRATADO
+            if ($this->permissionService->canManageTasks($actor, $documento) || $this->permissionService->isAdmin($actor)) {
+                $documento->status = DocumentoStatus::TRATADO->value;
+                if (empty($documento->texto_despacho)) {
+                    $documento->texto_despacho = "Documento aprovado via delegação de tarefa: " . $data['titulo'];
+                }
+                $documento->despachado_por_id = $actor->id;
+                $documento->data_despacho = now();
+                $documento->visto_gabinete_status = 'aprovado';
+                $documento->visto_gabinete_por = $actor->id;
+                $documento->visto_gabinete_data = now();
 
-        return $tarefa;
+                if (! empty($data['assigned_to_departamento_id'])) {
+                    $documento->departamentosDestino()->syncWithoutDetaching([(int) $data['assigned_to_departamento_id']]);
+                }
+
+                $documento->save();
+
+                $this->audit('documento.aprovado_via_delegacao', $documento, $actor, [
+                    'tarefa_id' => $tarefa->id,
+                    'tarefa_titulo' => $tarefa->titulo,
+                    'mensagem' => "Documento Externo aprovado automaticamente por via de delegação de tarefa por {$actor->name}",
+                ]);
+            }
+
+            event(new \App\Events\TaskAssigned($tarefa));
+
+            return $tarefa;
+        });
     }
 
     public function completeTask(DocumentoTarefa $tarefa, User $actor, ?int $responsavelId = null)
@@ -793,6 +842,19 @@ class DocumentoEntradaService
             // Ensure specific fields that are not in $data are not overwritten if not intended
             // But usually fill() is safe with validated data.
 
+            // Sincroniza procedencia_id e texto da procedência
+            if (! empty($data['procedencia_id'])) {
+                $pObj = \App\Models\Procedencia::find($data['procedencia_id']);
+                if ($pObj) {
+                    $data['procedencia'] = $pObj->nome;
+                }
+            } elseif (! empty($data['procedencia'])) {
+                $pObj = \App\Models\Procedencia::whereRaw('LOWER(TRIM(nome)) = ?', [mb_strtolower(trim($data['procedencia']))])->first();
+                if ($pObj) {
+                    $data['procedencia_id'] = $pObj->id;
+                }
+            }
+
             // Explicitly handle nullable fields if they are passed as null
             $fillableData = [];
             foreach ($data as $key => $value) {
@@ -825,21 +887,82 @@ class DocumentoEntradaService
                 foreach ($attachments as $file) {
                     $ordem++;
                     $storedPath = $file->store($base, $docsDisk);
+                    $mime = $file->getMimeType();
+                    $isOcr = ($mime === 'application/pdf' || str_starts_with((string) $mime, 'image/'));
+
                     $anexo = $documento->anexos()->create([
                         'nome_original' => $file->getClientOriginalName(),
                         'caminho_arquivo' => $storedPath,
-                        'mime_type' => $file->getMimeType(),
+                        'mime_type' => $mime,
                         'tamanho_bytes' => $file->getSize(),
                         'descricao' => null,
                         'ordem' => $ordem,
                         'user_id' => Auth::id(),
+                        'ocr_status' => $isOcr ? 'PENDENTE' : 'NAO_APLICAVEL',
                     ]);
 
-                    \App\Jobs\ProcessarOcrAnexo::dispatch($anexo->id);
+                    if ($isOcr) {
+                        \App\Jobs\ProcessarOcrAnexo::dispatch($anexo->id);
+                    }
                 }
             }
 
             $documento->save();
+
+            return $documento;
+        });
+    }
+
+    public function despacharDocumento(DocumentoEntrada $documento, string $textoDespacho, array $departamentosIds, User $actor): DocumentoEntrada
+    {
+        return DB::transaction(function () use ($documento, $textoDespacho, $departamentosIds, $actor) {
+            $documento->texto_despacho = trim($textoDespacho);
+            $documento->despachado_por_id = $actor->id;
+            $documento->data_despacho = now();
+            $documento->status = DocumentoStatus::TRATADO->value;
+            $documento->save();
+
+            $documento->departamentosDestino()->sync($departamentosIds);
+
+            $this->audit('documento.despachado', $documento, $actor, [
+                'despacho' => $textoDespacho,
+                'departamentos_destino' => $departamentosIds,
+            ]);
+
+            return $documento;
+        });
+    }
+
+    public function encaminharDocumentoTratado(DocumentoEntrada $documento, User $actor): DocumentoEntrada
+    {
+        return DB::transaction(function () use ($documento, $actor) {
+            $destinos = $documento->departamentosDestino;
+            $destinosIds = $destinos->pluck('id')->all();
+
+            if (empty($destinosIds) && $documento->departamento_id) {
+                $destinosIds = [(int) $documento->departamento_id];
+            }
+
+            $origemDepId = $actor->departamento_id ?? $documento->departamento_id;
+
+            foreach ($destinosIds as $targetDepId) {
+                DocumentoEncaminhamento::create([
+                    'documento_entrada_id' => $documento->id,
+                    'origem_departamento_id' => $origemDepId,
+                    'destino_departamento_id' => $targetDepId,
+                    'usuario_id' => $actor->id,
+                    'encaminhado_em' => now(),
+                    'observacao' => $documento->texto_despacho,
+                ]);
+            }
+
+            $documento->status = DocumentoStatus::ENCAMINHADO->value;
+            $documento->encaminhamento_data = now();
+            $documento->save();
+
+            $this->audit('documento.encaminhado_massa', $documento, $actor, [
+                'destinos' => $destinosIds,
+            ]);
 
             return $documento;
         });
@@ -871,5 +994,209 @@ class DocumentoEntradaService
         } catch (\Throwable $e) {
             // Auditoria nunca deve impedir o encaminhamento/recebimento.
         }
+    }
+
+    public function getDefaultTabForProfile(string $profile): string
+    {
+        return match ($profile) {
+            'gabinete' => 'carecer_tratamento',
+            'expediente' => 'tratados',
+            'chefe_departamento' => 'novos_departamento',
+            'tecnico' => 'atribuidos_mim',
+            default => 'todos',
+        };
+    }
+
+    public function applyRoleTabFilter($query, string $tabKey, ?User $user, string $profile)
+    {
+        if ($tabKey === 'todos' || $tabKey === 'todos_registrados' || $tabKey === 'todos_departamento') {
+            return;
+        }
+
+        $userDeps = $user ? $this->permissionService->getUserDepartments($user) : [];
+
+        switch ($tabKey) {
+            case 'carecer_tratamento':
+                $query->whereIn('status', [DocumentoStatus::PENDENTE_TRATAMENTO->value, DocumentoStatus::REGISTRADO->value]);
+                break;
+            case 'tratados':
+                $query->where('status', DocumentoStatus::TRATADO->value);
+                break;
+            case 'encaminhados':
+                $query->whereIn('status', [DocumentoStatus::ENCAMINHADO->value, DocumentoStatus::RECEBIDO->value]);
+                break;
+            case 'novos_departamento':
+                $query->whereIn('status', [DocumentoStatus::ENCAMINHADO->value, DocumentoStatus::RECEBIDO->value, DocumentoStatus::TRATADO->value])
+                    ->whereDoesntHave('tarefas', function ($t) {
+                        $t->where('status', 'pendente');
+                    });
+                break;
+            case 'delegados':
+                $query->whereHas('tarefas', function ($t) {
+                    $t->where('status', 'pendente');
+                });
+                break;
+            case 'atribuidos_mim':
+                if ($user) {
+                    $query->whereHas('tarefas', function ($t) use ($user) {
+                        $t->where('assigned_to_user_id', $user->id)
+                          ->whereIn('status', ['pendente', 'em_andamento']);
+                    });
+                }
+                break;
+            case 'em_execucao':
+                if ($user) {
+                    $query->whereHas('tarefas', function ($t) use ($user, $userDeps) {
+                        $t->where(function ($q2) use ($user, $userDeps) {
+                            $q2->where('assigned_to_user_id', $user->id);
+                            if (count($userDeps)) {
+                                $q2->orWhereIn('assigned_to_departamento_id', $userDeps);
+                            }
+                        })->where('status', 'pendente');
+                    });
+                }
+                break;
+            case 'concluidos':
+                if ($user && $profile === 'tecnico') {
+                    $query->whereHas('tarefas', function ($t) use ($user) {
+                        $t->where('assigned_to_user_id', $user->id)->where('status', 'concluida');
+                    });
+                } else {
+                    $query->whereHas('tarefas', function ($t) {
+                        $t->where('status', 'concluida');
+                    })->whereDoesntHave('tarefas', function ($t) {
+                        $t->where('status', 'pendente');
+                    });
+                }
+                break;
+        }
+    }
+
+    private function applySpecialViewFilters(\Illuminate\Database\Eloquent\Builder $query, Request $request, ?User $user): void
+    {
+        if ($user && $meus = $request->input('meus')) {
+            $deps = $this->permissionService->getUserDepartments($user);
+            $actorGabIds = $this->permissionService->getUserResponsibleGabinetes($user);
+
+            switch ($meus) {
+                case 'pendentes_recebimento':
+                    if (count($deps)) {
+                        $query->whereExists(function ($sub) use ($deps) {
+                            $sub->selectRaw(1)
+                                ->from('documento_encaminhamentos as de')
+                                ->whereColumn('de.documento_entrada_id', 'documentos_entradas.id')
+                                ->whereNull('de.recebido_em')
+                                ->whereIn('de.destino_departamento_id', $deps);
+                        });
+                    }
+                    break;
+                case 'visto_pendente':
+                    if (count($deps)) {
+                        $query->whereNull('visto_departamento_status')
+                            ->where('status', DocumentoStatus::RECEBIDO->value)
+                            ->whereIn('departamento_id', $deps);
+                    }
+                    break;
+                case 'visto_aprovado':
+                    if (count($deps)) {
+                        $query->where('visto_departamento_status', 'aprovado')->whereIn('departamento_id', $deps);
+                    }
+                    break;
+                case 'visto_rejeitado':
+                    if (count($deps)) {
+                        $query->where('visto_departamento_status', 'rejeitado')->whereIn('departamento_id', $deps);
+                    }
+                    break;
+                case 'visto_gabinete_pendente':
+                    if (count($actorGabIds)) {
+                        $query->whereNull('visto_gabinete_status')
+                            ->whereHas('departamento', function ($q) use ($actorGabIds) {
+                                $q->whereIn('gabinete_id', $actorGabIds);
+                            });
+                    }
+                    break;
+                case 'visto_gabinete_aprovado':
+                    if (count($actorGabIds)) {
+                        $query->where('visto_gabinete_status', 'aprovado')
+                            ->whereHas('departamento', function ($q) use ($actorGabIds) {
+                                $q->whereIn('gabinete_id', $actorGabIds);
+                            });
+                    }
+                    break;
+                case 'visto_gabinete_rejeitado':
+                    if (count($actorGabIds)) {
+                        $query->where('visto_gabinete_status', 'rejeitado')
+                            ->whereHas('departamento', function ($q) use ($actorGabIds) {
+                                $q->whereIn('gabinete_id', $actorGabIds);
+                            });
+                    }
+                    break;
+            }
+        }
+    }
+
+    public function getRoleWorkflowTabs(?User $user, Request $request): array
+    {
+        $profile = $user ? $this->permissionService->getUserWorkflowProfile($user) : 'gabinete';
+        $activeTab = $request->input('tab') ?: $this->getDefaultTabForProfile($profile);
+
+        $baseQuery = DocumentoEntrada::query()->where('arquivado', false);
+        if ($user) {
+            $this->applyVisibilityScope($baseQuery, $user);
+        }
+        $this->applySpecialViewFilters($baseQuery, $request, $user);
+
+        $tabsConfig = match ($profile) {
+            'gabinete' => [
+                ['key' => 'carecer_tratamento', 'label' => 'A Carecer de Tratamento', 'icon' => 'far fa-clock', 'badge_type' => 'warning'],
+                ['key' => 'tratados', 'label' => 'Tratados / Prontos p/ Encaminhar', 'icon' => 'far fa-check-circle', 'badge_type' => 'info'],
+                ['key' => 'encaminhados', 'label' => 'Encaminhados', 'icon' => 'far fa-paper-plane', 'badge_type' => 'neutral'],
+                ['key' => 'todos', 'label' => 'Todos do Gabinete', 'icon' => 'fas fa-layer-group', 'badge_type' => 'neutral'],
+            ],
+            'expediente' => [
+                ['key' => 'tratados', 'label' => 'Prontos a Encaminhar', 'icon' => 'far fa-check-circle', 'badge_type' => 'info'],
+                ['key' => 'carecer_tratamento', 'label' => 'Aguardando Despacho', 'icon' => 'far fa-clock', 'badge_type' => 'warning'],
+                ['key' => 'encaminhados', 'label' => 'Encaminhados / Distribuídos', 'icon' => 'far fa-paper-plane', 'badge_type' => 'neutral'],
+                ['key' => 'todos', 'label' => 'Todos Registrados', 'icon' => 'fas fa-layer-group', 'badge_type' => 'neutral'],
+            ],
+            'chefe_departamento' => [
+                ['key' => 'novos_departamento', 'label' => 'Novos no Departamento', 'icon' => 'far fa-folder-open', 'badge_type' => 'warning'],
+                ['key' => 'delegados', 'label' => 'Delegados / Em Andamento', 'icon' => 'fas fa-tasks', 'badge_type' => 'info'],
+                ['key' => 'concluidos', 'label' => 'Concluídos', 'icon' => 'far fa-check-square', 'badge_type' => 'neutral'],
+                ['key' => 'todos_departamento', 'label' => 'Todos do Departamento', 'icon' => 'fas fa-building', 'badge_type' => 'neutral'],
+            ],
+            'tecnico' => [
+                ['key' => 'atribuidos_mim', 'label' => 'Atribuídos a Mim', 'icon' => 'fas fa-user-check', 'badge_type' => 'warning'],
+                ['key' => 'em_execucao', 'label' => 'Em Execução', 'icon' => 'fas fa-spinner', 'badge_type' => 'info'],
+                ['key' => 'concluidos', 'label' => 'Concluídos', 'icon' => 'far fa-check-circle', 'badge_type' => 'neutral'],
+            ],
+            default => [
+                ['key' => 'todos', 'label' => 'Todos os Documentos', 'icon' => 'fas fa-layer-group', 'badge_type' => 'neutral'],
+            ],
+        };
+
+        $tabs = [];
+        foreach ($tabsConfig as $cfg) {
+            $q = clone $baseQuery;
+            $this->applyRoleTabFilter($q, $cfg['key'], $user, $profile);
+            $count = $q->count();
+
+            $badgeClass = match ($cfg['badge_type']) {
+                'warning' => $count > 0 ? 'tab-badge-warning' : 'tab-badge-neutral opacity-50',
+                'info' => $count > 0 ? 'tab-badge-info' : 'tab-badge-neutral opacity-50',
+                default => 'tab-badge-neutral' . ($count == 0 ? ' opacity-50' : ''),
+            };
+
+            $tabs[] = [
+                'key' => $cfg['key'],
+                'label' => $cfg['label'],
+                'icon' => $cfg['icon'],
+                'count' => $count,
+                'badge_class' => $badgeClass,
+                'is_active' => ($cfg['key'] === $activeTab),
+            ];
+        }
+
+        return $tabs;
     }
 }

@@ -102,8 +102,20 @@ class DocumentoInterno extends Model
             // Permissão não existe, ignorar
         }
 
-        // Default: Apenas documentos do departamento do usuário
-        return $query->where('departamento_id', $user->departamento_id);
+        // Chefe de Departamento: consulta todos os documentos elaborados no seu departamento
+        if ($user->isChefeDepartamento()) {
+            return $query->where('departamento_id', $user->departamento_id);
+        }
+
+        // Técnico: visualiza documentos do seu departamento, mas rascunhos são visíveis exclusivamente pelo seu próprio autor
+        return $query->where('departamento_id', $user->departamento_id)
+            ->where(function ($q) use ($user) {
+                $q->where('status', '!=', DocumentoStatus::RASCUNHO->value)
+                    ->orWhere('criado_por', $user->id)
+                    ->orWhereHas('colaboradores', function ($c) use ($user) {
+                        $c->where('user_id', $user->id);
+                    });
+            });
     }
 
     public function pasta()
@@ -139,6 +151,21 @@ class DocumentoInterno extends Model
     public function documentoEntrada()
     {
         return $this->belongsTo(DocumentoEntrada::class, 'documento_entrada_id');
+    }
+
+    public function vinculosOrigem()
+    {
+        return $this->hasMany(DocumentoVinculo::class, 'origem_id')->where('origem_tipo', 'INTERNO');
+    }
+
+    public function vinculosDestino()
+    {
+        return $this->hasMany(DocumentoVinculo::class, 'destino_id')->where('destino_tipo', 'INTERNO');
+    }
+
+    public function todosVinculos()
+    {
+        return DocumentoVinculo::paraDocumento('INTERNO', $this->id)->with('vinculadoPor')->get();
     }
 
     public function autor()
@@ -181,5 +208,13 @@ class DocumentoInterno extends Model
     public function collabUpdates()
     {
         return $this->hasMany(DocumentoCollabUpdate::class, 'documento_interno_id');
+    }
+
+    /**
+     * Anexos associados ao documento interno.
+     */
+    public function anexos()
+    {
+        return $this->morphMany(Anexo::class, 'anexavel')->orderBy('ordem');
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Spatie\Permission\Models\Permission;
@@ -76,9 +77,21 @@ class RolePermissionController extends Controller
         ]);
 
         $role = Role::findById($request->role_id);
+        $oldPermissions = $role->permissions()->pluck('name')->all();
 
         // Sincroniza as permissões (remove as que não estão no array e adiciona as que estão)
         $role->syncPermissions($request->permissions ?? []);
+
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'rbac.role.sync_permissions',
+            'auditable_type' => Role::class,
+            'auditable_id' => $role->id,
+            'old_values' => ['permissions' => $oldPermissions],
+            'new_values' => ['permissions' => $request->permissions ?? []],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
 
         return back()->with('success', "Permissões do perfil '{$role->name}' atualizadas com sucesso!");
     }
@@ -100,9 +113,26 @@ class RolePermissionController extends Controller
 
         if ($request->attach) {
             $role->givePermissionTo($request->permission);
+            $action = 'rbac.role.grant_permission';
         } else {
             $role->revokePermissionTo($request->permission);
+            $action = 'rbac.role.revoke_permission';
         }
+
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => $action,
+            'auditable_type' => Role::class,
+            'auditable_id' => $role->id,
+            'old_values' => null,
+            'new_values' => [
+                'role' => $role->name,
+                'permission' => $request->permission,
+                'attached' => (bool) $request->attach,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
 
         return response()->json(['success' => true]);
     }
@@ -115,7 +145,18 @@ class RolePermissionController extends Controller
         $this->ensureAdmin();
 
         $request->validate(['name' => 'required|unique:permissions,name']);
-        Permission::create(['name' => $request->name, 'guard_name' => 'web']);
+        $permission = Permission::create(['name' => $request->name, 'guard_name' => 'web']);
+
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'rbac.permission.create',
+            'auditable_type' => Permission::class,
+            'auditable_id' => $permission->id,
+            'old_values' => null,
+            'new_values' => ['name' => $permission->name],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
 
         return back()->with('success', 'Permissão criada.');
     }
@@ -128,7 +169,18 @@ class RolePermissionController extends Controller
         $this->ensureAdmin();
 
         $request->validate(['name' => 'required|unique:roles,name']);
-        Role::create(['name' => $request->name, 'guard_name' => 'web']);
+        $role = Role::create(['name' => $request->name, 'guard_name' => 'web']);
+
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'rbac.role.create',
+            'auditable_type' => Role::class,
+            'auditable_id' => $role->id,
+            'old_values' => null,
+            'new_values' => ['name' => $role->name],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
 
         return back()->with('success', 'Perfil criado.');
     }

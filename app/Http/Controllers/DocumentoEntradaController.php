@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Application\DocumentManagement\Commands\CriarDocumentoEntradaCommand;
 use App\Application\DocumentManagement\DTOs\CriarDocumentoEntradaDTO;
 use App\Application\DocumentManagement\Handlers\CriarDocumentoEntradaHandler;
+use App\Enums\DocumentoStatus;
 use App\Http\Requests\StoreDocumentoEntradaRequest;
 use App\Models\Anexo;
 use App\Models\Departamento;
 use App\Models\DocumentoEncaminhamento;
 use App\Models\DocumentoEntrada;
+use App\Models\DocumentoTarefa;
 use App\Models\DocumentoEspecie;
 use App\Models\DocumentoInterno;
 use App\Models\Gabinete;
@@ -129,35 +131,58 @@ class DocumentoEntradaController extends Controller
 
     public function index(Request $request)
     {
-        $documentos = $this->documentoService->getFilteredDocuments($request, Auth::user());
+        $actor = Auth::user();
+        $documentos = $this->documentoService->getFilteredDocuments($request, $actor);
 
         $departamentos = Cache::remember('departamentos_list_select', 300, function () {
             return Departamento::select(['id', 'nome'])->orderBy('nome')->get();
         });
 
-        if (Auth::check()) {
-            $actor = Auth::user();
+        // Obter Perfil e Abas de Esteira de Trabalho do Utilizador
+        $userProfile = $actor ? $this->permissionService->getUserWorkflowProfile($actor) : 'gabinete';
+        $workflowTabs = $this->documentoService->getRoleWorkflowTabs($actor, $request);
+        $activeTab = $request->input('tab') ?: $this->documentoService->getDefaultTabForProfile($userProfile);
+
+        if ($actor) {
             $userDeps = $this->permissionService->getUserDepartments($actor);
             $isChefe = $this->permissionService->isChefeDepartamento($actor);
             $isAdmin = $this->permissionService->isAdmin($actor);
 
+            $docIds = $documentos->pluck('id')->filter()->all();
+            $minhasTarefas = count($docIds) ? \App\Models\DocumentoTarefa::with(['assignedBy:id,name'])
+                ->whereIn('documento_entrada_id', $docIds)
+                ->where('assigned_to_user_id', $actor->id)
+                ->whereIn('status', ['pendente', 'em_andamento'])
+                ->orderByDesc('created_at')
+                ->get()
+                ->groupBy('documento_entrada_id') : collect();
+
             foreach ($documentos as $doc) {
+                $minhaTarefa = isset($minhasTarefas[$doc->id]) ? $minhasTarefas[$doc->id]->first() : null;
+                $doc->setAttribute('minha_tarefa', $minhaTarefa);
+
                 $enc = $doc->ultimoEncaminhamento;
                 $hasPending = $enc && ! $enc->recebido_em;
 
                 $canReceive = $hasPending && ($isAdmin || in_array((int) $enc->destino_departamento_id, $userDeps));
                 $doc->setAttribute('can_receive', $canReceive);
 
-                // Pode encaminhar: pertence ao departamento atual do documento (ou admin)
-                // e não há encaminhamento pendente de recebimento.
                 $canForward = ($isAdmin || in_array((int) $doc->departamento_id, $userDeps)) && ! $hasPending;
                 $doc->setAttribute('can_forward', $canForward);
 
                 $doc->setAttribute('is_chefe', $isChefe && in_array((int) $doc->departamento_id, $userDeps));
+                $doc->setAttribute('can_despachar', $this->permissionService->canDespachar($actor, $doc));
+                $doc->setAttribute('can_encaminhar_tratado', $this->permissionService->canEncaminharTratado($actor, $doc));
             }
         }
 
-        return view('documentos_entradas.index', compact('documentos', 'departamentos'));
+        return view('documentos_entradas.index', compact(
+            'documentos',
+            'departamentos',
+            'activeTab',
+            'userProfile',
+            'workflowTabs'
+        ));
     }
 
     public function create()
@@ -172,9 +197,13 @@ class DocumentoEntradaController extends Controller
             return DocumentoEspecie::where('ativo', true)->orderBy('ordem')->pluck('nome')->all();
         });
 
+        $procedencias = Cache::remember('procedencias_list', 300, function () {
+            return \App\Models\Procedencia::where('ativo', true)->orderBy('nome')->get(['id', 'nome']);
+        });
+
         $userDepartamentoId = Auth::user()->departamento_id;
 
-        return view('documentos_entradas.create', compact('departamentos', 'especies', 'userDepartamentoId'));
+        return view('documentos_entradas.create', compact('departamentos', 'especies', 'procedencias', 'userDepartamentoId'));
     }
 
     public function store(StoreDocumentoEntradaRequest $request)
@@ -207,6 +236,22 @@ class DocumentoEntradaController extends Controller
 
     public function show(DocumentoEntrada $documentos_entrada)
     {
+        $actor = Auth::user();
+        if (! $this->permissionService->canViewDocument($actor, $documentos_entrada)) {
+            $deps = $this->permissionService->getUserDepartments($actor);
+            $hasHistory = false;
+            if (count($deps)) {
+                $hasHistory = DocumentoEncaminhamento::where('documento_entrada_id', $documentos_entrada->id)
+                    ->where(function ($q) use ($deps) {
+                        $q->whereIn('origem_departamento_id', $deps)
+                            ->orWhereIn('destino_departamento_id', $deps);
+                    })->exists();
+            }
+            if (! $hasHistory) {
+                abort(403, 'Acesso negado a este documento.');
+            }
+        }
+
         $doc = DocumentoEntrada::with([
             'departamento:id,nome,gabinete_id',
             'departamento.gabinete:id,nome,sigla,responsavel_id',
@@ -311,7 +356,8 @@ class DocumentoEntradaController extends Controller
 
     public function previewAjax(DocumentoEntrada $documento)
     {
-        if (! $this->permissionService->canViewDocument(Auth::user(), $documento)) {
+        $actor = Auth::user();
+        if (! $this->permissionService->canViewDocument($actor, $documento)) {
             return response()->json(['error' => 'Sem permissão para visualizar este documento.'], 403);
         }
 
@@ -324,10 +370,12 @@ class DocumentoEntradaController extends Controller
             'encaminhamentos.destinoDepartamento:id,nome',
             'encaminhamentos.usuario:id,name',
             'encaminhamentos.recebidoPor:id,name',
+            'departamentosDestino:id,nome',
         ])->findOrFail($documento->id);
 
-        $actor = Auth::user();
         $userDeps = $this->permissionService->getUserDepartments($actor);
+        $userProfile = $this->permissionService->getUserWorkflowProfile($actor);
+
         $enc = $doc->ultimoEncaminhamento;
         $canReceive = false;
         if ($enc && ! $enc->recebido_em) {
@@ -344,11 +392,145 @@ class DocumentoEntradaController extends Controller
             ->orderBy('nome')
             ->get();
 
-        return view('documentos_entradas.partials.preview', compact('doc', 'canReceive', 'canForward', 'pastas'));
+        $departamentos = \App\Models\Departamento::orderBy('nome')->get(['id', 'nome']);
+
+        // Técnicos/utilizadores do departamento para atribuição
+        $depUsuarios = \App\Models\User::whereHas('departamentos', function ($q) use ($userDeps) {
+            $q->whereIn('departamentos.id', $userDeps);
+        })->orWhere('departamento_id', $actor->departamento_id)
+          ->distinct()
+          ->orderBy('name')
+          ->get(['id', 'name']);
+
+        $minhaTarefa = \App\Models\DocumentoTarefa::where('documento_entrada_id', $doc->id)
+            ->where('assigned_to_user_id', $actor->id)
+            ->whereIn('status', ['pendente', 'em_andamento'])
+            ->first();
+
+        $tarefas = \App\Models\DocumentoTarefa::with(['assignedToUser:id,name', 'assignedBy:id,name'])
+            ->where('documento_entrada_id', $doc->id)
+            ->orderByDesc('created_at')
+            ->get();
+
+        return view('documentos_entradas.partials.preview', compact(
+            'doc',
+            'userProfile',
+            'canReceive',
+            'canForward',
+            'pastas',
+            'departamentos',
+            'depUsuarios',
+            'minhaTarefa',
+            'tarefas'
+        ));
+    }
+
+    public function quickAction(Request $request, DocumentoEntrada $documento)
+    {
+        $actor = Auth::user();
+        if (! $this->permissionService->canViewDocument($actor, $documento)) {
+            return response()->json(['error' => 'Sem permissão para operar neste documento.'], 403);
+        }
+
+        $profile = $this->permissionService->getUserWorkflowProfile($actor);
+
+        if ($profile === 'gabinete') {
+            $validated = $request->validate([
+                'destino_departamento_ids' => ['required', 'array', 'min:1'],
+                'destino_departamento_ids.*' => ['integer', 'exists:departamentos,id'],
+                'texto_despacho' => ['required', 'string'],
+                'prazo_at' => ['nullable', 'date'],
+            ]);
+
+            // Despachar do Gabinete e encaminhar para os destinos selecionados
+            $documento->saida_gabinete_data = now();
+            $documento->despachado_por_id = $actor->id;
+            $documento->data_despacho = now();
+            $documento->texto_despacho = $validated['texto_despacho'];
+            $documento->visto_gabinete_status = 'aprovado';
+            $documento->visto_gabinete_por = $actor->id;
+            $documento->visto_gabinete_data = now();
+            $documento->status = DocumentoStatus::TRATADO->value;
+            $documento->save();
+
+            // Sincronizar departamentos de destino
+            $documento->departamentosDestino()->sync($validated['destino_departamento_ids']);
+
+            // Criar registo de encaminhamento primário
+            foreach ($validated['destino_departamento_ids'] as $destId) {
+                DocumentoEncaminhamento::create([
+                    'documento_entrada_id' => $documento->id,
+                    'origem_departamento_id' => $documento->departamento_id,
+                    'destino_departamento_id' => $destId,
+                    'usuario_id' => $actor->id,
+                    'encaminhado_em' => now(),
+                    'despacho_instrucao' => $validated['texto_despacho'],
+                ]);
+            }
+
+            $message = 'Despacho executivo emitido e documento encaminhado com sucesso!';
+        } elseif ($profile === 'chefe_departamento') {
+            $validated = $request->validate([
+                'assigned_to_user_id' => ['required', 'integer', 'exists:users,id'],
+                'descricao' => ['required', 'string'],
+                'prazo_at' => ['required', 'date'],
+            ]);
+
+            // Criar Tarefa/Despacho atribuída ao técnico
+            $tarefa = DocumentoTarefa::create([
+                'documento_entrada_id' => $documento->id,
+                'assigned_by_id' => $actor->id,
+                'assigned_to_user_id' => $validated['assigned_to_user_id'],
+                'titulo' => 'Despacho Executivo / Demanda Técnica',
+                'descricao' => $validated['descricao'],
+                'prazo_at' => $validated['prazo_at'],
+                'status' => 'pendente',
+            ]);
+
+            // Aprovação automática do documento pelo Chefe de Departamento ao delegar
+            $documento->visto_departamento_status = 'aprovado';
+            $documento->visto_departamento_por = $actor->id;
+            $documento->visto_departamento_data = now();
+            $documento->visto_departamento_observacao = 'Aprovado automaticamente com a emissão do despacho/tarefa.';
+            if ($documento->status === DocumentoStatus::ENCAMINHADO->value) {
+                $documento->status = DocumentoStatus::RECEBIDO->value;
+            }
+            $documento->save();
+
+            $message = 'Despacho/Tarefa delegada com sucesso e documento aprovado!';
+        } elseif ($profile === 'tecnico') {
+            $validated = $request->validate([
+                'tarefa_id' => ['required', 'integer', 'exists:documento_tarefas,id'],
+                'observacao' => ['required', 'string'],
+            ]);
+
+            $tarefa = DocumentoTarefa::where('id', $validated['tarefa_id'])
+                ->where('assigned_to_user_id', $actor->id)
+                ->firstOrFail();
+
+            $tarefa->status = 'concluida';
+            $tarefa->resposta = $validated['observacao'];
+            $tarefa->concluida_em = now();
+            $tarefa->save();
+
+            $message = 'Parecer/Resposta técnica registrada e demanda concluída!';
+        } else {
+            return response()->json(['error' => 'Ação não permitida para o perfil atual.'], 403);
+        }
+
+        $workflowTabs = $this->documentoService->getRoleWorkflowTabs($actor, $request);
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'tabs' => $workflowTabs,
+        ]);
     }
 
     public function relacionar(Request $request, DocumentoEntrada $documento)
     {
+        $this->authorize('update', $documento);
+
         $validated = $request->validate([
             'relacionado_id' => ['required', 'integer'],
             'relacionado_type' => ['nullable', 'string', 'in:entrada,interno'],
@@ -404,6 +586,8 @@ class DocumentoEntradaController extends Controller
 
     public function desrelacionar(Request $request, DocumentoEntrada $documento, $relacionadoId)
     {
+        $this->authorize('update', $documento);
+
         // Check if it's an internal document unlink
         if ($request->query('type') === 'interno') {
             $docInterno = DocumentoInterno::where('id', $relacionadoId)
@@ -429,8 +613,11 @@ class DocumentoEntradaController extends Controller
 
     public function edit(DocumentoEntrada $documentos_entrada)
     {
+        $this->authorize('update', $documentos_entrada);
+
         $departamentos = Cache::remember('departamentos_list', 600, fn () => Departamento::select('id', 'nome')->orderBy('nome')->get());
         $especies = Cache::remember('documento_especies_names', 600, fn () => DocumentoEspecie::where('ativo', true)->orderBy('ordem')->pluck('nome')->all());
+        $procedencias = Cache::remember('procedencias_list', 300, fn () => \App\Models\Procedencia::where('ativo', true)->orderBy('nome')->get(['id', 'nome']));
 
         $tags = $documentos_entrada->tags->pluck('nome')->implode(', ');
 
@@ -438,17 +625,21 @@ class DocumentoEntradaController extends Controller
             'doc' => $documentos_entrada,
             'departamentos' => $departamentos,
             'especies' => $especies,
+            'procedencias' => $procedencias,
             'tags' => $tags,
         ]);
     }
 
     public function update(Request $request, DocumentoEntrada $documentos_entrada)
     {
+        $this->authorize('update', $documentos_entrada);
+
         $validated = $request->validate([
             'classificacao_especie' => ['nullable', 'string', 'max:100'],
             'classificacao_ref_numero' => ['nullable', 'string', 'max:100'],
             'data_documento' => ['nullable', 'date'],
             'procedencia' => ['nullable', 'string', 'max:255'],
+            'procedencia_id' => ['nullable', 'exists:procedencias,id'],
             'assunto' => ['required', 'string', 'max:500'],
             'observacoes' => ['nullable', 'string'],
             'saida_gabinete_data' => ['nullable', 'date'],
@@ -471,6 +662,8 @@ class DocumentoEntradaController extends Controller
 
     public function destroyAnexo(DocumentoEntrada $documento, Anexo $anexo)
     {
+        $this->authorize('update', $documento);
+
         if ($anexo->anexavel_type !== DocumentoEntrada::class || (int) $anexo->anexavel_id !== (int) $documento->id) {
             abort(403);
         }
@@ -634,15 +827,44 @@ class DocumentoEntradaController extends Controller
         return response()->json([
             'nome_original' => $anexo->nome_original,
             'texto_extraido' => $anexo->texto_extraido ?? '',
+            'ocr_status' => $anexo->ocr_status ?? 'PENDENTE',
+            'ocr_status_badge' => $anexo->ocr_status_badge,
+            'ocr_metodo' => $anexo->ocr_metodo,
+            'ocr_palavras_count' => (int) ($anexo->ocr_palavras_count ?? 0),
+            'ocr_processado_em' => $anexo->ocr_processado_em ? $anexo->ocr_processado_em->format('d/m/Y H:i:s') : null,
+            'ocr_erro' => $anexo->ocr_erro,
+        ]);
+    }
+
+    public function reprocessOcr(DocumentoEntrada $documento, Anexo $anexo)
+    {
+        $actor = Auth::user();
+        if (! $this->permissionService->canViewDocument($actor, $documento)) {
+            return response()->json(['error' => 'Não autorizado.'], 403);
+        }
+
+        if ((int) $anexo->anexavel_id !== (int) $documento->id || $anexo->anexavel_type !== DocumentoEntrada::class) {
+            return response()->json(['error' => 'Anexo inválido.'], 404);
+        }
+
+        $anexo->update([
+            'ocr_status' => 'PENDENTE',
+            'ocr_erro' => null,
+        ]);
+
+        \App\Jobs\ProcessarOcrAnexo::dispatch($anexo->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Job de OCR reenviado para a fila de processamento.',
+            'anexo_id' => $anexo->id,
+            'ocr_status' => 'PENDENTE',
         ]);
     }
 
     public function destroy(DocumentoEntrada $documentos_entrada)
     {
-        $actor = Auth::user();
-        if (! $this->permissionService->isAdmin($actor) && $documentos_entrada->user_id !== $actor->id) {
-            abort(403, 'Você não tem permissão para excluir este documento.');
-        }
+        $this->authorize('delete', $documentos_entrada);
 
         $documentos_entrada->delete();
 
@@ -700,6 +922,48 @@ class DocumentoEntradaController extends Controller
             return response()->json($suggestions);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Falha ao sugerir ações: '.$e->getMessage()], 500);
+        }
+    }
+
+    public function despachar(Request $request, DocumentoEntrada $documentos_entrada)
+    {
+        $actor = Auth::user();
+        if (! $this->permissionService->canDespachar($actor, $documentos_entrada)) {
+            abort(403, 'Apenas o Chefe de Gabinete ou o Responsável pelo Gabinete podem despachar este documento.');
+        }
+
+        $validated = $request->validate([
+            'texto_despacho' => ['required', 'string'],
+            'departamentos_ids' => ['required', 'array', 'min:1'],
+            'departamentos_ids.*' => ['integer', 'exists:departamentos,id'],
+        ], [
+            'texto_despacho.required' => 'O texto do despacho é obrigatório.',
+            'departamentos_ids.required' => 'Selecione pelo menos um departamento de destino.',
+            'departamentos_ids.min' => 'Selecione pelo menos um departamento de destino.',
+        ]);
+
+        $this->documentoService->despacharDocumento(
+            $documentos_entrada,
+            $validated['texto_despacho'],
+            $validated['departamentos_ids'],
+            $actor
+        );
+
+        return back()->with('success', 'Documento despachado com sucesso para os departamentos selecionados.');
+    }
+
+    public function encaminhar(Request $request, DocumentoEntrada $documentos_entrada)
+    {
+        $actor = Auth::user();
+        if (! $this->permissionService->canEncaminharTratado($actor, $documentos_entrada)) {
+            abort(403, 'Você não tem permissão para encaminhar este documento.');
+        }
+
+        try {
+            $this->documentoService->encaminharDocumentoTratado($documentos_entrada, $actor);
+            return back()->with('success', 'Documento encaminhado com sucesso para os departamentos destinatários.');
+        } catch (\Throwable $e) {
+            return back()->with('danger', $e->getMessage());
         }
     }
 }

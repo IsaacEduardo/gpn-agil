@@ -75,7 +75,9 @@ class DepartamentoController extends Controller
             'nome' => ['required', 'string', 'max:255', 'unique:departamentos,nome'],
             'sigla' => ['nullable', 'string', 'max:10'],
             'gabinete_id' => ['required', 'integer', 'exists:gabinetes,id'],
+            'is_area_expediente' => ['nullable', 'boolean'],
         ]);
+        $data['is_area_expediente'] = $request->boolean('is_area_expediente');
 
         Departamento::create($data);
 
@@ -159,7 +161,9 @@ class DepartamentoController extends Controller
             'sigla' => ['nullable', 'string', 'max:10'],
             'chefe_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'gabinete_id' => ['required', 'integer', 'exists:gabinetes,id'],
+            'is_area_expediente' => ['nullable', 'boolean'],
         ]);
+        $data['is_area_expediente'] = $request->boolean('is_area_expediente');
 
         $departamento->update($data);
 

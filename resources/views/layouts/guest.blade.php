@@ -150,7 +150,7 @@
             <div class="row align-items-center gy-2">
                 <div class="col-md-6 text-center text-md-start">
                     <span class="fw-semibold" style="color: var(--text-main);">
-                        {{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial do Namibe' }}
+                        {{ $dadosInstituicao->nome_oficial ?? 'Governo Provincial' }}
                     </span>
                     @if (!empty($dadosInstituicao->cidade))
                         <span class="d-none d-md-inline"> · {{ $dadosInstituicao->cidade }}</span>

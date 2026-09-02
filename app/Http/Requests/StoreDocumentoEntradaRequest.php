@@ -26,6 +26,7 @@ class StoreDocumentoEntradaRequest extends FormRequest
             'classificacao_ref_numero' => ['nullable', 'string', 'max:100'],
             'data_documento' => ['nullable', 'date'],
             'procedencia' => ['nullable', 'string', 'max:255'],
+            'procedencia_id' => ['nullable', 'exists:procedencias,id'],
             'assunto' => ['required', 'string', 'max:500'],
             'observacoes' => ['nullable', 'string'],
             'saida_gabinete_data' => ['nullable', 'date'],

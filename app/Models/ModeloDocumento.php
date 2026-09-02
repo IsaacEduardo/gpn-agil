@@ -11,6 +11,7 @@ class ModeloDocumento extends Model
 
     protected $fillable = [
         'nome',
+        'codigo',
         'documento_especie_id',
         'conteudo',
         'campos_dinamicos',

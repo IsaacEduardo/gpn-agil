@@ -40,7 +40,7 @@ class InitialRolesAndAdminSeeder extends Seeder
             User::create([
                 'name' => env('SEED_ADMIN_NAME', 'Administrador'),
                 'email' => $email,
-                'password' => Hash::make($password),
+                'password' => $password,
                 'role_id' => $admin->id,
             ]);
             $this->command?->info("Admin inicial criado: {$email}");

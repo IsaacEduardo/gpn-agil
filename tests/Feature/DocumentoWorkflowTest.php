@@ -66,10 +66,13 @@ class DocumentoWorkflowTest extends TestCase
 
         // Roles
         $roleAdmin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-        $roleChefe = Role::firstOrCreate(['name' => 'chefe_departamento', 'guard_name' => 'web']);
+        $roleChefe = Role::firstOrCreate(['name' => 'chefe-departamento', 'guard_name' => 'web']);
 
         $this->admin->assignRole($roleAdmin);
+        $this->admin->update(['role_id' => $roleAdmin->id]);
         $this->chefe->assignRole($roleChefe);
+        $this->chefe->update(['role_id' => $roleChefe->id]);
+        $this->departamento->update(['responsavel_id' => $this->chefe->id]);
     }
 
     public function test_document_starts_as_draft()
@@ -244,7 +247,7 @@ class DocumentoWorkflowTest extends TestCase
             'conteudo_final' => 'New Content',
         ]);
 
-        $response->assertSessionHas('error');
+        $response->assertForbidden();
         $this->assertEquals('Approved', $doc->fresh()->titulo);
     }
 }

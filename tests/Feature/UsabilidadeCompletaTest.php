@@ -117,7 +117,7 @@ class UsabilidadeCompletaTest extends TestCase
         $response->assertRedirect();
         $this->assertDatabaseHas('documentos_entradas', [
             'assunto' => 'Documento de Teste Usabilidade',
-            'status' => DocumentoStatus::REGISTRADO->value,
+            'status' => DocumentoStatus::PENDENTE_TRATAMENTO->value,
         ]);
 
         $doc = DocumentoEntrada::where('assunto', 'Documento de Teste Usabilidade')->first();

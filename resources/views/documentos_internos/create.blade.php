@@ -70,6 +70,27 @@
 
                             @if ($documentoEntrada)
                                 <input type="hidden" name="documento_entrada_id" value="{{ $documentoEntrada->id }}">
+                                
+                                <div class="alert alert-info border-info-subtle shadow-xs rounded-3 mb-4 p-3 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                                    <div>
+                                        <div class="fw-bold text-dark d-flex align-items-center gap-2">
+                                            <i class="fas fa-link text-primary"></i> Vínculo ao Documento de Entrada #{{ $documentoEntrada->numero_sequencial }}/{{ $documentoEntrada->ano_referencia }}
+                                        </div>
+                                        <div class="small text-muted mt-1">
+                                            <strong>Assunto:</strong> {{ $documentoEntrada->assunto }}<br>
+                                            <strong>Procedência:</strong> {{ $documentoEntrada->procedencia ?? '—' }} • <strong>Data:</strong> {{ optional($documentoEntrada->data_entrada)->format('d/m/Y') }}
+                                        </div>
+                                    </div>
+                                    <div class="flex-shrink-0" style="min-width: 220px;">
+                                        <label class="form-label small fw-bold text-muted text-uppercase mb-1">Relação Semântica</label>
+                                        <select name="tipo_relacao" class="form-select form-select-sm shadow-none bg-white">
+                                            <option value="RESPOSTA" {{ request('tipo_relacao', 'RESPOSTA') === 'RESPOSTA' ? 'selected' : '' }}>Resposta Formal</option>
+                                            <option value="INSTRUCAO_TECNICA" {{ request('tipo_relacao') === 'INSTRUCAO_TECNICA' ? 'selected' : '' }}>Parecer / Instrução Técnica</option>
+                                            <option value="COMPLEMENTAR" {{ request('tipo_relacao') === 'COMPLEMENTAR' ? 'selected' : '' }}>Documento Complementar</option>
+                                            <option value="APENSO_ANEXO" {{ request('tipo_relacao') === 'APENSO_ANEXO' ? 'selected' : '' }}>Apenso / Anexo</option>
+                                        </select>
+                                    </div>
+                                </div>
                             @endif
 
                             <div class="row">
@@ -103,8 +124,19 @@
                                                     <select class="form-select" id="modelo_documento_id" name="modelo_documento_id">
                                                         <option value="">Aguardando Espécie...</option>
                                                     </select>
-                                                    <label for="modelo_documento_id">Modelo</label>
+                                                    <label for="modelo_documento_id">Modelo / Template</label>
                                                 </div>
+                                                @php
+                                                    $u = Auth::user();
+                                                    $canManageTemplates = $u && ($u->isAdmin() || $u->hasRole('admin') || $u->hasRole('Admin') || (method_exists($u, 'isChefeGabinete') && $u->isChefeGabinete()) || (method_exists($u, 'isSuperChefeGabinete') && $u->isSuperChefeGabinete()));
+                                                @endphp
+                                                @if ($canManageTemplates)
+                                                    <div class="text-end mt-1">
+                                                        <a href="{{ route('modelos.index') }}" target="_blank" class="small text-decoration-none text-primary fw-semibold" style="font-size: 0.75rem;">
+                                                            <i class="fas fa-cog me-1"></i>Gerenciar Templates
+                                                        </a>
+                                                    </div>
+                                                @endif
                                             </div>
                                         </div>
 
@@ -261,6 +293,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.2/tinymce.min.js" referrerpolicy="origin"></script>
     <script>
         const modelos = @json($modelos);
+        const chefesDepartamento = @json($chefesDepartamento ?? []);
+        
+        function formatarDataPorExtenso(dateString) {
+            if (!dateString) return '26 de Maio de 2026';
+            const parts = dateString.split('-');
+            if (parts.length === 3) {
+                const ano = parts[0];
+                const mesIdx = parseInt(parts[1], 10) - 1;
+                const dia = parseInt(parts[2], 10);
+                const mesesExtenso = [
+                    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+                ];
+                if (mesIdx >= 0 && mesIdx < 12) {
+                    return `${dia} de ${mesesExtenso[mesIdx]} de ${ano}`;
+                }
+            }
+            return dateString;
+        }
         
         function updateLivePreview() {
             if (!tinymce.get('conteudo_final')) return;
@@ -293,6 +344,15 @@
             document.querySelectorAll('.dynamic-input').forEach(input => {
                 if (input.dataset.key) {
                     let key = input.dataset.key.toUpperCase();
+                    if (input.tagName === 'SELECT' && input.options[input.selectedIndex]) {
+                        const selOpt = input.options[input.selectedIndex];
+                        if (selOpt.dataset.nome) {
+                            dynamicReplacements['SUBSTITUTO_NOME'] = selOpt.dataset.nome;
+                        }
+                        if (selOpt.dataset.departamento) {
+                            dynamicReplacements['SUBSTITUTO_DEPARTAMENTO'] = selOpt.dataset.departamento;
+                        }
+                    }
                     dynamicReplacements[key] = input.value;
                 }
             });
@@ -312,8 +372,34 @@
             cleanContent = cleanContent.replace(/\{\{DESTINATARIO_ORGAO\}\}/g, destOrgao);
             cleanContent = cleanContent.replace(/\{\{DESTINATARIO_LOCAL\}\}/g, destLocal);
             
+            // Placeholders específicos Ordem de Serviço
+            const dataInicioAusenciaExtenso = formatarDataPorExtenso(dynamicReplacements['DATA_INICIO_AUSENCIA']);
+            const substitutoNome = dynamicReplacements['SUBSTITUTO_NOME'] || 'Eduardo Chivangulula Gabriel';
+            const substitutoDepto = dynamicReplacements['SUBSTITUTO_DEPARTAMENTO'] || 'Gestão do Orçamento e Contabilidade';
+
+            cleanContent = cleanContent.replace(/\{\{\s*data_inicio_ausencia\s*\}\}/g, dataInicioAusenciaExtenso);
+            cleanContent = cleanContent.replace(/\{\{\s*substituto_nome\s*\}\}/g, substitutoNome);
+            cleanContent = cleanContent.replace(/\{\{\s*substituto_departamento\s*\}\}/g, substitutoDepto);
+
+            cleanContent = cleanContent.replace(/\{\{\s*qr_code_img_url\s*\}\}/g, dynamicReplacements['QR_CODE_IMG_URL'] || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="70" height="70"><rect width="70" height="70" fill="%23eee"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="9">QR CODE</text></svg>');
+            cleanContent = cleanContent.replace(/\{\{\s*insignia_nacional_url\s*\}\}/g, dynamicReplacements['INSIGNIA_NACIONAL_URL'] || '{{ $dadosInstituicao->logo_url }}');
+            cleanContent = cleanContent.replace(/\{\{\s*governo_provincial_nome\s*\}\}/g, dynamicReplacements['GOVERNO_PROVINCIAL_NOME'] || 'Governo Provincial da Huíla');
+            cleanContent = cleanContent.replace(/\{\{\s*gabinete_secretaria_nome\s*\}\}/g, dynamicReplacements['GABINETE_SECRETARIA_NOME'] || 'Secretaria Geral');
+            cleanContent = cleanContent.replace(/\{\{\s*numero_ordem\s*\}\}/g, dynamicReplacements['NUMERO_ORDEM'] || '06');
+            cleanContent = cleanContent.replace(/\{\{\s*sigla_gabinete\s*\}\}/g, dynamicReplacements['SIGLA_GABINETE'] || 'SEC.GER.GOV.PROV.HLA');
+            cleanContent = cleanContent.replace(/\{\{\s*ano_corrente\s*\}\}/g, ano);
+            cleanContent = cleanContent.replace(/\{\{\s*preambulo_motivo\s*\}\}/g, dynamicReplacements['PREAMBULO_MOTIVO'] || 'Ausentando-me para cumprimento de missão de Serviço Oficial...');
+            cleanContent = cleanContent.replace(/\{\{\s*verbo_operativo\s*\}\}/g, dynamicReplacements['VERBO_OPERATIVO'] || 'INDICO:');
+            cleanContent = cleanContent.replace(/\{\{\s*texto_deliberacao\s*\}\}/g, dynamicReplacements['TEXTO_DELIBERACAO'] || 'Para me substituir nas minhas ausências e impedimentos...');
+            cleanContent = cleanContent.replace(/\{\{\s*localidade_data_extenso\s*\}\}/g, dynamicReplacements['LOCALIDADE_DATA_EXTENSO'] || dataExtenso);
+            cleanContent = cleanContent.replace(/\{\{\s*cargo_signatario\s*\}\}/g, dynamicReplacements['CARGO_SIGNATARIO'] || 'O Secretário Geral');
+            cleanContent = cleanContent.replace(/\{\{\s*nome_signatario\s*\}\}/g, dynamicReplacements['NOME_SIGNATARIO'] || userName);
+            cleanContent = cleanContent.replace(/\{\{\{\s*endereco_rodape_html\s*\}\}\}/g, dynamicReplacements['ENDERECO_RODAPE_HTML'] || 'Rua Agostinho Neto, Palácio do Governo');
+            cleanContent = cleanContent.replace(/\{\{\s*endereco_rodape\s*\}\}/g, dynamicReplacements['ENDERECO_RODAPE'] || 'Rua Agostinho Neto, Palácio do Governo');
+            cleanContent = cleanContent.replace(/\{\{\s*portal_url\s*\}\}/g, dynamicReplacements['PORTAL_URL'] || 'huila.gov.ao');
+
             Object.entries(dynamicReplacements).forEach(([key, val]) => {
-                const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+                const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
                 cleanContent = cleanContent.replace(regex, val);
             });
 
@@ -372,6 +458,25 @@
                     input = document.createElement('textarea');
                     input.className = 'form-control form-control-sm dynamic-input';
                     input.style.height = '80px';
+                } else if (type === 'select_chefes_departamento') {
+                    input = document.createElement('select');
+                    input.className = 'form-select form-select-sm dynamic-input';
+                    
+                    const defaultOpt = document.createElement('option');
+                    defaultOpt.value = '';
+                    defaultOpt.textContent = 'Selecione o Chefe de Departamento...';
+                    input.appendChild(defaultOpt);
+
+                    if (Array.isArray(chefesDepartamento)) {
+                        chefesDepartamento.forEach(chefe => {
+                            const option = document.createElement('option');
+                            option.value = chefe.id;
+                            option.textContent = chefe.label;
+                            option.dataset.nome = chefe.nome;
+                            option.dataset.departamento = chefe.departamento_nome;
+                            input.appendChild(option);
+                        });
+                    }
                 } else if (type === 'select') {
                     input = document.createElement('select');
                     input.className = 'form-select form-select-sm dynamic-input';
@@ -502,7 +607,9 @@
             btnPreview.addEventListener('click', function() {
                 const modeloId = modeloSelect.value;
                 if (!modeloId) {
-                    alert('Por favor, selecione um modelo (template) primeiro.');
+                    if (window.Toast) {
+                        window.Toast.warning('Modelo Necessário', 'Por favor, selecione um modelo (template) primeiro.');
+                    }
                     modeloSelect.focus();
                     return;
                 }
@@ -552,11 +659,15 @@
                     .then(response => response.json())
                     .then(data => {
                         tinymce.get('conteudo_final').setContent(data.content);
-                        // Optional: Show success feedback
+                        if (window.Toast) {
+                            window.Toast.success('Template Carregado', 'O modelo foi inserido no editor.');
+                        }
                     })
                     .catch(error => {
                         console.error('Error:', error);
-                        alert('Erro ao carregar template.');
+                        if (window.Toast) {
+                            window.Toast.error('Erro', 'Não foi possível carregar o modelo.');
+                        }
                     })
                     .finally(() => {
                          btnPreview.innerHTML = '<i class="fas fa-sync-alt me-2"></i> Carregar/Atualizar Template';

@@ -47,8 +47,11 @@
             <a href="{{ route('documentos-entradas.show', $documento) }}" class="btn btn-outline-secondary d-flex align-items-center gap-2 px-3">
                 <i class="fas fa-arrow-left"></i> Voltar
             </a>
-            <a href="{{ route('documentos-entradas.protocolo.pdf', $documento) }}" target="_blank" class="btn btn-primary d-flex align-items-center gap-2 px-4 shadow-sm" onclick="markAsPrinted()">
-                <i class="fas fa-print"></i> Imprimir Original
+            <a href="{{ route('documentos-entradas.protocolo.etiqueta', [$documento, 'auto_print' => 1]) }}" target="_blank" class="btn btn-success d-flex align-items-center gap-2 px-4 shadow-sm fw-bold" onclick="markAsPrinted()">
+                <i class="fas fa-barcode"></i> Imprimir Etiqueta Adesiva
+            </a>
+            <a href="{{ route('documentos-entradas.protocolo.pdf', $documento) }}" target="_blank" class="btn btn-outline-primary d-flex align-items-center gap-2 px-3 shadow-sm" onclick="markAsPrinted()">
+                <i class="fas fa-file-pdf"></i> Recibo A4
             </a>
         </div>
     </div>

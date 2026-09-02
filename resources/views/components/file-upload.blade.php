@@ -1,10 +1,25 @@
-@props(['name' => 'anexos[]', 'id' => 'fileInput', 'multiple' => true])
+@props(['name' => 'anexos[]', 'id' => 'fileInput', 'multiple' => true, 'enableScanner' => true])
+
+<div class="mb-2 d-flex justify-content-between align-items-center">
+    <span class="small fw-bold text-muted">Seleção ou Captura de Arquivo</span>
+    
+    @if($enableScanner)
+        <div class="d-flex align-items-center gap-2">
+            <span id="mainScannerBadgeIndicator" class="badge bg-light text-muted border rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                <i class="fas fa-circle text-secondary me-1" style="font-size: 0.6rem;"></i> Scanner Offline
+            </span>
+            <button type="button" id="btnOpenScannerModal" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold disabled" data-bs-toggle="modal" data-bs-target="#webscanModal">
+                <i class="fas fa-print me-1"></i> Digitalizar do Scanner
+            </button>
+        </div>
+    @endif
+</div>
 
 <div class="file-drop-area border rounded-3 p-4 text-center bg-light position-relative" id="dropZone_{{ $id }}">
     <input type="file" name="{{ $name }}" id="{{ $id }}" {{ $multiple ? 'multiple' : '' }} class="position-absolute top-0 start-0 w-100 h-100 opacity-0 cursor-pointer" accept=".pdf,image/*">
     <div class="d-flex flex-column align-items-center justify-content-center pointer-events-none">
         <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3 opacity-50"></i>
-        <p class="mb-1 fw-medium text-dark">Arraste arquivos ou clique aqui</p>
+        <p class="mb-1 fw-medium text-dark">Arraste arquivos ou clique aqui para selecionar</p>
         <p class="small text-muted mb-0">PDFs ou Imagens (Máx 10MB)</p>
     </div>
 </div>
@@ -49,7 +64,7 @@
 
         function updateFileList(files, listElement) {
             listElement.innerHTML = '';
-            if (files.length === 0) return;
+            if (!files || files.length === 0) return;
 
             Array.from(files).forEach(file => {
                 const li = document.createElement('li');
@@ -57,10 +72,10 @@
                 const iconClass = file.type.includes('pdf') ? 'fa-file-pdf text-danger' : 'fa-file-image text-primary';
                 li.innerHTML = `
                     <div class="d-flex align-items-center text-truncate me-3">
-                        <i class="fas ${iconClass} me-2"></i>
-                        <span class="text-truncate">${file.name}</span>
+                        <i class="fas ${iconClass} me-2 fs-5"></i>
+                        <span class="text-truncate fw-semibold text-dark">${file.name}</span>
                     </div>
-                    <span class="badge bg-light text-secondary">${(file.size/1024).toFixed(1)} KB</span>
+                    <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-1">${(file.size/1024).toFixed(1)} KB</span>
                 `;
                 listElement.appendChild(li);
             });

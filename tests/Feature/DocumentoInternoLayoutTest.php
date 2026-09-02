@@ -65,10 +65,11 @@ class DocumentoInternoLayoutTest extends TestCase
 
         // 2. Act
         // Test View directly to verify content
-        $view = $this->view('documentos_internos.pdf', ['documentoInterno' => $doc]);
+        $dadosInst = \App\Models\DadosInstituicao::first() ?? new \App\Models\DadosInstituicao(['nome_oficial' => 'Governo Provincial do Namibe']);
+        $view = $this->view('documentos_internos.pdf', ['documentoInterno' => $doc, 'dadosInstituicao' => $dadosInst]);
 
         $view->assertSee('REPÚBLICA DE ANGOLA');
-        $view->assertSee(optional(\App\Models\DadosInstituicao::get())->nome_oficial ?? 'Governo Provincial do Namibe', false);
+        $view->assertSee('Governo Provincial do Namibe');
         $view->assertSee('GABINETE DO GOVERNADOR'); // Uppercase from mb_strtoupper
 
         // Assert Date Line Injected correctly

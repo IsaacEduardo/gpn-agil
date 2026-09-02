@@ -108,16 +108,21 @@ class PermissionsSeeder extends Seeder
             'reservas.aprovar',
         ]);
 
-        // User (Funcionário): Basic usage - MÍNIMO POSSÍVEL
-        // As permissões reais virão do Departamento
+        // User (Funcionário / Técnico)
         $roleUser = Role::firstOrCreate(['name' => 'user', 'guard_name' => 'web']);
-        $roleUser->syncPermissions([
+        $roleUser->givePermissionTo([
             'dashboard.view',
-            // 'requisicoes.listar', // REMOVIDO: Será controlado por departamento
-            // 'requisicoes.criar',  // REMOVIDO: Será controlado por departamento
-            // 'reservas.listar',    // REMOVIDO: Será controlado por departamento
-            // 'reservas.criar',     // REMOVIDO: Será controlado por departamento
-            // 'documentos_interno.listar', // REMOVIDO: Será controlado por departamento
+            'viaturas.listar',
+            'credenciais.listar',
+            'credenciais.criar',
+        ]);
+
+        $roleTecnico = Role::firstOrCreate(['name' => 'tecnico', 'guard_name' => 'web']);
+        $roleTecnico->givePermissionTo([
+            'dashboard.view',
+            'viaturas.listar',
+            'credenciais.listar',
+            'credenciais.criar',
         ]);
 
         // Logística: Fleet and Request Fulfillment

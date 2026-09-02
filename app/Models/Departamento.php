@@ -17,6 +17,11 @@ class Departamento extends Model
         'gabinete_id',
         'responsavel_id',
         'parent_id',
+        'is_area_expediente',
+    ];
+
+    protected $casts = [
+        'is_area_expediente' => 'boolean',
     ];
 
     public function usuarios()

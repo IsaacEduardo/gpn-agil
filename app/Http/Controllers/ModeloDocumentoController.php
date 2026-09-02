@@ -11,6 +11,8 @@ class ModeloDocumentoController extends Controller
 {
     public function index(Request $request)
     {
+        $this->checkAccess();
+
         $query = ModeloDocumento::with('especie');
 
         // Search
@@ -47,6 +49,8 @@ class ModeloDocumentoController extends Controller
 
     public function create()
     {
+        $this->checkAccess();
+
         $especies = DocumentoEspecie::where('ativo', true)->orderBy('nome')->get();
 
         return view('modelos.create', compact('especies'));
@@ -54,6 +58,8 @@ class ModeloDocumentoController extends Controller
 
     public function store(Request $request)
     {
+        $this->checkAccess();
+
         $validated = $request->validate([
             'nome' => 'required|string|max:255',
             'documento_especie_id' => 'required|exists:documento_especies,id',
@@ -93,6 +99,8 @@ class ModeloDocumentoController extends Controller
 
     public function edit(ModeloDocumento $modelo)
     {
+        $this->checkAccess();
+
         $especies = DocumentoEspecie::where('ativo', true)->orderBy('nome')->get();
 
         return view('modelos.edit', compact('modelo', 'especies'));
@@ -100,6 +108,8 @@ class ModeloDocumentoController extends Controller
 
     public function update(Request $request, ModeloDocumento $modelo)
     {
+        $this->checkAccess();
+
         $validated = $request->validate([
             'nome' => 'required|string|max:255',
             'documento_especie_id' => 'required|exists:documento_especies,id',
@@ -125,8 +135,29 @@ class ModeloDocumentoController extends Controller
 
     public function destroy(ModeloDocumento $modelo)
     {
+        $this->checkAccess();
+
         $modelo->delete();
 
         return redirect()->route('modelos.index')->with('success', 'Modelo removido com sucesso.');
+    }
+
+    /**
+     * Verifica se o utilizador autenticado tem permissão para gerir modelos (Admin ou Chefe de Gabinete).
+     */
+    private function checkAccess()
+    {
+        $user = Auth::user();
+        if (! $user) {
+            abort(401);
+        }
+
+        $isAdmin = $user->isAdmin() || $user->hasRole('admin') || $user->hasRole('Admin');
+        $isChefeGabinete = (method_exists($user, 'isChefeGabinete') && $user->isChefeGabinete())
+            || (method_exists($user, 'isSuperChefeGabinete') && $user->isSuperChefeGabinete());
+
+        if (! $isAdmin && ! $isChefeGabinete) {
+            abort(403, 'Apenas Administradores e Chefes de Gabinete podem gerir modelos de documentos.');
+        }
     }
 }

@@ -23,14 +23,40 @@
                 <a href="{{ route('documentos-entradas.index') }}" class="btn btn-outline-secondary">
                     <i class="fas fa-arrow-left me-1"></i> Voltar
                 </a>
+
+                @if (config('app.feature_assistente') && auth()->user()?->can('assistente.usar'))
+                    <button type="button" class="btn btn-primary fw-semibold shadow-xs" onclick="window.gerarResumoIaDocWidget ? window.gerarResumoIaDocWidget({{ $doc->id }}, 'ENTRADA') : null">
+                        <i class="fas fa-brain me-1"></i> ✨ Resumir com IA
+                    </button>
+                @endif
                 
                 <div class="btn-group">
                     <a href="{{ route('documentos-entradas.edit', $doc) }}" class="btn btn-outline-primary">
                         <i class="fas fa-edit me-1"></i> Editar
                     </a>
-                    <a href="{{ route('documentos-entradas.protocolo', $doc) }}" target="_blank" class="btn btn-outline-success" title="Imprimir Protocolo">
-                        <i class="fas fa-print me-1"></i> Protocolo
-                    </a>
+                    <div class="btn-group">
+                        <button class="btn btn-success dropdown-toggle fw-semibold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-barcode me-1"></i> Protocolo
+                        </button>
+                        <ul class="dropdown-menu shadow-sm border-0">
+                            <li>
+                                <a class="dropdown-item fw-semibold" href="{{ route('documentos-entradas.protocolo.etiqueta', [$doc, 'auto_print' => 1]) }}" target="_blank">
+                                    <i class="fas fa-barcode me-2 text-success"></i> Imprimir Etiqueta Adesiva (100x50mm)
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ route('documentos-entradas.protocolo.pdf', $doc) }}" target="_blank">
+                                    <i class="fas fa-file-pdf me-2 text-primary"></i> Imprimir Comprovativo A4
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ route('documentos-entradas.protocolo', $doc) }}" target="_blank">
+                                    <i class="fas fa-eye me-2 text-secondary"></i> Visualizar Protocolo Completo
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
 
                 <div class="dropdown">
@@ -42,6 +68,25 @@
                         <li><a class="dropdown-item" href="{{ route('documentos-entradas.export.excel', ['departamento_id' => $doc->departamento_id, 'ano' => $doc->ano_referencia]) }}"><i class="fas fa-file-excel me-2 text-success"></i>Excel</a></li>
                     </ul>
                 </div>
+
+                @if (isset($canDespachar) && $canDespachar && in_array($doc->status, ['pendente_tratamento', 'registrado']))
+                    <button class="btn btn-warning fw-bold text-dark" data-bs-toggle="modal" data-bs-target="#modalDespacho{{ $doc->id }}">
+                        <i class="fas fa-file-signature me-1"></i> Despachar
+                    </button>
+                @endif
+                @if (isset($canEncaminharTratado) && $canEncaminharTratado && $doc->status === 'tratado')
+                    <form action="{{ route('documentos-entradas.encaminhar-tratado', $doc) }}" method="POST" class="d-inline">
+                        @csrf
+                        <button type="submit" class="btn btn-success fw-bold" onclick="return confirm('Confirma o encaminhamento deste documento tratado para os departamentos selecionados?')">
+                            <i class="fas fa-paper-plane me-1"></i> Encaminhar p/ Destinos
+                        </button>
+                    </form>
+                @endif
+
+                <a href="{{ route('documentos-internos.create', ['documento_entrada_id' => $doc->id, 'tipo_relacao' => 'RESPOSTA']) }}"
+                    class="btn btn-outline-primary fw-medium">
+                    <i class="fas fa-reply me-1"></i> Elaborar Resposta / Parecer
+                </a>
 
                 @if (!$doc->saida_gabinete_data && !$hasPendente)
                 <div class="dropdown">
@@ -198,6 +243,37 @@
                                 <label class="text-muted small text-uppercase fw-semibold">Observações</label>
                                 <div class="p-3 bg-light rounded text-muted fst-italic">{{ $doc->observacoes ?? 'Sem observações.' }}</div>
                             </div>
+
+                            @if ($doc->texto_despacho || $doc->data_despacho)
+                                <div class="col-12 mt-3">
+                                    <div class="card border-primary border-opacity-25 shadow-sm rounded-3 overflow-hidden">
+                                        <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between py-2">
+                                            <span class="fw-bold"><i class="fas fa-file-signature me-2"></i> Despacho / Parecer do Gabinete</span>
+                                            @if ($doc->data_despacho)
+                                                <span class="badge bg-white text-primary fw-medium">{{ optional($doc->data_despacho)->format('d/m/Y H:i') }}</span>
+                                            @endif
+                                        </div>
+                                        <div class="card-body p-3 bg-light">
+                                            <div class="fw-medium text-dark mb-2" style="white-space: pre-line;">
+                                                {{ $doc->texto_despacho }}
+                                            </div>
+                                            <div class="d-flex flex-wrap align-items-center justify-content-between border-top pt-2 mt-2 small text-muted">
+                                                <div>
+                                                    <i class="fas fa-user-check me-1 text-primary"></i> <strong>Despachado por:</strong> {{ optional($doc->despachadoPor)->name ?? 'Chefe de Gabinete' }}
+                                                </div>
+                                                <div>
+                                                    <i class="fas fa-building me-1 text-primary"></i> <strong>Destinatários:</strong>
+                                                    @forelse ($doc->departamentosDestino as $destDep)
+                                                        <span class="badge bg-primary rounded-pill ms-1">{{ $destDep->nome }}</span>
+                                                    @empty
+                                                        <span class="badge bg-secondary rounded-pill ms-1">{{ optional($doc->departamento)->nome }}</span>
+                                                    @endforelse
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endif
                             
                             @if ($doc->tags->count())
                             <div class="col-12">
@@ -477,133 +553,7 @@
 
                             <!-- Relations Tab -->
                             <div class="tab-pane fade" id="relations" role="tabpanel" aria-labelledby="relations-tab">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <h6 class="fw-bold mb-0">Documentos Relacionados</h6>
-                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalRelacionarDocumento">
-                                        <i class="fas fa-link me-1"></i> Vincular Novo
-                                    </button>
-                                </div>
-
-                                {{-- Display Internal Documents --}}
-                                @if ($doc->documentosInternos && $doc->documentosInternos->count())
-                                    <h6 class="small text-muted text-uppercase fw-bold mb-2 ps-1">Respostas / Documentos Internos</h6>
-                                    <div class="list-group mb-4">
-                                        @foreach ($doc->documentosInternos as $interno)
-                                            <div class="list-group-item list-group-item-action p-3 border-start border-4 border-info">
-                                                <div class="d-flex justify-content-between align-items-start">
-                                                    <div class="d-flex gap-3 align-items-center">
-                                                        <div class="text-center" style="min-width: 80px;">
-                                                            <div class="bg-info bg-opacity-10 rounded p-2 text-info mb-1 d-inline-block">
-                                                                 <i class="fas fa-file-signature fa-lg"></i>
-                                                            </div>
-                                                            <div class="d-block">
-                                                                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill" style="font-size: 0.65rem;">
-                                                                    INTERNO
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        <div>
-                                                            <h6 class="mb-1 fw-bold">
-                                                                <a href="{{ route('documentos-internos.show', $interno->id) }}" class="text-decoration-none text-dark stretched-link">
-                                                                    {{ $interno->titulo }}
-                                                                </a>
-                                                            </h6>
-                                                            <p class="mb-1 text-dark small text-truncate" style="max-width: 500px;">
-                                                                Ref: {{ $interno->numero_referencia ?? 'S/Ref' }}
-                                                            </p>
-                                                            <div class="small text-muted">
-                                                                <span class="me-3"><i class="fas fa-user me-1"></i> {{ optional($interno->autor)->name }}</span>
-                                                                <span class="me-3"><i class="fas fa-calendar-alt me-1"></i> {{ $interno->created_at->format('d/m/Y') }}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div class="z-2 position-relative ms-2">
-                                                        <form action="{{ route('documentos-entradas.desrelacionar', [$doc, $interno->id]) }}?type=interno" method="POST" onsubmit="return confirm('Remover vínculo com este documento interno?');">
-                                                            @csrf @method('DELETE')
-                                                            <button type="submit" class="btn btn-sm btn-outline-danger border-0" title="Desvincular">
-                                                                <i class="fas fa-unlink"></i>
-                                                            </button>
-                                                        </form>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                @endif
-
-                                {{-- Display External/Entry Documents --}}
-                                @if ($relacionados && $relacionados->count())
-                                    <h6 class="small text-muted text-uppercase fw-bold mb-2 ps-1">Outras Entradas Relacionadas</h6>
-                                    <div class="list-group">
-                                        @foreach ($relacionados as $rel)
-                                            <div class="list-group-item list-group-item-action p-3">
-                                                <div class="d-flex justify-content-between align-items-start">
-                                                    <div class="d-flex gap-3 align-items-center">
-                                                        <div class="text-center" style="min-width: 80px;">
-                                                            <div class="bg-light rounded p-2 text-secondary mb-1 d-inline-block">
-                                                                <i class="fas fa-file-alt fa-lg"></i>
-                                                            </div>
-                                                            <div class="d-block">
-                                                                <?php
-                                                                    $tipoVinculo = $rel->pivot->tipo ?? 'relacionado';
-                                                                    $badgeClass = 'bg-secondary-subtle text-secondary border-secondary-subtle';
-                                                                    if ($tipoVinculo === 'resposta') {
-                                                                        $badgeClass = 'bg-info-subtle text-info-emphasis border-info-subtle';
-                                                                    } elseif ($tipoVinculo === 'anexo') {
-                                                                        $badgeClass = 'bg-success-subtle text-success-emphasis border-success-subtle';
-                                                                    } elseif ($tipoVinculo === 'origem') {
-                                                                        $badgeClass = 'bg-warning-subtle text-warning-emphasis border-warning-subtle';
-                                                                    }
-                                                                ?>
-                                                                <span class="badge {{ $badgeClass }} border rounded-pill text-uppercase" style="font-size: 0.65rem;">
-                                                                    {{ ucfirst($tipoVinculo) }}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        <div>
-                                                            <h6 class="mb-1 fw-bold">
-                                                                <a href="{{ route('documentos-entradas.show', $rel->id) }}" class="text-decoration-none text-dark stretched-link">
-                                                                    {{ $rel->numero_sequencial }}/{{ $rel->ano_referencia }}
-                                                                </a>
-                                                            </h6>
-                                                            <p class="mb-1 text-dark small text-truncate" style="max-width: 500px;">
-                                                                {{ $rel->assunto }}
-                                                            </p>
-                                                            <div class="small text-muted">
-                                                                <span class="me-3"><i class="fas fa-calendar-alt me-1"></i> {{ optional($rel->data_entrada)->format('d/m/Y') }}</span>
-                                                                <span class="me-3"><i class="fas fa-tag me-1"></i> {{ $rel->classificacao_ref_numero ?? 'S/Ref' }}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div class="z-2 position-relative ms-2">
-                                                        <form action="{{ route('documentos-entradas.desrelacionar', [$doc, $rel]) }}" method="POST" onsubmit="return confirm('Remover este vínculo?');">
-                                                            @csrf @method('DELETE')
-                                                            <button type="submit" class="btn btn-sm btn-outline-danger border-0" title="Remover Vínculo">
-                                                                 <i class="fas fa-unlink"></i>
-                                                            </button>
-                                                        </form>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                @endif
-
-                                @if ((!$relacionados || $relacionados->count() == 0) && (!$doc->documentosInternos || $doc->documentosInternos->count() == 0))
-                                    <div class="text-center py-5">
-                                        <div class="bg-light rounded-circle d-inline-flex p-3 mb-3">
-                                            <i class="fas fa-link fa-2x text-muted opacity-50"></i>
-                                        </div>
-                                        <p class="text-muted small mb-0">Nenhum documento vinculado.</p>
-                                        <button class="btn btn-link btn-sm text-decoration-none" data-bs-toggle="modal" data-bs-target="#modalRelacionarDocumento">
-                                            Adicionar o primeiro vínculo
-                                        </button>
-                                    </div>
-                                @endif
+                                <x-documento-vinculos :documento="$doc" tipo="EXTERNO" />
                             </div>
                         </div>
                     </div>
@@ -739,20 +689,41 @@
                                         </div>
                                         <div class="text-truncate">
                                             <div class="fw-semibold text-truncate" title="{{ $an->nome_original }}">{{ $an->nome_original ?? basename($an->caminho_arquivo) }}</div>
-                                            <div class="small text-muted">{{ number_format(($an->tamanho_bytes ?? 0) / 1024, 1) }} KB</div>
+                                            <div class="d-flex align-items-center gap-2 mt-1">
+                                                <span class="small text-muted">{{ number_format(($an->tamanho_bytes ?? 0) / 1024, 1) }} KB</span>
+                                                @if($an->isOcrAplicavel())
+                                                    @if($an->ocr_status === 'CONCLUIDO')
+                                                        <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25" style="font-size: 0.75rem;">
+                                                            <i class="fas fa-check-circle me-1"></i> OCR Concluído @if($an->ocr_palavras_count > 0) ({{ $an->ocr_palavras_count }} pal.) @endif
+                                                        </span>
+                                                    @elseif($an->ocr_status === 'PROCESSANDO')
+                                                        <span class="badge bg-warning bg-opacity-10 text-dark border border-warning border-opacity-25" style="font-size: 0.75rem;">
+                                                            <i class="fas fa-spinner fa-spin me-1"></i> OCR em Processamento
+                                                        </span>
+                                                    @elseif($an->ocr_status === 'FALHA')
+                                                        <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25" style="font-size: 0.75rem;" title="{{ $an->ocr_erro }}">
+                                                            <i class="fas fa-exclamation-triangle me-1"></i> OCR Falhou
+                                                        </span>
+                                                    @else
+                                                        <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25" style="font-size: 0.75rem;">
+                                                            <i class="fas fa-clock me-1"></i> OCR Pendente
+                                                        </span>
+                                                    @endif
+                                                @endif
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="d-flex gap-1 ms-2">
-                                        @if(in_array($an->mime_type, ['application/pdf']) || str_starts_with($an->mime_type, 'image/'))
+                                        @if($an->isOcrAplicavel())
                                             <button type="button" class="btn btn-sm btn-light text-secondary btn-ver-ocr" data-anexo-id="{{ $an->id }}" data-nome="{{ $an->nome_original }}" title="Ver Texto Extraído (OCR)">
                                                 <i class="fas fa-file-alt text-success"></i>
                                             </button>
                                         @endif
-                                        <a href="{{ route('documentos-entradas.anexos.download', [$doc, $an]) }}" target="_blank" class="btn btn-sm btn-light text-primary"><i class="fas fa-download"></i></a>
+                                        <a href="{{ route('documentos-entradas.anexos.download', [$doc, $an]) }}" target="_blank" class="btn btn-sm btn-light text-primary" title="Baixar Arquivo"><i class="fas fa-download"></i></a>
                                         <form action="{{ route('documentos-entradas.anexos.destroy', [$doc, $an]) }}" method="POST" onsubmit="return confirm('Remover este anexo?');">
                                             @csrf
                                             @method('DELETE')
-                                            <button class="btn btn-sm btn-light text-danger"><i class="fas fa-trash"></i></button>
+                                            <button class="btn btn-sm btn-light text-danger" title="Excluir Anexo"><i class="fas fa-trash"></i></button>
                                         </form>
                                     </div>
                                 </li>
@@ -821,24 +792,48 @@
     <div class="modal fade" id="modalVerOcrAnexo" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header bg-success text-white border-bottom-0">
+                <div class="modal-header bg-primary text-white border-bottom-0">
                     <h5 class="modal-title fw-bold d-flex align-items-center gap-2">
                         <i class="fas fa-file-alt"></i>
-                        <span>Texto Extraído via OCR / Parser</span>
+                        <span>Texto Extraído & Indexação OCR</span>
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
                 <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="small text-muted text-uppercase fw-semibold d-block mb-1">Arquivo Anexo</label>
-                        <div class="fw-bold text-dark fs-5" id="modalOcrAnexoNome"></div>
-                    </div>
-                    <div class="position-relative">
-                        <label class="small text-muted text-uppercase fw-semibold d-block mb-2">Conteúdo do Documento</label>
-                        <div id="modalOcrLoading" class="text-center py-5 text-muted d-none">
-                            <span class="spinner-border spinner-border-sm me-2 text-success"></span> A carregar o texto extraído...
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3 pb-3 border-bottom">
+                        <div>
+                            <label class="small text-muted text-uppercase fw-semibold d-block mb-1">Arquivo Anexo</label>
+                            <div class="fw-bold text-dark fs-5" id="modalOcrAnexoNome"></div>
                         </div>
-                        <div id="modalOcrContentContainer" class="p-3 bg-light rounded border border-secondary border-opacity-10 position-relative" style="max-height: 50vh; overflow-y: auto;">
+                        <div class="d-flex flex-column align-items-end gap-1">
+                            <span id="modalOcrStatusBadge" class="badge bg-secondary">Pendente</span>
+                            <small class="text-muted" id="modalOcrMetodoInfo"></small>
+                        </div>
+                    </div>
+
+                    <!-- Alerta de Erro / Falha -->
+                    <div id="modalOcrErrorAlert" class="alert alert-danger d-none mb-3">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Falha no Processamento:</strong>
+                                <span id="modalOcrErrorMsg" class="d-block small mt-1"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Estado Carregando -->
+                    <div id="modalOcrLoading" class="text-center py-5 text-muted d-none">
+                        <span class="spinner-border spinner-border-sm me-2 text-primary"></span> A carregar os dados de OCR...
+                    </div>
+
+                    <!-- Conteúdo de Texto Extraído -->
+                    <div id="modalOcrContentContainer" class="position-relative">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="small text-muted text-uppercase fw-semibold mb-0">Conteúdo Extraído</label>
+                            <span class="badge bg-light text-secondary border" id="modalOcrWordCount">0 palavras</span>
+                        </div>
+                        <div class="p-3 bg-light rounded border border-secondary border-opacity-10 position-relative" style="max-height: 45vh; overflow-y: auto;">
                             <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2" id="btnCopiarOcr" title="Copiar Texto">
                                 <i class="far fa-copy"></i> Copiar
                             </button>
@@ -846,7 +841,12 @@
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer border-top-0 pt-0">
+                <div class="modal-footer border-top-0 pt-0 d-flex justify-content-between">
+                    <div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="btnReprocessarOcr">
+                            <i class="fas fa-sync-alt me-1"></i> Reprocessar OCR
+                        </button>
+                    </div>
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
                 </div>
             </div>
@@ -955,10 +955,10 @@
                 const destinoUsuario = tarefaForm.querySelector('[data-field="destino-usuario"]');
                 const destinoDepartamento = tarefaForm.querySelector('[data-field="destino-departamento"]');
                 const depSelect = destinoDepartamento ? destinoDepartamento.querySelector('select') : null;
-                const userSelect = destinoUsuario.querySelector('select');
+                const userSelect = destinoUsuario ? destinoUsuario.querySelector('select') : null;
                 const updateVisibility = function() {
                     const isDep = tipoDepartamento && tipoDepartamento.checked;
-                    destinoUsuario.classList.toggle('d-none', isDep);
+                    if (destinoUsuario) destinoUsuario.classList.toggle('d-none', isDep);
                     if (destinoDepartamento) destinoDepartamento.classList.toggle('d-none', !isDep);
                     
                     if (isDep) {
@@ -1053,47 +1053,130 @@
             });
 
             // Modal de visualizar OCR do Anexo
+            let currentOcrAnexoId = null;
+
+            function carregarDadosOcr(anexoId) {
+                const contentContainer = document.getElementById('modalOcrContentContainer');
+                const preEl = document.getElementById('modalOcrAnexoConteudo');
+                const loadingEl = document.getElementById('modalOcrLoading');
+                const btnCopiar = document.getElementById('btnCopiarOcr');
+                const badgeEl = document.getElementById('modalOcrStatusBadge');
+                const metodoEl = document.getElementById('modalOcrMetodoInfo');
+                const wordCountEl = document.getElementById('modalOcrWordCount');
+                const errorAlert = document.getElementById('modalOcrErrorAlert');
+                const errorMsg = document.getElementById('modalOcrErrorMsg');
+
+                contentContainer.classList.add('d-none');
+                loadingEl.classList.remove('d-none');
+                errorAlert.classList.add('d-none');
+
+                fetch(`/documentos-entradas/{{ $doc->id }}/anexos/${anexoId}/ocr`)
+                    .then(response => response.json())
+                    .then(data => {
+                        loadingEl.classList.add('d-none');
+                        contentContainer.classList.remove('d-none');
+
+                        // Status Badge
+                        if (data.ocr_status_badge) {
+                            badgeEl.className = `badge ${data.ocr_status_badge.class || 'bg-secondary'}`;
+                            badgeEl.innerHTML = `<i class="${data.ocr_status_badge.icon || 'fas fa-info-circle'} me-1"></i> ${data.ocr_status_badge.label || data.ocr_status}`;
+                        } else {
+                            badgeEl.className = 'badge bg-secondary';
+                            badgeEl.textContent = data.ocr_status || 'Pendente';
+                        }
+
+                        // Metodo Info & Word Count
+                        let metodoTexto = '';
+                        if (data.ocr_metodo === 'PDF_NATIVO') {
+                            metodoTexto = 'Extração Direta (PDF Pesquisável)';
+                        } else if (data.ocr_metodo === 'TESSERACT_OCR') {
+                            metodoTexto = 'Tesseract OCR (PDF Escaneado)';
+                        } else if (data.ocr_metodo === 'IMAGEM_OCR') {
+                            metodoTexto = 'Tesseract OCR (Imagem)';
+                        } else if (data.ocr_metodo) {
+                            metodoTexto = data.ocr_metodo;
+                        }
+                        metodoEl.textContent = metodoTexto;
+                        wordCountEl.textContent = (data.ocr_palavras_count || 0) + ' palavras' + (data.ocr_processado_em ? ` • ${data.ocr_processado_em}` : '');
+
+                        // Error handling
+                        if (data.ocr_status === 'FALHA' && data.ocr_erro) {
+                            errorAlert.classList.remove('d-none');
+                            errorMsg.textContent = data.ocr_erro;
+                        }
+
+                        if (data.texto_extraido && data.texto_extraido.trim() !== '') {
+                            preEl.textContent = data.texto_extraido;
+                            btnCopiar.classList.remove('d-none');
+                        } else {
+                            if (data.ocr_status === 'PROCESSANDO') {
+                                preEl.innerHTML = '<span class="text-warning"><i class="fas fa-spinner fa-spin me-1"></i> O processo de OCR está em execução em segundo plano. Por favor, aguarde alguns instantes.</span>';
+                            } else if (data.ocr_status === 'FALHA') {
+                                preEl.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Falha ao extrair texto deste anexo.</span>';
+                            } else {
+                                preEl.innerHTML = '<span class="text-muted italic"><i class="fas fa-info-circle me-1"></i> Não foi possível extrair nenhum texto deste anexo ou o OCR ainda não foi iniciado.</span>';
+                            }
+                            btnCopiar.classList.add('d-none');
+                        }
+                    })
+                    .catch(err => {
+                        loadingEl.classList.add('d-none');
+                        contentContainer.classList.remove('d-none');
+                        preEl.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Erro ao carregar os dados de OCR.</span>';
+                        btnCopiar.classList.add('d-none');
+                    });
+            }
+
             document.querySelectorAll('.btn-ver-ocr').forEach(function(button) {
                 button.addEventListener('click', function(e) {
                     e.preventDefault();
-                    const anexoId = this.getAttribute('data-anexo-id');
+                    currentOcrAnexoId = this.getAttribute('data-anexo-id');
                     const nome = this.getAttribute('data-nome');
-                    
+
                     document.getElementById('modalOcrAnexoNome').textContent = nome;
-                    
-                    const contentContainer = document.getElementById('modalOcrContentContainer');
-                    const preEl = document.getElementById('modalOcrAnexoConteudo');
-                    const loadingEl = document.getElementById('modalOcrLoading');
-                    const btnCopiar = document.getElementById('btnCopiarOcr');
-                    
-                    contentContainer.classList.add('d-none');
-                    loadingEl.classList.remove('d-none');
-                    
+
                     const modal = new bootstrap.Modal(document.getElementById('modalVerOcrAnexo'));
                     modal.show();
-                    
-                    fetch(`/documentos-entradas/{{ $doc->id }}/anexos/${anexoId}/ocr`)
-                        .then(response => response.json())
-                        .then(data => {
-                            loadingEl.classList.add('d-none');
-                            contentContainer.classList.remove('d-none');
-                            
-                            if (data.texto_extraido && data.texto_extraido.trim() !== '') {
-                                preEl.textContent = data.texto_extraido;
-                                btnCopiar.classList.remove('d-none');
-                            } else {
-                                preEl.innerHTML = '<span class="text-muted italic"><i class="fas fa-info-circle me-1"></i> Não foi possível extrair nenhum texto deste anexo ou o processo de OCR ainda está a decorrer.</span>';
-                                btnCopiar.classList.add('d-none');
-                            }
-                        })
-                        .catch(err => {
-                            loadingEl.classList.add('d-none');
-                            contentContainer.classList.remove('d-none');
-                            preEl.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Erro ao carregar o texto extraído.</span>';
-                            btnCopiar.classList.add('d-none');
-                        });
+
+                    carregarDadosOcr(currentOcrAnexoId);
                 });
             });
+
+            // Botão Reprocessar OCR
+            const btnReprocessar = document.getElementById('btnReprocessarOcr');
+            if (btnReprocessar) {
+                btnReprocessar.addEventListener('click', function() {
+                    if (!currentOcrAnexoId) return;
+
+                    const originalHTML = this.innerHTML;
+                    this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> A reprocessar...';
+                    this.disabled = true;
+
+                    fetch(`/documentos-entradas/{{ $doc->id }}/anexos/${currentOcrAnexoId}/reprocessar-ocr`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(res => {
+                        this.innerHTML = '<i class="fas fa-check me-1"></i> Job Enfileirado!';
+                        setTimeout(() => {
+                            this.innerHTML = originalHTML;
+                            this.disabled = false;
+                            carregarDadosOcr(currentOcrAnexoId);
+                        }, 1200);
+                    })
+                    .catch(err => {
+                        if (window.Toast) {
+                            window.Toast.error('Erro no OCR', 'Não foi possível solicitar o reprocessamento do anexo.');
+                        }
+                        this.innerHTML = originalHTML;
+                        this.disabled = false;
+                    });
+                });
+            }
 
             // Copiar texto OCR
             const btnCopiar = document.getElementById('btnCopiarOcr');
@@ -1118,8 +1201,11 @@
 
     @if (config('app.feature_assistente') && auth()->user()?->can('assistente.usar'))
         @include('assistente._documento', [
+            'docId' => $doc->id,
+            'docTipo' => 'ENTRADA',
             'ctxRoute' => route('assistente.entrada', $doc),
             'ctxTitulo' => 'este documento de entrada',
         ])
     @endif
+    @include('documentos_entradas.partials.modal-despacho', ['doc' => $doc, 'departamentos' => $departamentos])
 @endsection

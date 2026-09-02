@@ -75,13 +75,14 @@
                                 </div>
 
                                 <div class="col-12">
-                                    <div class="form-floating">
-                                        <input type="text" name="procedencia" class="form-control @error('procedencia') is-invalid @enderror" id="floatingProcedencia" placeholder="Origem" value="{{ old('procedencia') }}">
-                                        <label for="floatingProcedencia">Procedência / Origem</label>
-                                        @error('procedencia')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
+                                    <label class="form-label fw-bold text-muted small mb-1">Procedência / Origem</label>
+                                    <x-procedencia-combobox name="procedencia_id" :procedencias="$procedencias ?? null" :selected="old('procedencia_id')" />
+                                    @error('procedencia_id')
+                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                    @enderror
+                                    @error('procedencia')
+                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                    @enderror
                                 </div>
 
                                 <div class="col-12">
@@ -159,4 +160,7 @@
             </div>
         </div>
     </div>
+
+    {{-- Componente Modal do Scanner Direct (WebScan Bridge) --}}
+    <x-webscan-modal targetInputId="fileInput" />
 @endsection

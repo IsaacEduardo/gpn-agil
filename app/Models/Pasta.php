@@ -76,39 +76,70 @@ class Pasta extends Model
     }
 
     /**
-     * Scope to filter folders accessible by the user.
+     * Scope to filter folders accessible by the user with strict RBAC rules.
      */
     public function scopeAccessibleBy($query, User $user)
     {
-        // Admin sees all
-        if ($user->hasRole('admin') || $user->hasRole('Admin')) {
+        // 1. Admin tem acesso irrestrito
+        if ($user->isAdmin() || $user->hasRole('admin')) {
             return $query;
         }
 
-        // Super Chefe de Gabinete sees all folders in their cabinet
-        if (method_exists($user, 'isSuperChefeGabinete') && $user->isSuperChefeGabinete()) {
-            $gabinete = $user->gabineteSuperGerenciado;
-            if ($gabinete) {
-                return $query->where('gabinete_id', $gabinete->id);
-            }
+        $permissionService = app(\App\Services\DocumentoPermissionService::class);
+
+        // 2. Super Chefe de Gabinete
+        if (method_exists($user, 'isSuperChefeGabinete') && $user->isSuperChefeGabinete() && $user->gabineteSuperGerenciado) {
+            $gabId = $user->gabineteSuperGerenciado->id;
+
+            return $query->where(function ($q) use ($gabId, $user) {
+                $q->where('gabinete_id', $gabId)
+                    ->orWhere('type', 'public')
+                    ->orWhere('departamento_id', $user->departamento_id);
+            });
         }
 
-        // Chefe de Gabinete sees all folders in their cabinet (across all departments)
-        // assuming User model has isChefeGabinete()
+        // 3. Chefe de Gabinete (Visualiza pastas de todo o Gabinete)
         if (method_exists($user, 'isChefeGabinete') && $user->isChefeGabinete()) {
-            $gabinete = $user->gabineteGerenciado;
-            if ($gabinete) {
-                return $query->where('gabinete_id', $gabinete->id);
+            $gabId = optional($user->gabineteGerenciado)->id;
+            if ($gabId) {
+                return $query->where(function ($q) use ($gabId, $user) {
+                    $q->where('gabinete_id', $gabId)
+                        ->orWhere('type', 'public')
+                        ->orWhere('departamento_id', $user->departamento_id);
+                });
             }
         }
 
-        // Standard user sees their department's folders + Public folders + Shared folders
-        return $query->where(function ($q) use ($user) {
-            $q->where('departamento_id', $user->departamento_id)
-                ->orWhere('type', 'public')
-                ->orWhereHas('metadata', function ($subQ) use ($user) {
-                    $subQ->where('key', 'shared_departments')
-                        ->where('value', 'like', "%\"{$user->departamento_id}\"%");
+        // 4. Área de Expediente (Protocolo)
+        if ($permissionService->isUserInAreaExpediente($user)) {
+            return $query->where(function ($q) use ($user) {
+                $q->where('departamento_id', $user->departamento_id)
+                    ->orWhere('type', 'public')
+                    ->orWhere('is_system', true);
+            });
+        }
+
+        // 5. Técnico de Departamento / Chefe de Departamento (Estritamente restrito ao seu departamento)
+        $userDeps = $permissionService->getUserDepartments($user);
+
+        return $query->where(function ($q) use ($user, $userDeps) {
+            if (count($userDeps)) {
+                $q->whereIn('departamento_id', $userDeps);
+            } else {
+                $q->where('departamento_id', $user->departamento_id);
+            }
+            $q->orWhere('type', 'public')
+                ->orWhereHas('metadata', function ($subQ) use ($userDeps, $user) {
+                    $subQ->where('key', 'shared_departments');
+                    if (count($userDeps)) {
+                        $subQ->where(function ($sq) use ($userDeps) {
+                            foreach ($userDeps as $dId) {
+                                $sq->orWhere('value', 'like', "%\"{$dId}\"%");
+                            }
+                        });
+                    } else {
+                        $subQ->where('value', 'like', "%\"{$user->departamento_id}\"%");
+                    }
                 });
         });
     }

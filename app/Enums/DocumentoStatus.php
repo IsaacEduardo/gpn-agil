@@ -5,6 +5,8 @@ namespace App\Enums;
 enum DocumentoStatus: string
 {
     case RASCUNHO = 'rascunho';
+    case PENDENTE_TRATAMENTO = 'pendente_tratamento';
+    case TRATADO = 'tratado';
     case EM_ANALISE = 'em_analise';
     case APROVADO = 'aprovado';
     case ASSINADO = 'assinado';
@@ -22,6 +24,8 @@ enum DocumentoStatus: string
     {
         return match ($this) {
             self::RASCUNHO => 'Rascunho',
+            self::PENDENTE_TRATAMENTO => 'Pendente de Tratamento',
+            self::TRATADO => 'Tratado',
             self::EM_ANALISE => 'Em Análise',
             self::APROVADO => 'Aprovado',
             self::ASSINADO => 'Assinado',
@@ -38,6 +42,8 @@ enum DocumentoStatus: string
     {
         return match ($this) {
             self::RASCUNHO => 'secondary',
+            self::PENDENTE_TRATAMENTO => 'warning',
+            self::TRATADO => 'info',
             self::EM_ANALISE => 'warning',
             self::APROVADO => 'primary',
             self::ASSINADO => 'success',

@@ -56,6 +56,13 @@
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
+                        <div class="mb-3 form-check form-switch p-3 bg-light rounded border">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" name="is_area_expediente" id="is_area_expediente" value="1" {{ old('is_area_expediente', $departamento->is_area_expediente) ? 'checked' : '' }}>
+                            <label class="form-check-label fw-bold" for="is_area_expediente">
+                                <i class="fas fa-inbox me-1 text-primary"></i> É Área de Expediente do Gabinete?
+                            </label>
+                            <div class="form-text small">Usuários vinculados a este setor herdam privilégios operacionais para registrar protocolo de entrada e encaminhar documentos tratados.</div>
+                        </div>
                         <div class="mb-3">
                             <label for="chefe_user_id" class="form-label">Chefe de Departamento</label>
                             <select name="chefe_user_id" id="chefe_user_id" class="form-select @error('chefe_user_id') is-invalid @enderror">

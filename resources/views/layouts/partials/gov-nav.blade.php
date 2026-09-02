@@ -1,202 +1,173 @@
 {{--
-    Navegação horizontal do Portal (substitui a sidebar).
-    Mesma lógica de permissões/links do menu original — apenas a apresentação muda.
-    Os contadores ($menuCounts) e diretivas @can/@if foram preservados.
+    Navegação horizontal simplificada do EDMS (1 clique).
+    Foco estrito: Início, Documentos Externos, Documentos Internos, Arquivo Digital, Administração.
 --}}
 @auth
 @php
-    $isExec = Auth::user()->isChefeGabinete() || Auth::user()->isSuperChefeGabinete() || Auth::user()->hasPermissionTo('gabinete.view_all') || Auth::user()->isAdmin() || Auth::user()->hasRole('chefe-departamento') || Auth::user()->hasRole('chefe_departamento');
-    $canServicos = Auth::user()->can('viewAny', App\Models\Viatura::class) || Auth::user()->can('viewAny', App\Models\Requisicao::class);
-    $canTerritorio = Auth::user()->can('viewAny', App\Models\Lote::class) || Auth::user()->can('viewAny', App\Models\SolicitacaoAtribuicao::class) || Auth::user()->can('viewAny', App\Models\Requerente::class);
-    $territorioActive = request()->routeIs('lotes.*') || request()->routeIs('solicitacoes.*') || request()->routeIs('requerentes.*') || request()->routeIs('analises-tecnicas.*');
-    $canConfig = Auth::user()->canAny(['configuracoes.editar', 'usuarios.gerir', 'departamentos.gerir', 'permissoes.gerir']) || Auth::user()->isAdmin();
-    $docsActive = request()->routeIs('tarefas.*') || request()->routeIs('documentos-entradas.*') || request()->routeIs('edms.*') || request()->routeIs('documentos-internos.*') || request()->routeIs('pastas.*') || request()->routeIs('modelos.*');
-    $adminActive = request()->routeIs('reservas.*') || request()->routeIs('credenciais.*') || request()->routeIs('termos.*');
-    $configActive = request()->routeIs('empresas.*') || request()->routeIs('departamentos.*') || request()->routeIs('gabinetes.*') || request()->routeIs('admin.users.*') || request()->routeIs('admin.instituicao.*');
+    $defaultTab = $menuCounts['default_tab'] ?? 'atribuidos_mim';
+    $extCount = $menuCounts['ext_pendentes'] ?? 0;
+    $intCount = $menuCounts['int_pendentes'] ?? 0;
+
+    $isAdmin = Auth::user()->isAdmin();
+    $canAdmin = $isAdmin || Auth::user()->canAny(['configuracoes.editar', 'usuarios.gerir', 'departamentos.gerir', 'permissoes.gerir']);
+    $canManageTemplates = $isAdmin || Auth::user()->hasRole('admin') || (method_exists(Auth::user(), 'isChefeGabinete') && Auth::user()->isChefeGabinete()) || (method_exists(Auth::user(), 'isSuperChefeGabinete') && Auth::user()->isSuperChefeGabinete());
+
+    $extActive = request()->routeIs('documentos-entradas.*') || request()->routeIs('tarefas.*');
+    $intActive = request()->routeIs('documentos-internos.*') || request()->routeIs('modelos.*');
+    $arqActive = request()->routeIs('edms.*') || request()->routeIs('pastas.*');
+    $adminActive = request()->routeIs('admin.*') || request()->routeIs('empresas.*') || request()->routeIs('departamentos.*') || request()->routeIs('gabinetes.*') || request()->routeIs('configuracoes.*');
 @endphp
 
 <nav class="gov-nav" aria-label="Navegação principal">
     <ul class="gov-nav__list">
 
-        {{-- INÍCIO --}}
+        {{-- 1. INÍCIO (DASHBOARD) --}}
         <li class="gov-nav__item">
             <a href="{{ route('home') }}" class="gov-nav__link {{ request()->routeIs('home') ? 'gov-nav__link--active' : '' }}">
                 <i class="fas fa-th-large"></i> Início
             </a>
         </li>
 
-        {{-- ASSISTENTE IA --}}
+        {{-- 2. DOCUMENTOS EXTERNOS (LINK DIRETO 1-CLIQUE POR PERFIL) --}}
+        <li class="gov-nav__item">
+            <a href="{{ route('documentos-entradas.index', ['tab' => $defaultTab]) }}" 
+               class="gov-nav__link {{ $extActive ? 'gov-nav__link--active' : '' }}" 
+               title="Entradas de Documentos Externos">
+                <i class="fas fa-inbox"></i> Documentos Externos
+                @if ($extCount > 0)
+                    <span class="badge rounded-pill bg-warning text-dark ms-2 shadow-sm">{{ $extCount }}</span>
+                @endif
+            </a>
+        </li>
+
+        {{-- 3. DOCUMENTOS INTERNOS (LINK DIRETO 1-CLIQUE) --}}
+        <li class="gov-nav__item">
+            <a href="{{ route('documentos-internos.index') }}" 
+               class="gov-nav__link {{ request()->routeIs('documentos-internos.*') ? 'gov-nav__link--active' : '' }}" 
+               title="Gestão de Memorandos, Informações Técnicas e Ofícios">
+                <i class="fas fa-file-alt"></i> Documentos Internos
+                @if ($intCount > 0)
+                    <span class="badge rounded-pill bg-info text-dark ms-2 shadow-sm">{{ $intCount }}</span>
+                @endif
+            </a>
+        </li>
+
+        {{-- 4. TEMPLATES / MODELOS DE DOCUMENTOS (APENAS ADMIN E CHEFE DE GABINETE) --}}
+        @if ($canManageTemplates)
+            <li class="gov-nav__item">
+                <a href="{{ route('modelos.index') }}" 
+                   class="gov-nav__link {{ request()->routeIs('modelos.*') ? 'gov-nav__link--active' : '' }}" 
+                   title="Gestão de Modelos e Templates Padronizados de Documentos">
+                    <i class="fas fa-file-contract"></i> Templates
+                </a>
+            </li>
+        @endif
+
+        {{-- 5. ARQUIVO DIGITAL (LINK DIRETO 1-CLIQUE PARA O ACERVO/EDMS) --}}
+        <li class="gov-nav__item">
+            <a href="{{ route('edms.index') }}" 
+               class="gov-nav__link {{ $arqActive ? 'gov-nav__link--active' : '' }}" 
+               title="Repositório de Arquivos, Pastas e Documentos Arquivados">
+                <i class="fas fa-archive"></i> Arquivo Digital
+            </a>
+        </li>
+
+        {{-- 6. SERVIÇOS & FROTA (DROPDOWN) --}}
+        @php
+            $servicosActive = request()->routeIs('viaturas.*') || request()->routeIs('credenciais.*');
+        @endphp
+        <li class="gov-nav__item dropdown">
+            <a href="#" class="gov-nav__link {{ $servicosActive ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false" title="Gestão de Viaturas e Credenciais">
+                <i class="fas fa-cubes"></i> Serviços & Frota <i class="fas fa-chevron-down gov-nav__caret"></i>
+            </a>
+            <ul class="dropdown-menu shadow-lg border-0 mt-2" style="border-radius: 8px;">
+                <li>
+                    <a class="dropdown-item py-2 {{ request()->routeIs('viaturas.*') ? 'active' : '' }}" href="{{ route('viaturas.index') }}">
+                        <i class="fas fa-car me-2 text-muted"></i>Gestão de Viaturas
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item py-2 {{ request()->routeIs('credenciais.*') ? 'active' : '' }}" href="{{ route('credenciais.index') }}">
+                        <i class="fas fa-id-card me-2 text-muted"></i>Gestão de Credenciais
+                    </a>
+                </li>
+            </ul>
+        </li>
+
+        {{-- 7. TERRITÓRIO & GESTÃO DE LOTES --}}
+        @if (Auth::user()->canAny(['lotes.view', 'solicitacoes_lotes.view', 'requerentes.view']) || Auth::user()->isAdmin())
+            @php
+                $territorioActive = request()->routeIs('lotes.*') || request()->routeIs('solicitacoes.*') || request()->routeIs('requerentes.*') || request()->routeIs('analises-tecnicas.*');
+            @endphp
+            <li class="gov-nav__item dropdown">
+                <a href="#" class="gov-nav__link {{ $territorioActive ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false" title="Gestão de Território e Lotes">
+                    <i class="fas fa-map-marked-alt"></i> Território <i class="fas fa-chevron-down gov-nav__caret"></i>
+                </a>
+                <ul class="dropdown-menu shadow-lg border-0 mt-2" style="border-radius: 8px;">
+                    @if (Auth::user()->can('lotes.view') || Auth::user()->isAdmin())
+                        <li>
+                            <a class="dropdown-item py-2 {{ request()->routeIs('lotes.*') ? 'active' : '' }}" href="{{ route('lotes.index') }}">
+                                <i class="fas fa-map-pin me-2 text-muted"></i>Gestão de Lotes
+                            </a>
+                        </li>
+                    @endif
+                    @if (Auth::user()->can('solicitacoes_lotes.view') || Auth::user()->isAdmin())
+                        <li>
+                            <a class="dropdown-item py-2 {{ request()->routeIs('solicitacoes.*') ? 'active' : '' }}" href="{{ route('solicitacoes.index') }}">
+                                <i class="fas fa-file-signature me-2 text-muted"></i>Solicitações de Atribuição
+                            </a>
+                        </li>
+                    @endif
+                    @if (Auth::user()->can('requerentes.view') || Auth::user()->isAdmin())
+                        <li>
+                            <a class="dropdown-item py-2 {{ request()->routeIs('requerentes.*') ? 'active' : '' }}" href="{{ route('requerentes.index') }}">
+                                <i class="fas fa-user-friends me-2 text-muted"></i>Requerentes
+                            </a>
+                        </li>
+                    @endif
+                </ul>
+            </li>
+        @endif
+
+        {{-- 5. ADMINISTRAÇÃO (APENAS GESTORES / ADMINS) --}}
+        @if ($canAdmin)
+            <li class="gov-nav__item dropdown">
+                <a href="#" class="gov-nav__link {{ $adminActive ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-sliders"></i> Administração <i class="fas fa-chevron-down gov-nav__caret"></i>
+                </a>
+                <ul class="dropdown-menu shadow-lg border-0 mt-2" style="border-radius: 8px;">
+                    @if ($isAdmin || Auth::user()->can('usuarios.gerir'))
+                        <li><a class="dropdown-item py-2 {{ request()->routeIs('admin.users.*') ? 'active' : '' }}" href="{{ route('admin.users.index') }}"><i class="fas fa-users-cog me-2 text-muted"></i>Gestão de Usuários</a></li>
+                    @endif
+                    @if ($isAdmin || Auth::user()->can('departamentos.gerir'))
+                        <li><a class="dropdown-item py-2 {{ request()->routeIs('departamentos.*') ? 'active' : '' }}" href="{{ route('departamentos.index') }}"><i class="fas fa-sitemap me-2 text-muted"></i>Departamentos</a></li>
+                        <li><a class="dropdown-item py-2 {{ request()->routeIs('gabinetes.*') ? 'active' : '' }}" href="{{ route('gabinetes.index') }}"><i class="fas fa-building me-2 text-muted"></i>Gabinetes</a></li>
+                    @endif
+                    @if ($isAdmin || Auth::user()->can('permissoes.gerir'))
+                        <li><a class="dropdown-item py-2 {{ request()->routeIs('configuracoes.permissoes.*') ? 'active' : '' }}" href="{{ route('configuracoes.permissoes.index') }}"><i class="fas fa-shield-alt me-2 text-muted"></i>Matriz de Acesso</a></li>
+                    @endif
+                    @if ($isAdmin)
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item py-2 {{ request()->routeIs('admin.instituicao.*') ? 'active' : '' }}" href="{{ route('admin.instituicao.edit') }}"><i class="fas fa-landmark me-2 text-muted"></i>Dados da Instituição</a></li>
+                    @endif
+                    @if ($isAdmin || Auth::user()->can('configuracoes.editar'))
+                        <li><a class="dropdown-item py-2 {{ request()->routeIs('empresas.*') ? 'active' : '' }}" href="{{ route('empresas.index') }}"><i class="fas fa-building-user me-2 text-muted"></i>Empresas Cadastradas</a></li>
+                    @endif
+                </ul>
+            </li>
+        @endif
+
+        {{-- ASSISTENTE IA (OPCIONAL) --}}
         @if (config('app.feature_assistente') && Auth::user()->can('assistente.usar'))
             <li class="gov-nav__item">
                 <a href="{{ route('assistente.index') }}" class="gov-nav__link {{ request()->routeIs('assistente.*') ? 'gov-nav__link--active' : '' }}">
-                    <i class="fas fa-robot"></i> Assistente
+                    <i class="fas fa-robot"></i> Assistente IA
                 </a>
             </li>
         @endif
 
-        {{-- GESTÃO EXECUTIVA --}}
-        @if ($isExec)
-            <li class="gov-nav__item dropdown">
-                <a href="#" class="gov-nav__link {{ request()->routeIs('gabinete.dashboard') || request()->routeIs('departamento.dashboard') ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="fas fa-briefcase"></i> Gestão <i class="fas fa-chevron-down gov-nav__caret"></i>
-                </a>
-                <ul class="dropdown-menu">
-                    @if (Auth::user()->isChefeGabinete() || Auth::user()->isSuperChefeGabinete() || Auth::user()->hasPermissionTo('gabinete.view_all') || Auth::user()->isAdmin())
-                        <li><a class="dropdown-item {{ request()->routeIs('gabinete.dashboard') ? 'active' : '' }}" href="{{ route('gabinete.dashboard') }}"><i class="fas fa-building-user me-2 text-muted"></i>Painel do Gabinete</a></li>
-                    @endif
-                    @if (Auth::user()->hasRole('chefe-departamento') || Auth::user()->hasRole('chefe_departamento') || Auth::user()->isAdmin())
-                        <li><a class="dropdown-item {{ request()->routeIs('departamento.dashboard') ? 'active' : '' }}" href="{{ route('departamento.dashboard') }}"><i class="fas fa-sitemap me-2 text-muted"></i>Gestão Departamental</a></li>
-                    @endif
-                </ul>
-            </li>
-        @endif
-
-        {{-- SERVIÇOS OPERACIONAIS --}}
-        @if ($canServicos)
-            <li class="gov-nav__item dropdown">
-                <a href="#" class="gov-nav__link {{ request()->routeIs('viaturas.*') || request()->routeIs('requisicoes.*') ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="fas fa-truck-fast"></i> Serviços <i class="fas fa-chevron-down gov-nav__caret"></i>
-                </a>
-                <ul class="dropdown-menu">
-                    @can('viewAny', App\Models\Viatura::class)
-                        <li><a class="dropdown-item {{ request()->routeIs('viaturas.*') ? 'active' : '' }}" href="{{ route('viaturas.index') }}"><i class="fas fa-truck-fast me-2 text-muted"></i>Viaturas</a></li>
-                    @endcan
-                    @can('viewAny', App\Models\Requisicao::class)
-                        <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header text-uppercase small">Requisições</h6></li>
-                        <li><a class="dropdown-item {{ request()->routeIs('requisicoes.index') ? 'active' : '' }}" href="{{ route('requisicoes.index') }}">Visão Geral</a></li>
-                        <li>
-                            <a class="dropdown-item {{ request()->routeIs('requisicoes.pendentes') ? 'active' : '' }}" href="{{ route('requisicoes.pendentes') }}">
-                                Pendentes
-                                @if (!empty($menuCounts) && ($menuCounts['pend_requisicoes'] ?? 0) > 0)
-                                    <span class="badge rounded-pill bg-warning text-dark ms-2">{{ $menuCounts['pend_requisicoes'] }}</span>
-                                @endif
-                            </a>
-                        </li>
-                        <li><a class="dropdown-item {{ request()->routeIs('requisicoes.produtos.index') ? 'active' : '' }}" href="{{ route('requisicoes.produtos.index') }}">Produtos</a></li>
-                        <li><a class="dropdown-item {{ request()->routeIs('requisicoes.oficina.index') ? 'active' : '' }}" href="{{ route('requisicoes.oficina.index') }}">Oficina</a></li>
-                        <li><a class="dropdown-item {{ request()->routeIs('requisicoes.servico.index') ? 'active' : '' }}" href="{{ route('requisicoes.servico.index') }}">Serviços</a></li>
-                        <li><a class="dropdown-item {{ request()->routeIs('requisicoes.passagem.index') ? 'active' : '' }}" href="{{ route('requisicoes.passagem.index') }}">Passagem</a></li>
-                    @endcan
-                </ul>
-            </li>
-        @endif
-
-        {{-- GESTÃO TERRITORIAL --}}
-        @if ($canTerritorio)
-            <li class="gov-nav__item dropdown">
-                <a href="#" class="gov-nav__link {{ $territorioActive ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="fas fa-map-marked-alt"></i> Território <i class="fas fa-chevron-down gov-nav__caret"></i>
-                </a>
-                <ul class="dropdown-menu">
-                    @can('viewAny', App\Models\Lote::class)
-                        <li><a class="dropdown-item {{ request()->routeIs('lotes.*') ? 'active' : '' }}" href="{{ route('lotes.index') }}"><i class="fas fa-map-marked-alt me-2 text-muted"></i>Inventário de Lotes</a></li>
-                    @endcan
-                    @can('viewAny', App\Models\SolicitacaoAtribuicao::class)
-                        <li><a class="dropdown-item {{ request()->routeIs('solicitacoes.*') || request()->routeIs('analises-tecnicas.*') ? 'active' : '' }}" href="{{ route('solicitacoes.index') }}"><i class="fas fa-file-signature me-2 text-muted"></i>Solicitações de Atribuição</a></li>
-                    @endcan
-                    @can('viewAny', App\Models\Requerente::class)
-                        <li><a class="dropdown-item {{ request()->routeIs('requerentes.*') ? 'active' : '' }}" href="{{ route('requerentes.index') }}"><i class="fas fa-users me-2 text-muted"></i>Requerentes</a></li>
-                    @endcan
-                </ul>
-            </li>
-        @endif
-
-        {{-- GESTÃO DOCUMENTAL --}}
-        <li class="gov-nav__item dropdown">
-            <a href="#" class="gov-nav__link {{ $docsActive ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-folder-open"></i> Documentos <i class="fas fa-chevron-down gov-nav__caret"></i>
-            </a>
-            <ul class="dropdown-menu">
-                <li><a class="dropdown-item {{ request()->routeIs('tarefas.*') ? 'active' : '' }}" href="{{ route('tarefas.index') }}"><i class="fas fa-tasks me-2 text-muted"></i>Minhas Tarefas</a></li>
-                <li><a class="dropdown-item {{ request()->routeIs('documentos-entradas.*') && request('meus') !== 'pendentes_recebimento' && !in_array(request('meus'), ['visto_pendente', 'visto_aprovado', 'visto_rejeitado', 'visto_gabinete_pendente']) ? 'active' : '' }}" href="{{ route('documentos-entradas.index') }}"><i class="fas fa-inbox me-2 text-muted"></i>Caixa de Entrada</a></li>
-                <li>
-                    <a class="dropdown-item {{ request('meus') === 'pendentes_recebimento' ? 'active' : '' }}" href="{{ route('documentos-entradas.index', ['meus' => 'pendentes_recebimento']) }}">
-                        <i class="fas fa-clock me-2 text-muted"></i>Por Receber
-                        @if (!empty($menuCounts) && ($menuCounts['pend_documentos_por_receber'] ?? 0) > 0)
-                            <span class="badge rounded-pill bg-warning text-dark ms-2">{{ $menuCounts['pend_documentos_por_receber'] }}</span>
-                        @endif
-                    </a>
-                </li>
-                <li><hr class="dropdown-divider"></li>
-                <li><h6 class="dropdown-header text-uppercase small">Vistos &amp; Pareceres</h6></li>
-                <li>
-                    <a class="dropdown-item {{ request('meus') === 'visto_pendente' ? 'active' : '' }}" href="{{ route('documentos-entradas.index', ['meus' => 'visto_pendente']) }}">
-                        Pendentes Dept.
-                        @if (!empty($menuCounts) && ($menuCounts['pend_documentos_visto_departamento'] ?? 0) > 0)
-                            <span class="badge rounded-pill bg-warning text-dark ms-2">{{ $menuCounts['pend_documentos_visto_departamento'] }}</span>
-                        @endif
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item {{ request('meus') === 'visto_gabinete_pendente' ? 'active' : '' }}" href="{{ route('documentos-entradas.index', ['meus' => 'visto_gabinete_pendente']) }}">
-                        Pendentes Gab.
-                        @if (!empty($menuCounts) && ($menuCounts['pend_documentos_visto_gabinete'] ?? 0) > 0)
-                            <span class="badge rounded-pill bg-warning text-dark ms-2">{{ $menuCounts['pend_documentos_visto_gabinete'] }}</span>
-                        @endif
-                    </a>
-                </li>
-                <li><a class="dropdown-item {{ request('meus') === 'visto_aprovado' ? 'active' : '' }}" href="{{ route('documentos-entradas.index', ['meus' => 'visto_aprovado']) }}">Histórico</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><h6 class="dropdown-header text-uppercase small">Arquivo &amp; Modelos</h6></li>
-                <li><a class="dropdown-item {{ request()->routeIs('edms.*') ? 'active' : '' }}" href="{{ route('edms.index') }}">Gerenciador EDMS</a></li>
-                <li><a class="dropdown-item {{ request()->routeIs('documentos-internos.*') ? 'active' : '' }}" href="{{ route('documentos-internos.index') }}">Internos (Legado)</a></li>
-                <li><a class="dropdown-item {{ request()->routeIs('modelos.*') ? 'active' : '' }}" href="{{ route('modelos.index') }}">Modelos</a></li>
-            </ul>
-        </li>
-
-        {{-- ADMINISTRAÇÃO & CREDENCIAIS --}}
-        <li class="gov-nav__item dropdown">
-            <a href="#" class="gov-nav__link {{ $adminActive ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-id-card"></i> Administração <i class="fas fa-chevron-down gov-nav__caret"></i>
-            </a>
-            <ul class="dropdown-menu">
-                @can('viewAny', App\Models\ReservaEspaco::class)
-                    <li>
-                        <a class="dropdown-item {{ request()->routeIs('reservas.*') ? 'active' : '' }}" href="{{ route('reservas.index') }}">
-                            <i class="fas fa-calendar-check me-2 text-muted"></i>Reservas
-                            @if (!empty($menuCounts) && ($menuCounts['pend_reservas'] ?? 0) > 0)
-                                <span class="badge rounded-pill bg-warning text-dark ms-2">{{ $menuCounts['pend_reservas'] }}</span>
-                            @endif
-                        </a>
-                    </li>
-                @endcan
-                <li><a class="dropdown-item {{ request()->routeIs('credenciais.*') ? 'active' : '' }}" href="{{ route('credenciais.index') }}"><i class="fas fa-id-card me-2 text-muted"></i>Credenciais</a></li>
-                <li><a class="dropdown-item {{ request()->routeIs('termos.*') ? 'active' : '' }}" href="{{ route('termos.index') }}"><i class="fas fa-file-signature me-2 text-muted"></i>Termos e Declarações</a></li>
-            </ul>
-        </li>
-
-        {{-- CONFIGURAÇÃO GERAL --}}
-        @if ($canConfig)
-            <li class="gov-nav__item dropdown">
-                <a href="#" class="gov-nav__link {{ $configActive ? 'gov-nav__link--active' : '' }}" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="fas fa-sliders"></i> Configuração <i class="fas fa-chevron-down gov-nav__caret"></i>
-                </a>
-                <ul class="dropdown-menu">
-                    @if (Auth::user()->isAdmin())
-                        <li><a class="dropdown-item {{ request()->routeIs('admin.instituicao.*') ? 'active' : '' }}" href="{{ route('admin.instituicao.edit') }}">Instituição</a></li>
-                    @endif
-                    @if (Auth::user()->can('configuracoes.editar') || Auth::user()->isAdmin())
-                        <li><a class="dropdown-item {{ request()->routeIs('empresas.*') ? 'active' : '' }}" href="{{ route('empresas.index') }}">Empresas</a></li>
-                    @endif
-                    @if (Auth::user()->can('departamentos.gerir') || Auth::user()->isAdmin())
-                        <li><a class="dropdown-item {{ request()->routeIs('departamentos.*') ? 'active' : '' }}" href="{{ route('departamentos.index') }}">Departamentos</a></li>
-                    @endif
-                    @if (Auth::user()->can('permissoes.gerir') || Auth::user()->isAdmin())
-                        <li><a class="dropdown-item {{ request()->routeIs('configuracoes.permissoes.*') ? 'active' : '' }}" href="{{ route('configuracoes.permissoes.index') }}">Matriz de Acesso</a></li>
-                    @endif
-                    @if (Auth::user()->can('departamentos.gerir') || Auth::user()->isAdmin())
-                        <li><a class="dropdown-item {{ request()->routeIs('gabinetes.*') ? 'active' : '' }}" href="{{ route('gabinetes.index') }}">Gabinetes</a></li>
-                    @endif
-                    @if (Auth::user()->can('usuarios.gerir') || Auth::user()->isAdmin())
-                        <li><a class="dropdown-item {{ request()->routeIs('admin.users.*') ? 'active' : '' }}" href="{{ route('admin.users.index') }}">Usuários</a></li>
-                    @endif
-                </ul>
-            </li>
-        @endif
-
-        {{-- APOIO --}}
-        <li class="gov-nav__item">
+        {{-- APOIO / SUPORTE --}}
+        <li class="gov-nav__item ms-auto">
             <a href="{{ route('feedbacks.create') }}" class="gov-nav__link {{ request()->routeIs('feedbacks.*') ? 'gov-nav__link--active' : '' }}">
                 <i class="fas fa-headset"></i> Apoio
             </a>

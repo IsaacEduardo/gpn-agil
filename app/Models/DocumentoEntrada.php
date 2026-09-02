@@ -20,6 +20,7 @@ class DocumentoEntrada extends Model
         'classificacao_ref_numero',
         'data_documento',
         'procedencia',
+        'procedencia_id',
         'assunto',
         'observacoes',
         'saida_gabinete_data',
@@ -40,6 +41,9 @@ class DocumentoEntrada extends Model
         'visto_gabinete_por',
         'visto_gabinete_data',
         'visto_gabinete_observacao',
+        'texto_despacho',
+        'despachado_por_id',
+        'data_despacho',
         'pasta_id',
         'arquivado',
         'arquivado_em',
@@ -56,6 +60,7 @@ class DocumentoEntrada extends Model
         'arquivado_em' => 'datetime',
         'arquivado' => 'boolean',
         'sla_escalado_em' => 'datetime',
+        'data_despacho' => 'datetime',
     ];
 
     public function scopeArquivados($query)
@@ -66,6 +71,21 @@ class DocumentoEntrada extends Model
     public function scopeNaoArquivados($query)
     {
         return $query->where('arquivado', false);
+    }
+
+    public function procedenciaCatalogo()
+    {
+        return $this->belongsTo(Procedencia::class, 'procedencia_id');
+    }
+
+    public function despachadoPor()
+    {
+        return $this->belongsTo(User::class, 'despachado_por_id');
+    }
+
+    public function departamentosDestino()
+    {
+        return $this->belongsToMany(Departamento::class, 'documento_entrada_departamentos_destino', 'documento_entrada_id', 'departamento_id')->withTimestamps();
     }
 
     public function pasta()
@@ -153,6 +173,21 @@ class DocumentoEntrada extends Model
     public function documentosInternos()
     {
         return $this->hasMany(DocumentoInterno::class, 'documento_entrada_id');
+    }
+
+    public function vinculosOrigem()
+    {
+        return $this->hasMany(DocumentoVinculo::class, 'origem_id')->where('origem_tipo', 'EXTERNO');
+    }
+
+    public function vinculosDestino()
+    {
+        return $this->hasMany(DocumentoVinculo::class, 'destino_id')->where('destino_tipo', 'EXTERNO');
+    }
+
+    public function todosVinculos()
+    {
+        return DocumentoVinculo::paraDocumento('EXTERNO', $this->id)->with('vinculadoPor')->get();
     }
 
     public function metadata()

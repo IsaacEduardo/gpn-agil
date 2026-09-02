@@ -56,7 +56,102 @@ class DocumentoPermissionService
     {
         $user->loadMissing('role');
 
-        return $user->role && $user->role->name === UserRole::CHEFE_DEPARTAMENTO->value;
+        $roleName = $user->role ? $user->role->name : null;
+        if (in_array($roleName, ['chefe-departamento', 'chefe_departamento', UserRole::CHEFE_DEPARTAMENTO->value], true)) {
+            return true;
+        }
+
+        if (method_exists($user, 'hasRole')) {
+            if ($user->hasRole('chefe-departamento') || $user->hasRole('chefe_departamento')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Identifica o perfil de fluxo de trabalho do utilizador (gabinete, expediente, chefe_departamento, tecnico).
+     */
+    public function getUserWorkflowProfile(User $user): string
+    {
+        // 1. Chefe de Gabinete / Admin
+        if ($this->isAdmin($user) || count($this->getUserResponsibleGabinetes($user)) > 0) {
+            return 'gabinete';
+        }
+        if (method_exists($user, 'isSuperChefeGabinete') && $user->isSuperChefeGabinete()) {
+            return 'gabinete';
+        }
+
+        // 2. Área de Expediente do Gabinete
+        if ($this->isUserInAreaExpediente($user)) {
+            return 'expediente';
+        }
+
+        // 3. Chefe de Departamento
+        if ($this->isChefeDepartamento($user)) {
+            return 'chefe_departamento';
+        }
+        $userDeps = $this->getUserDepartments($user);
+        if (count($userDeps) && \App\Models\Departamento::whereIn('id', $userDeps)->where('responsavel_id', $user->id)->exists()) {
+            return 'chefe_departamento';
+        }
+
+        // 4. Técnico de Departamento (Default)
+        return 'tecnico';
+    }
+
+    /**
+     * Verifica se o usuário pertence à Área de Expediente do Gabinete.
+     */
+    public function isUserInAreaExpediente(User $user): bool
+    {
+        if ($this->isAdmin($user)) {
+            return true;
+        }
+
+        $userDeps = $this->getUserDepartments($user);
+        if (empty($userDeps)) {
+            return false;
+        }
+
+        return \App\Models\Departamento::whereIn('id', $userDeps)
+            ->where('is_area_expediente', true)
+            ->exists();
+    }
+
+    /**
+     * Verifica se o usuário tem permissão para despachar o documento (Chefe de Gabinete / Responsável).
+     */
+    public function canDespachar(User $user, DocumentoEntrada $documento): bool
+    {
+        if ($this->isAdmin($user)) {
+            return true;
+        }
+
+        $docGabId = $documento->departamento ? (int) $documento->departamento->gabinete_id : null;
+        if ($docGabId) {
+            if (method_exists($user, 'isSuperChefeDoGabinete') && $user->isSuperChefeDoGabinete($docGabId)) {
+                return true;
+            }
+            if ($this->isGabineteResponsavel($user, $docGabId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Verifica se o usuário tem permissão para encaminhar documento tratado (Chefe de Gabinete ou Expediente).
+     */
+    public function canEncaminharTratado(User $user, DocumentoEntrada $documento): bool
+    {
+        if ($this->canDespachar($user, $documento)) {
+            return true;
+        }
+
+        return $this->isUserInAreaExpediente($user);
     }
 
     public function canReceiveInDepartment(User $user, int $targetDepartamentoId): bool
@@ -122,25 +217,35 @@ class DocumentoPermissionService
             return true;
         }
 
-        // 0. Super Cabinet Chief
+        // 0. Criador do documento
+        if ((int) $documento->user_id === (int) $user->id) {
+            return true;
+        }
+
+        // 1. Super Chefe do Gabinete
         $docGabId = $documento->departamento ? (int) $documento->departamento->gabinete_id : null;
-        if ($docGabId && $user->isSuperChefeDoGabinete($docGabId)) {
+        if ($docGabId && method_exists($user, 'isSuperChefeDoGabinete') && $user->isSuperChefeDoGabinete($docGabId)) {
             return true;
         }
 
         $userDeps = $this->getUserDepartments($user);
 
-        // 1. Current Department
+        // 2. Departamento Atual do documento
         if (in_array((int) $documento->departamento_id, $userDeps)) {
             return true;
         }
 
-        // 2. Cabinet Responsible
+        // 3. Responsável pelo Gabinete
         if ($docGabId && $this->isGabineteResponsavel($user, $docGabId)) {
             return true;
         }
 
-        // 3. Document History (User's department handled it)
+        // 4. Departamentos de Destino (Despacho / Encaminhamento Múltiplo)
+        if (count($userDeps) && $documento->departamentosDestino()->whereIn('departamentos.id', $userDeps)->exists()) {
+            return true;
+        }
+
+        // 5. Histórico de Encaminhamentos
         if (count($userDeps)) {
             $hasHistory = DocumentoEncaminhamento::where('documento_entrada_id', $documento->id)
                 ->where(function ($q) use ($userDeps) {
@@ -151,6 +256,21 @@ class DocumentoPermissionService
             if ($hasHistory) {
                 return true;
             }
+        }
+
+        // 6. Possui Tarefa/Despacho atribuído ao utilizador ou ao seu departamento
+        $hasTask = \App\Models\DocumentoTarefa::where('documento_entrada_id', $documento->id)
+            ->where(function ($q) use ($user, $userDeps) {
+                $q->where('assigned_to_user_id', $user->id)
+                  ->orWhere('assigned_by_id', $user->id)
+                  ->orWhere('responsavel_user_id', $user->id);
+                if (count($userDeps)) {
+                    $q->orWhereIn('assigned_to_departamento_id', $userDeps);
+                }
+            })->exists();
+
+        if ($hasTask) {
+            return true;
         }
 
         return false;

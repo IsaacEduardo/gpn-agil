@@ -33,6 +33,11 @@ class DocumentoTarefa extends Model
         return $this->belongsTo(DocumentoEntrada::class, 'documento_entrada_id');
     }
 
+    public function documentoEntrada()
+    {
+        return $this->belongsTo(DocumentoEntrada::class, 'documento_entrada_id');
+    }
+
     public function assignedBy()
     {
         return $this->belongsTo(User::class, 'assigned_by_id');

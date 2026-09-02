@@ -9,6 +9,12 @@
                 </a>
             </div>
             <div>
+                @if (config('app.feature_assistente') && auth()->user()?->can('assistente.usar'))
+                    <button type="button" class="btn btn-primary me-2 fw-semibold shadow-xs" onclick="window.gerarResumoIaDocWidget ? window.gerarResumoIaDocWidget({{ $documentoInterno->id }}, 'INTERNO') : null">
+                        <i class="fas fa-brain me-1"></i> ✨ Resumir com IA
+                    </button>
+                @endif
+
                 @if ($documentoInterno->status->value === 'rascunho')
                     <a href="{{ route('documentos-internos.edit', $documentoInterno->id) }}" class="btn btn-primary me-2">
                         <i class="fas fa-edit me-2"></i>Editar
@@ -184,12 +190,17 @@
                     </div>
                 @endif
 
-                <!-- Trilha de Auditoria -->
+                <!-- Trilha de Auditoria e Vínculos -->
                 <div class="card mt-4 d-print-none border-0 shadow-sm">
                     <div class="card-header bg-light fw-bold">
                         <ul class="nav nav-tabs card-header-tabs" id="docTabs" role="tablist">
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="audit-tab" data-bs-toggle="tab"
+                                <button class="nav-link active" id="vinculos-tab" data-bs-toggle="tab"
+                                    data-bs-target="#vinculosTabPane" type="button" role="tab"><i
+                                        class="fas fa-link me-2"></i>Vínculos & Dossiê</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="audit-tab" data-bs-toggle="tab"
                                     data-bs-target="#audit" type="button" role="tab"><i
                                         class="fas fa-history me-2"></i>Auditoria</button>
                             </li>
@@ -203,8 +214,13 @@
                     </div>
                     <div class="card-body p-0">
                         <div class="tab-content" id="docTabsContent">
+                            <!-- Vínculos Tab -->
+                            <div class="tab-pane fade show active p-3 p-md-4" id="vinculosTabPane" role="tabpanel">
+                                <x-documento-vinculos :documento="$documentoInterno" tipo="INTERNO" />
+                            </div>
+
                             <!-- Auditoria Tab -->
-                            <div class="tab-pane fade show active" id="audit" role="tabpanel">
+                            <div class="tab-pane fade" id="audit" role="tabpanel">
                                 <div class="table-responsive">
                                     <table class="table table-sm table-hover mb-0">
                                         <thead class="table-light">
@@ -488,6 +504,8 @@
 
     @if (config('app.feature_assistente') && auth()->user()?->can('assistente.usar'))
         @include('assistente._documento', [
+            'docId' => $documentoInterno->id,
+            'docTipo' => 'INTERNO',
             'ctxRoute' => route('assistente.interno', $documentoInterno),
             'ctxTitulo' => 'este documento interno',
         ])

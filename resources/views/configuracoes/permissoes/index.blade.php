@@ -236,9 +236,13 @@
                 .then(data => {
                     this.disabled = false;
                     if(data.success) {
-                        // Success
+                        if (window.Toast) {
+                            window.Toast.success('Permissões Atualizadas', 'A permissão foi atualizada com sucesso.');
+                        }
                     } else {
-                        alert('Erro ao atualizar permissão');
+                        if (window.Toast) {
+                            window.Toast.error('Erro', data.message || 'Erro ao atualizar permissão.');
+                        }
                         this.checked = !isChecked; // Revert
                     }
                 })
@@ -246,7 +250,9 @@
                     console.error('Erro:', error);
                     this.disabled = false;
                     this.checked = !isChecked; // Revert
-                    alert('Erro de conexão');
+                    if (window.Toast) {
+                        window.Toast.error('Erro de Conexão', 'Não foi possível comunicar com o servidor.');
+                    }
                 });
             });
         });

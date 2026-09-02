@@ -16,6 +16,8 @@ class Viatura extends Model
         'marca',
         'ano',
         'tipo',
+        'motor_numero',
+        'cor',
         'status_operacional',
         'afetacao',
         'observacoes',

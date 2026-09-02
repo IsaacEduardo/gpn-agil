@@ -1,734 +1,591 @@
 @extends('layouts.app')
 
-@section('title', 'Dashboard')
+@section('title', 'Central de Comando Operacional — Dashboard')
 
 @section('styles')
-    <style>
-        .dashboard-container {
-            max-width: 1600px;
-        }
+<style>
+    .dashboard-container {
+        max-width: 1650px;
+    }
 
-        /* Welcome Section — claro e arejado */
-        .welcome-section {
-            background: linear-gradient(135deg, #ffffff 0%, #FDECEE 100%);
-            color: #0f172a;
-            border-radius: 20px;
-            padding: 2.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px -16px rgba(15, 23, 42, 0.12);
-            position: relative;
-            overflow: hidden;
-            border: 1px solid #f1f5f9;
-        }
+    /* Welcome Section Banner */
+    .dashboard-banner {
+        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #eff6ff 100%);
+        border-radius: 20px;
+        padding: 2rem 2.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 10px 25px -10px rgba(15, 23, 42, 0.08);
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        position: relative;
+        overflow: hidden;
+    }
 
-        .welcome-section::before {
-            content: '';
-            position: absolute;
-            top: -40%;
-            right: -10%;
-            width: 360px;
-            height: 360px;
-            background: radial-gradient(circle at center, rgba(206, 17, 38, 0.08) 0%, transparent 65%);
-            pointer-events: none;
-        }
+    .dashboard-banner::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 380px;
+        height: 380px;
+        background: radial-gradient(circle at center, rgba(14, 165, 233, 0.08) 0%, transparent 70%);
+        pointer-events: none;
+    }
 
-        .welcome-title {
-            font-weight: 800;
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            letter-spacing: -0.03em;
-            color: #0f172a;
-        }
+    .dashboard-banner-title {
+        font-weight: 800;
+        font-size: 1.85rem;
+        letter-spacing: -0.03em;
+        color: #0f172a;
+        line-height: 1.2;
+    }
 
-        .welcome-subtitle {
-            font-size: 1.05rem;
-            font-weight: 400;
-            color: #475569;
-        }
+    .dashboard-banner-sub {
+        font-size: 1rem;
+        color: #64748b;
+        font-weight: 500;
+    }
 
-        /* Micro-interação reutilizável */
-        .hover-lift {
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
+    /* KPI Cards */
+    .kpi-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 1.5rem;
+        height: 100%;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 4px rgba(15, 23, 42, 0.03);
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        text-decoration: none;
+        color: inherit;
+        overflow: hidden;
+    }
 
-        .hover-lift:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 24px -10px rgba(206, 17, 38, 0.35);
-        }
+    .kpi-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px -8px rgba(15, 23, 42, 0.12);
+        border-color: #cbd5e1;
+        color: inherit;
+    }
 
-        /* KPI Cards */
-        .kpi-card {
-            border: 1px solid rgba(226, 232, 240, 0.8);
-            border-radius: 16px;
-            background: white;
-            padding: 1.5rem;
-            height: 100%;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 4px 6px rgba(148, 163, 184, 0.03);
-            position: relative;
-            overflow: hidden;
-        }
+    .kpi-card::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3.5px;
+        background: #94a3b8;
+        transition: height 0.2s ease;
+    }
 
-        .kpi-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 24px rgba(148, 163, 184, 0.12);
-            border-color: rgba(206, 17, 38, 0.18);
-        }
+    .kpi-card-primary::after { background: linear-gradient(90deg, #2563eb, #3b82f6); }
+    .kpi-card-success::after { background: linear-gradient(90deg, #059669, #10b981); }
+    .kpi-card-warning::after { background: linear-gradient(90deg, #d97706, #f59e0b); }
+    .kpi-card-danger::after  { background: linear-gradient(90deg, #dc2626, #ef4444); }
+    .kpi-card-info::after    { background: linear-gradient(90deg, #0284c7, #0ea5e9); }
+    .kpi-card-secondary::after { background: linear-gradient(90deg, #475569, #64748b); }
 
-        .kpi-card::after {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            background: transparent;
-            transition: background-color 0.3s ease;
-        }
+    .kpi-value {
+        font-size: 2.35rem;
+        font-weight: 800;
+        line-height: 1;
+        color: #0f172a;
+        letter-spacing: -0.04em;
+        margin-top: 0.5rem;
+        margin-bottom: 0.25rem;
+    }
 
-        .kpi-card-primary:hover::after { background-color: #CE1126; }
-        .kpi-card-success:hover::after { background-color: #CE1126; }
-        .kpi-card-warning:hover::after { background-color: #F0AD4E; }
-        .kpi-card-info:hover::after { background-color: #06b6d4; }
+    .kpi-label {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
 
-        .kpi-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 1rem;
-        }
+    .kpi-icon-box {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.35rem;
+    }
 
-        .kpi-icon-box {
-            width: 46px;
-            height: 46px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.35rem;
-            transition: transform 0.3s ease;
-        }
+    /* Operational Cards (Lists) */
+    .op-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 18px;
+        box-shadow: 0 2px 4px rgba(15, 23, 42, 0.03);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
 
-        .kpi-card:hover .kpi-icon-box {
-            transform: scale(1.1);
-        }
+    .op-card-header {
+        padding: 1.35rem 1.5rem;
+        border-bottom: 1px solid #f1f5f9;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
 
-        .kpi-value {
-            font-size: 2.25rem;
-            font-weight: 800;
-            line-height: 1;
-            margin-bottom: 0.5rem;
-            color: #0f172a;
-            letter-spacing: -0.03em;
-        }
+    .op-card-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 0.15rem;
+    }
 
-        .kpi-label {
-            color: #64748b;
-            font-weight: 700;
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
+    .op-card-subtitle {
+        font-size: 0.82rem;
+        color: #64748b;
+    }
 
-        .kpi-footer {
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid #f1f5f9;
-            font-size: 0.85rem;
-            color: #64748b;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+    .op-card-body {
+        padding: 1rem 1.25rem;
+        flex: 1;
+    }
 
-        /* Content Cards */
-        .content-card {
-            border: 1px solid rgba(226, 232, 240, 0.8);
-            border-radius: 16px;
-            box-shadow: 0 4px 6px rgba(148, 163, 184, 0.03);
-            height: 100%;
-            background: white;
-            overflow: hidden;
-        }
+    /* List item items */
+    .op-item {
+        padding: 0.9rem 1rem;
+        border-radius: 12px;
+        margin-bottom: 0.6rem;
+        background: #f8fafc;
+        border: 1px solid #f1f5f9;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
 
-        .content-card-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid #f1f5f9;
-            background: white;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
+    .op-item:last-child {
+        margin-bottom: 0;
+    }
 
-        .content-card-title {
-            font-weight: 800;
-            font-size: 1.15rem;
-            margin: 0;
-            color: #1e293b;
-            letter-spacing: -0.02em;
-            display: flex;
-            align-items: center;
-        }
+    .op-item:hover {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+        transform: translateX(2px);
+    }
 
-        /* Tables */
-        .table-custom {
-            margin-bottom: 0;
-        }
+    .op-item-title {
+        font-weight: 600;
+        font-size: 0.93rem;
+        color: #1e293b;
+        margin-bottom: 0.2rem;
+        line-height: 1.3;
+    }
 
-        .table-custom th {
-            font-weight: 700;
-            text-transform: uppercase;
-            font-size: 0.725rem;
-            letter-spacing: 0.06em;
-            color: #64748b;
-            background-color: #f8fafc;
-            border-bottom: 1px solid #e2e8f0;
-            padding: 1rem 1.5rem;
-        }
+    .op-item-meta {
+        font-size: 0.78rem;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
 
-        .table-custom td {
-            padding: 1.1rem 1.5rem;
-            vertical-align: middle;
-            border-bottom: 1px solid #f1f5f9;
-            color: #334155;
-            font-size: 0.9rem;
-        }
-
-        .table-custom tr:last-child td {
-            border-bottom: none;
-        }
-
-        .table-custom tr {
-            transition: background-color 0.2s ease;
-        }
-
-        .table-custom tr:hover td {
-            background-color: #f8fafc;
-        }
-
-        /* Status Badge */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            padding: 0.35rem 0.75rem;
-            font-size: 0.75rem;
-            font-weight: 700;
-            border-radius: 8px;
-            letter-spacing: 0.01em;
-            text-transform: uppercase;
-        }
-
-        .status-badge-warning {
-            background-color: rgba(240, 173, 78, 0.1);
-            color: #d97706;
-            border: 1px solid rgba(240, 173, 78, 0.2);
-        }
-
-        .status-badge-info {
-            background-color: rgba(6, 182, 212, 0.1);
-            color: #0891b2;
-            border: 1px solid rgba(6, 182, 212, 0.2);
-        }
-
-        .status-badge-success {
-            background-color: rgba(25, 135, 84, 0.1);
-            color: #059669;
-            border: 1px solid rgba(25, 135, 84, 0.2);
-        }
-
-        .status-badge-secondary {
-            background-color: rgba(100, 116, 139, 0.1);
-            color: #475569;
-            border: 1px solid rgba(100, 116, 139, 0.2);
-        }
-
-        /* Avatars */
-        .avatar-initials {
-            width: 36px;
-            height: 36px;
-            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-            color: #475569;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 0.85rem;
-            border: 1px solid #cbd5e1;
-        }
-
-        /* Chart Container */
-        .chart-container {
-            position: relative;
-            height: 250px;
-            width: 100%;
-        }
-    </style>
+    /* Micro-badges */
+    .badge-soft {
+        font-weight: 600;
+        font-size: 0.72rem;
+        padding: 0.3em 0.7em;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+</style>
 @endsection
 
 @section('content')
-    <div class="dashboard-container">
-
-        <!-- Welcome Section -->
-        <div class="welcome-section">
-            <div class="row align-items-center position-relative z-1">
-                <div class="col-lg-8">
-                    <h1 class="welcome-title">Olá, {{ $user->name }}</h1>
-                    <p class="welcome-subtitle mb-0">
-                        Bem-vindo ao painel de controle. Aqui está o resumo das atividades
-                        @if ($user->departamento)
-                            do departamento <strong>{{ $user->departamento->nome }}</strong>.
-                        @else
-                            do sistema.
-                        @endif
-                    </p>
+<div class="container-fluid dashboard-container py-4 px-md-4">
+    
+    <!-- 1. Header / Welcome Banner -->
+    <div class="dashboard-banner d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="rounded-circle bg-primary bg-opacity-10 text-primary p-3 d-flex align-items-center justify-content-center shadow-xs" style="width: 60px; height: 60px; font-size: 1.75rem;">
+                <i class="{{ $dashboard['banner']['icone'] ?? 'fas fa-shield-alt' }}"></i>
+            </div>
+            <div>
+                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                    <h1 class="dashboard-banner-title mb-0">{{ $dashboard['banner']['titulo'] }}</h1>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2.5 py-1 small fw-semibold">
+                        {{ $dashboard['banner']['badge'] }}
+                    </span>
                 </div>
-                <div class="col-lg-4 text-lg-end mt-4 mt-lg-0">
-                    <a href="{{ route('documentos-entradas.create') }}"
-                        class="btn btn-primary fw-bold px-4 py-2 shadow-sm rounded-pill hover-lift">
-                        <i class="fas fa-plus me-2"></i>Novo Documento
-                    </a>
+                <div class="dashboard-banner-sub">
+                    <span class="fw-semibold text-dark">{{ $dashboard['banner']['saudacao'] }}</span> • {{ $dashboard['banner']['subtitulo'] }}
                 </div>
             </div>
         </div>
 
-        <!-- KPIs Row -->
-        <div class="row g-4 mb-4">
-            <!-- Documentos Entrada -->
-            <div class="col-sm-6 col-xl-3">
-                <div class="kpi-card kpi-card-primary">
-                    <div class="kpi-header">
-                        <div>
-                            <div class="kpi-label">Docs. Entrada</div>
-                            <div class="kpi-value">{{ $metrics['documentos']['total'] ?? 0 }}</div>
-                        </div>
-                        <div class="kpi-icon-box bg-primary bg-opacity-10 text-primary">
-                            <i class="fas fa-inbox"></i>
-                        </div>
-                    </div>
-                    <div class="kpi-footer">
-                        <span class="text-warning fw-semibold">
-                            <i class="fas fa-clock me-1"></i> {{ $metrics['documentos']['recebido'] ?? 0 }} pendentes
-                        </span>
-                        <span class="badge bg-light text-secondary rounded-pill px-2 py-1">Total</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Documentos Internos -->
-            <div class="col-sm-6 col-xl-3">
-                <div class="kpi-card kpi-card-success">
-                    <div class="kpi-header">
-                        <div>
-                            <div class="kpi-label">Docs. Internos</div>
-                            <div class="kpi-value">{{ $metrics['documentos_internos']['total'] ?? 0 }}</div>
-                        </div>
-                        <div class="kpi-icon-box bg-success bg-opacity-10 text-success">
-                            <i class="fas fa-file-contract"></i>
-                        </div>
-                    </div>
-                    <div class="kpi-footer">
-                        <span class="text-success fw-semibold">
-                            <i class="fas fa-check-circle me-1"></i> {{ $metrics['documentos_internos']['assinado'] ?? 0 }} assinados
-                        </span>
-                        <span class="badge bg-light text-secondary rounded-pill px-2 py-1">Total</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Requisições -->
-            <div class="col-sm-6 col-xl-3">
-                <div class="kpi-card kpi-card-warning">
-                    <div class="kpi-header">
-                        <div>
-                            <div class="kpi-label">Requisições</div>
-                            <div class="kpi-value">{{ $metrics['requisicoes']['total'] ?? 0 }}</div>
-                        </div>
-                        <div class="kpi-icon-box bg-warning bg-opacity-10 text-warning">
-                            <i class="fas fa-clipboard-list"></i>
-                        </div>
-                    </div>
-                    <div class="kpi-footer">
-                        <span class="text-warning fw-semibold">
-                            <i class="fas fa-hourglass-half me-1"></i> {{ $metrics['requisicoes']['pendente'] ?? 0 }} aguardando
-                        </span>
-                        <span class="badge bg-light text-secondary rounded-pill px-2 py-1">Total</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Reservas -->
-            <div class="col-sm-6 col-xl-3">
-                <div class="kpi-card kpi-card-info">
-                    <div class="kpi-header">
-                        <div>
-                            <div class="kpi-label">Reservas</div>
-                            <div class="kpi-value">{{ $metrics['reservas']['total'] ?? 0 }}</div>
-                        </div>
-                        <div class="kpi-icon-box bg-info bg-opacity-10 text-info">
-                            <i class="fas fa-calendar-check"></i>
-                        </div>
-                    </div>
-                    <div class="kpi-footer">
-                        <span class="text-info fw-semibold">
-                            <i class="fas fa-calendar-day me-1"></i>
-                            {{ $recentReservas->where('data_inicio', '>=', now()->startOfDay())->count() }} hoje
-                        </span>
-                        <span class="badge bg-light text-secondary rounded-pill px-2 py-1">Total</span>
-                    </div>
-                </div>
-            </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-secondary btn-sm bg-white shadow-xs fw-medium px-3" id="btnRefreshDashboard" onclick="refreshDashboard(true)" title="Recarregar dados em tempo real">
+                <i class="fas fa-sync-alt me-1" id="iconRefresh"></i> Atualizar
+            </button>
+            <a href="{{ route('documentos-internos.create') }}" class="btn btn-primary btn-sm shadow-xs fw-medium px-3">
+                <i class="fas fa-plus me-1"></i> Elaborar Documento
+            </a>
         </div>
+    </div>
 
-        <!-- Main Content Split -->
-        <div class="row g-4 mb-4">
-            <!-- Left Column: Incoming Documents -->
-            <div class="col-xl-6">
-                <div class="content-card">
-                    <div class="content-card-header">
-                        <h5 class="content-card-title">
-                            <i class="fas fa-file-import me-2 text-primary"></i>
-                            @if (isset($deptStats) && count($deptStats) > 0)
-                                Volume por Departamento
-                            @else
-                                Entradas Recentes
-                            @endif
-                        </h5>
-                        <a href="{{ route('documentos-entradas.index') }}"
-                            class="btn btn-sm btn-light text-primary fw-bold rounded-pill px-3">Ver Todos</a>
+    <!-- 2. Matriz de 4 KPIs Operacionais do Perfil -->
+    <div class="row g-3 g-xl-4 mb-4" id="kpisContainer">
+        @foreach ($dashboard['kpis'] as $kpi)
+            <div class="col-12 col-sm-6 col-xl-3">
+                <a href="{{ $kpi['link'] }}" class="kpi-card kpi-card-{{ $kpi['cor'] ?? 'primary' }}">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="kpi-label">{{ $kpi['label'] }}</span>
+                        <div class="kpi-icon-box bg-{{ $kpi['cor'] ?? 'primary' }}-subtle text-{{ $kpi['cor'] ?? 'primary' }}">
+                            <i class="{{ $kpi['icone'] }}"></i>
+                        </div>
                     </div>
-                    <div class="table-responsive">
-                        <table class="table table-custom align-middle mb-0">
-                            @if (isset($deptStats) && count($deptStats) > 0)
-                                <thead>
-                                    <tr>
-                                        <th>Departamento</th>
-                                        <th class="text-center">Entradas</th>
-                                        <th class="text-center">Internos</th>
-                                        <th class="text-end">Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach ($deptStats as $dept)
-                                        <tr>
-                                            <td>
-                                                <div class="d-flex align-items-center">
-                                                    <div class="avatar-initials me-3">{{ substr($dept->sigla, 0, 2) }}
-                                                    </div>
-                                                    <div>
-                                                        <div class="fw-bold text-dark">{{ $dept->sigla }}</div>
-                                                        <div class="text-muted small">{{ Str::limit($dept->nome, 25) }}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td class="text-center fw-medium">{{ $dept->total_entrada }}</td>
-                                            <td class="text-center fw-medium">{{ $dept->total_internos }}</td>
-                                            <td class="text-end fw-bold text-primary">{{ $dept->total_entrada + $dept->total_internos }}
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
+                    <div>
+                        <div class="kpi-value" id="kpi-val-{{ $kpi['id'] }}">{{ number_format($kpi['valor'], 0, ',', '.') }}</div>
+                        <div class="d-flex align-items-center justify-content-between text-muted small mt-1">
+                            @if (!empty($kpi['alerta']))
+                                <span class="badge bg-{{ $kpi['cor'] ?? 'primary' }}-subtle text-{{ $kpi['cor'] ?? 'primary' }}-emphasis fw-medium px-2 py-0.5 rounded">
+                                    {{ $kpi['alerta'] }}
+                                </span>
                             @else
-                                <thead>
-                                    <tr>
-                                        <th>Assunto</th>
-                                        <th>Status</th>
-                                        <th class="text-end">Data</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @forelse($recentIncomingDocs as $doc)
-                                        <tr>
-                                            <td>
-                                                <div class="fw-bold text-dark mb-1">{{ Str::limit($doc->assunto, 40) }}
-                                                </div>
-                                                <div class="text-muted small">
-                                                    <i class="fas fa-building me-1 opacity-50"></i> {{ $doc->procedencia }}
-                                                </div>
-                                            </td>
-                                            <td>
-                                                @php
-                                                    $statusClass = match ($doc->status) {
-                                                        'pendente', 'registrado' => 'warning',
-                                                        'recebido', 'encaminhado' => 'info',
-                                                        'respondido', 'finalizado' => 'success',
-                                                        'arquivado' => 'secondary',
-                                                        default => 'secondary',
-                                                    };
-                                                @endphp
-                                                <span class="status-badge status-badge-{{ $statusClass }}">
-                                                    <i class="fas fa-circle ms-0 me-1" style="font-size: 0.45rem; opacity: 0.8;"></i>
-                                                    {{ ucfirst($doc->status) }}
-                                                </span>
-                                            </td>
-                                            <td class="text-end text-muted small fw-medium">
-                                                {{ $doc->created_at->format('d/m/Y') }}
-                                            </td>
-                                        </tr>
-                                    @empty
-                                        <tr>
-                                            <td colspan="3" class="text-center py-5 text-muted">
-                                                <i class="fas fa-inbox fa-2x mb-3 opacity-25 d-block"></i>
-                                                Nenhum documento recente.
-                                            </td>
-                                        </tr>
-                                    @endforelse
-                                </tbody>
+                                <span>Ver detalhes</span>
                             @endif
-                        </table>
+                            <i class="fas fa-arrow-right text-muted opacity-50 small"></i>
+                        </div>
                     </div>
-                    @if (isset($deptStats) && $deptStats instanceof \Illuminate\Contracts\Pagination\Paginator && $deptStats->hasPages())
-                        <div class="d-flex justify-content-center py-3">
-                            {{ $deptStats->links() }}
+                </a>
+            </div>
+        @endforeach
+    </div>
+
+    <!-- 3. Painéis Operacionais em 2 Colunas -->
+    <div class="row g-4">
+        
+        <!-- Coluna Esquerda -->
+        <div class="col-lg-6">
+            <div class="op-card">
+                <div class="op-card-header">
+                    <div>
+                        <h2 class="op-card-title mb-0 d-flex align-items-center gap-2">
+                            <i class="{{ $dashboard['listas']['esquerda']['icone'] }}"></i>
+                            {{ $dashboard['listas']['esquerda']['titulo'] }}
+                        </h2>
+                        <div class="op-card-subtitle">{{ $dashboard['listas']['esquerda']['subtitulo'] }}</div>
+                    </div>
+                    @if (!empty($dashboard['listas']['esquerda']['url_ver_todos']))
+                        <a href="{{ $dashboard['listas']['esquerda']['url_ver_todos'] }}" class="btn btn-sm btn-link text-decoration-none fw-semibold p-0">
+                            Ver Todos <i class="fas fa-chevron-right ms-1 small"></i>
+                        </a>
+                    @endif
+                </div>
+
+                <div class="op-card-body">
+                    @php($itensEsq = $dashboard['listas']['esquerda']['itens'] ?? collect())
+                    @if (count($itensEsq) > 0)
+                        <div class="d-flex flex-column">
+                            @foreach ($itensEsq as $item)
+                                @if ($dashboard['listas']['esquerda']['tipo'] === 'demandas_tecnico')
+                                    <!-- Demanda de Tarefa Técnico -->
+                                    <div class="op-item">
+                                        <div class="d-flex align-items-start gap-3">
+                                            <div class="p-2 rounded bg-warning bg-opacity-10 text-warning mt-1">
+                                                <i class="fas fa-tasks"></i>
+                                            </div>
+                                            <div>
+                                                <div class="op-item-title">
+                                                    <a href="{{ $item['url_executar'] }}" class="text-decoration-none text-dark stretched-link">
+                                                        {{ $item['titulo'] }}
+                                                    </a>
+                                                </div>
+                                                <div class="op-item-meta">
+                                                    <span><i class="fas fa-file-alt me-1 text-muted"></i> Doc: <strong>{{ $item['documento_numero'] }}</strong></span>
+                                                    <span><i class="fas fa-user-edit me-1 text-muted"></i> {{ $item['solicitante'] }}</span>
+                                                    <span class="{{ $item['is_atrasada'] ? 'text-danger fw-bold' : ($item['is_urgente'] ? 'text-warning fw-bold' : '') }}">
+                                                        <i class="fas fa-calendar-alt me-1"></i> Prazo: {{ $item['prazo_formatado'] }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex-shrink-0 z-2 position-relative">
+                                            <a href="{{ $item['url_executar'] }}" class="btn btn-sm btn-outline-primary shadow-none px-2.5 py-1">
+                                                <i class="fas fa-play me-1"></i> Executar
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                @elseif ($dashboard['listas']['esquerda']['tipo'] === 'entradas_chefe')
+                                    <!-- Entrada Setorial Chefe -->
+                                    <div class="op-item">
+                                        <div class="d-flex align-items-start gap-3">
+                                            <div class="p-2 rounded bg-primary bg-opacity-10 text-primary mt-1">
+                                                <i class="fas fa-file-import"></i>
+                                            </div>
+                                            <div>
+                                                <div class="op-item-title">
+                                                    <a href="{{ $item['url_show'] }}" class="text-decoration-none text-dark stretched-link">
+                                                        {{ $item['assunto'] }}
+                                                    </a>
+                                                </div>
+                                                <div class="op-item-meta">
+                                                    <span><i class="fas fa-hashtag me-1 text-muted"></i> {{ $item['numero'] }}</span>
+                                                    <span><i class="fas fa-building me-1 text-muted"></i> {{ $item['procedencia'] }}</span>
+                                                    <span><i class="fas fa-calendar-alt me-1 text-muted"></i> {{ $item['data_entrada'] }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex-shrink-0 z-2 position-relative text-end">
+                                            <span class="badge-soft {{ $item['status_info']['badge'] }} mb-1">
+                                                <i class="{{ $item['status_info']['icone'] }}"></i> {{ $item['status_info']['label'] }}
+                                            </span>
+                                            <div>
+                                                <a href="{{ $item['url_show'] }}" class="btn btn-xs btn-outline-secondary py-0.5 px-2">
+                                                    Ver
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                @elseif ($dashboard['listas']['esquerda']['tipo'] === 'despachos_executivos')
+                                    <!-- Despacho Executivo Gabinete/Admin -->
+                                    <div class="op-item">
+                                        <div class="d-flex align-items-start gap-3">
+                                            <div class="p-2 rounded bg-danger bg-opacity-10 text-danger mt-1">
+                                                <i class="fas fa-stamp"></i>
+                                            </div>
+                                            <div>
+                                                <div class="op-item-title">
+                                                    <a href="{{ $item['url_show'] }}" class="text-decoration-none text-dark stretched-link">
+                                                        {{ $item['assunto'] }}
+                                                    </a>
+                                                </div>
+                                                <div class="op-item-meta">
+                                                    <span><i class="fas fa-hashtag me-1 text-muted"></i> {{ $item['numero'] }}</span>
+                                                    <span><i class="fas fa-landmark me-1 text-muted"></i> {{ $item['procedencia'] }}</span>
+                                                    <span><i class="fas fa-calendar-alt me-1 text-muted"></i> {{ $item['data_entrada'] }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex-shrink-0 z-2 position-relative text-end">
+                                            <span class="badge-soft {{ $item['status_info']['badge'] }} mb-1 d-block">
+                                                <i class="{{ $item['status_info']['icone'] }}"></i> {{ $item['status_info']['label'] }}
+                                            </span>
+                                            <a href="{{ $item['url_show'] }}" class="btn btn-sm btn-primary py-0.5 px-2.5">
+                                                <i class="fas fa-file-signature me-1"></i> Despachar
+                                            </a>
+                                        </div>
+                                    </div>
+                                @endif
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="text-center py-5 text-muted">
+                            <div class="bg-light rounded-circle p-3 d-inline-flex mb-2">
+                                <i class="fas fa-check-circle fa-2x text-muted opacity-50"></i>
+                            </div>
+                            <p class="mb-0 small fw-medium">{{ $dashboard['listas']['esquerda']['vazio_mensagem'] }}</p>
                         </div>
                     @endif
                 </div>
             </div>
+        </div>
 
-            <!-- Right Column: Internal Documents -->
-            <div class="col-xl-6">
-                <div class="content-card">
-                    <div class="content-card-header">
-                        <h5 class="content-card-title">
-                            <i class="fas fa-file-signature me-2 text-success"></i>Internos Recentes
-                        </h5>
-                        <a href="{{ route('documentos-internos.index') }}"
-                            class="btn btn-sm btn-light text-primary fw-bold rounded-pill px-3">Ver Todos</a>
+        <!-- Coluna Direita -->
+        <div class="col-lg-6">
+            <div class="op-card">
+                <div class="op-card-header">
+                    <div>
+                        <h2 class="op-card-title mb-0 d-flex align-items-center gap-2">
+                            <i class="{{ $dashboard['listas']['direita']['icone'] }}"></i>
+                            {{ $dashboard['listas']['direita']['titulo'] }}
+                        </h2>
+                        <div class="op-card-subtitle">{{ $dashboard['listas']['direita']['subtitulo'] }}</div>
                     </div>
-                    <div class="table-responsive">
-                        <table class="table table-custom align-middle mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Título</th>
-                                    <th>Estado</th>
-                                    <th class="text-end">Criado em</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @forelse($recentInternalDocs as $doc)
-                                    <tr>
-                                        <td>
-                                            <div class="fw-bold text-dark mb-1">{{ Str::limit($doc->titulo, 40) }}</div>
-                                            <div class="text-muted small">
-                                                {{ $doc->modelo->nome ?? 'Documento' }}
+                    @if (!empty($dashboard['listas']['direita']['url_ver_todos']))
+                        <a href="{{ $dashboard['listas']['direita']['url_ver_todos'] }}" class="btn btn-sm btn-link text-decoration-none fw-semibold p-0">
+                            Ver Todos <i class="fas fa-chevron-right ms-1 small"></i>
+                        </a>
+                    @endif
+                </div>
+
+                <div class="op-card-body">
+                    @php($itensDir = $dashboard['listas']['direita']['itens'] ?? collect())
+                    @if (count($itensDir) > 0)
+                        <div class="d-flex flex-column">
+                            @foreach ($itensDir as $item)
+                                @if ($dashboard['listas']['direita']['tipo'] === 'internos_tecnico')
+                                    <!-- Meus Internos Técnico -->
+                                    <div class="op-item">
+                                        <div class="d-flex align-items-start gap-3">
+                                            <div class="p-2 rounded bg-info bg-opacity-10 text-info mt-1">
+                                                <i class="fas fa-file-signature"></i>
                                             </div>
-                                        </td>
-                                        <td>
-                                            @if ($doc->assinado_em)
-                                                <span class="status-badge status-badge-success">
-                                                    <i class="fas fa-check me-1"></i> Assinado
-                                                </span>
+                                            <div>
+                                                <div class="op-item-title">
+                                                    <a href="{{ $item['url_show'] }}" class="text-decoration-none text-dark stretched-link">
+                                                        {{ $item['titulo'] }}
+                                                    </a>
+                                                </div>
+                                                <div class="op-item-meta">
+                                                    <span><i class="fas fa-tag me-1 text-muted"></i> {{ $item['especie'] }}</span>
+                                                    <span><i class="fas fa-hashtag me-1 text-muted"></i> Ref: {{ $item['numero_referencia'] }}</span>
+                                                    <span><i class="fas fa-clock me-1 text-muted"></i> {{ $item['atualizado_em'] }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex-shrink-0 z-2 position-relative text-end">
+                                            <span class="badge-soft {{ $item['status_info']['badge'] }} mb-1 d-block">
+                                                <i class="{{ $item['status_info']['icone'] }}"></i> {{ $item['status_info']['label'] }}
+                                            </span>
+                                            @if ($item['pode_editar'])
+                                                <a href="{{ $item['url_edit'] }}" class="btn btn-xs btn-outline-primary py-0.5 px-2">
+                                                    <i class="fas fa-edit me-1"></i> Editar
+                                                </a>
                                             @else
-                                                <span class="status-badge status-badge-warning">
-                                                    <i class="fas fa-pen me-1"></i> Rascunho
-                                                </span>
+                                                <a href="{{ $item['url_show'] }}" class="btn btn-xs btn-outline-secondary py-0.5 px-2">
+                                                    Visualizar
+                                                </a>
                                             @endif
-                                        </td>
-                                        <td class="text-end text-muted small fw-medium">
-                                            {{ $doc->created_at->format('d/m/Y') }}
-                                        </td>
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="3" class="text-center py-5 text-muted">
-                                            <i class="fas fa-file-alt fa-2x mb-3 opacity-25 d-block"></i>
-                                            Nenhum documento interno recente.
-                                        </td>
-                                    </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
+                                        </div>
+                                    </div>
+
+                                @elseif ($dashboard['listas']['direita']['tipo'] === 'minutas_chefe')
+                                    <!-- Minutas Submetidas Chefia -->
+                                    <div class="op-item">
+                                        <div class="d-flex align-items-start gap-3">
+                                            <div class="p-2 rounded bg-danger bg-opacity-10 text-danger mt-1">
+                                                <i class="fas fa-search-plus"></i>
+                                            </div>
+                                            <div>
+                                                <div class="op-item-title">
+                                                    <a href="{{ $item['url_show'] }}" class="text-decoration-none text-dark stretched-link">
+                                                        {{ $item['titulo'] }}
+                                                    </a>
+                                                </div>
+                                                <div class="op-item-meta">
+                                                    <span><i class="fas fa-user me-1 text-muted"></i> Autor: <strong>{{ $item['autor'] }}</strong></span>
+                                                    <span><i class="fas fa-tag me-1 text-muted"></i> {{ $item['especie'] }}</span>
+                                                    <span><i class="fas fa-clock me-1 text-muted"></i> {{ $item['data_submissao'] }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex-shrink-0 z-2 position-relative text-end">
+                                            <span class="badge-soft {{ $item['status_info']['badge'] }} mb-1 d-block">
+                                                <i class="{{ $item['status_info']['icone'] }}"></i> {{ $item['status_info']['label'] }}
+                                            </span>
+                                            <a href="{{ $item['url_show'] }}" class="btn btn-sm btn-primary py-0.5 px-2.5">
+                                                <i class="fas fa-check-circle me-1"></i> Revisar
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                @elseif ($dashboard['listas']['direita']['tipo'] === 'atos_emitidos')
+                                    <!-- Atos Emitidos Gabinete / Geral -->
+                                    <div class="op-item">
+                                        <div class="d-flex align-items-start gap-3">
+                                            <div class="p-2 rounded bg-success bg-opacity-10 text-success mt-1">
+                                                <i class="fas fa-certificate"></i>
+                                            </div>
+                                            <div>
+                                                <div class="op-item-title">
+                                                    <a href="{{ $item['url_show'] }}" class="text-decoration-none text-dark stretched-link">
+                                                        {{ $item['titulo'] }}
+                                                    </a>
+                                                </div>
+                                                <div class="op-item-meta">
+                                                    <span><i class="fas fa-hashtag me-1 text-muted"></i> {{ $item['numero_referencia'] }}</span>
+                                                    <span><i class="fas fa-building me-1 text-muted"></i> {{ $item['departamento'] }}</span>
+                                                    <span><i class="fas fa-calendar-check me-1 text-muted"></i> {{ $item['data_emissao'] }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex-shrink-0 z-2 position-relative text-end">
+                                            <span class="badge-soft {{ $item['status_info']['badge'] }} mb-1 d-block">
+                                                <i class="{{ $item['status_info']['icone'] }}"></i> {{ $item['status_info']['label'] }}
+                                            </span>
+                                            <div class="d-flex gap-1 justify-content-end">
+                                                <a href="{{ $item['url_show'] }}" class="btn btn-xs btn-outline-secondary py-0.5 px-2">
+                                                    Ver
+                                                </a>
+                                                @if (!empty($item['url_pdf']))
+                                                    <a href="{{ $item['url_pdf'] }}" target="_blank" class="btn btn-xs btn-outline-danger py-0.5 px-1.5" title="Baixar PDF">
+                                                        <i class="fas fa-file-pdf"></i>
+                                                    </a>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endif
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="text-center py-5 text-muted">
+                            <div class="bg-light rounded-circle p-3 d-inline-flex mb-2">
+                                <i class="fas fa-folder-open fa-2x text-muted opacity-50"></i>
+                            </div>
+                            <p class="mb-0 small fw-medium">{{ $dashboard['listas']['direita']['vazio_mensagem'] }}</p>
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>
-
-        <!-- Charts Row -->
-        <div class="row g-4">
-            <div class="col-md-6">
-                <div class="content-card p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h5 class="content-card-title text-muted text-uppercase small">Status de Requisições</h5>
-                    </div>
-                    <div class="chart-container" style="height: 200px;">
-                        <canvas id="chartRequisicoesStatus"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="content-card p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h5 class="content-card-title text-muted text-uppercase small">Tipos de Requisições</h5>
-                    </div>
-                    <div class="chart-container" style="height: 200px;">
-                        <canvas id="chartRequisicoesTipo"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-
     </div>
+</div>
 @endsection
 
 @section('scripts')
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof Chart === 'undefined') return;
+<script>
+    /**
+     * Atualização suave de KPIs via AJAX
+     */
+    function refreshDashboard(forceFresh = false) {
+        const icon = document.getElementById('iconRefresh');
+        if (icon) icon.classList.add('fa-spin');
 
-            // Chart Defaults
-            Chart.defaults.font.family = "'Inter', sans-serif";
-            Chart.defaults.color = '#64748b';
+        const url = '{{ route("api.dashboard.estatisticas") }}' + (forceFresh ? '?fresh=1' : '');
 
-            // Status Chart
-            const ctxStatus = document.getElementById('chartRequisicoesStatus');
-            if (ctxStatus) {
-                const ctx = ctxStatus.getContext('2d');
-                
-                // Yellow Gradient for Pendente
-                const gradPending = ctx.createLinearGradient(0, 0, 0, 200);
-                gradPending.addColorStop(0, 'rgba(240, 173, 78, 0.85)');
-                gradPending.addColorStop(1, 'rgba(240, 173, 78, 0.3)');
-                
-                // Green Gradient for Aprovado
-                const gradApprove = ctx.createLinearGradient(0, 0, 0, 200);
-                gradApprove.addColorStop(0, 'rgba(25, 135, 84, 0.85)');
-                gradApprove.addColorStop(1, 'rgba(25, 135, 84, 0.3)');
-                
-                // Red Gradient for Rejeitado
-                const gradReject = ctx.createLinearGradient(0, 0, 0, 200);
-                gradReject.addColorStop(0, 'rgba(217, 83, 79, 0.85)');
-                gradReject.addColorStop(1, 'rgba(217, 83, 79, 0.3)');
-                
-                // Gray Gradient for Finalizado
-                const gradFinal = ctx.createLinearGradient(0, 0, 0, 200);
-                gradFinal.addColorStop(0, 'rgba(148, 163, 184, 0.85)');
-                gradFinal.addColorStop(1, 'rgba(148, 163, 184, 0.3)');
-
-                new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Pendente', 'Aprovado', 'Rejeitado', 'Finalizado'],
-                        datasets: [{
-                            label: 'Requisições',
-                            data: [
-                                {{ (int) ($metrics['requisicoes']['pendente'] ?? 0) }},
-                                {{ (int) ($metrics['requisicoes']['aprovado'] ?? 0) }},
-                                {{ (int) ($metrics['requisicoes']['rejeitado'] ?? 0) }},
-                                {{ (int) ($metrics['requisicoes']['finalizado'] ?? 0) }}
-                            ],
-                            backgroundColor: [gradPending, gradApprove, gradReject, gradFinal],
-                            borderColor: ['#F0AD4E', '#198754', '#D9534F', '#94a3b8'],
-                            borderWidth: 1.5,
-                            borderRadius: 8,
-                            barPercentage: 0.5,
-                            maxBarThickness: 35
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            },
-                            tooltip: {
-                                backgroundColor: '#1e293b',
-                                padding: 12,
-                                cornerRadius: 8,
-                                displayColors: false
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                grid: {
-                                    color: '#f1f5f9',
-                                    borderDash: [4, 4]
-                                },
-                                border: {
-                                    display: false
-                                }
-                            },
-                            x: {
-                                grid: {
-                                    display: false
-                                },
-                                border: {
-                                    display: false
-                                }
-                            }
-                        }
+        fetch(url, {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(res => res.json())
+        .then(response => {
+            if (response.success && response.data && response.data.kpis) {
+                response.data.kpis.forEach(kpi => {
+                    const el = document.getElementById('kpi-val-' + kpi.id);
+                    if (el) {
+                        el.textContent = new Intl.NumberFormat('pt-PT').format(kpi.valor);
                     }
                 });
-            }
-
-            // Type Chart
-            const ctxType = document.getElementById('chartRequisicoesTipo');
-            if (ctxType) {
-                const ctx = ctxType.getContext('2d');
                 
-                // Gradients for doughnut slices (Vermelho, Preto, Cinza, Amarelo)
-                const gradProd = ctx.createLinearGradient(0, 0, 0, 200);
-                gradProd.addColorStop(0, '#CE1126');
-                gradProd.addColorStop(1, '#8E0C17');
-
-                const gradOfi = ctx.createLinearGradient(0, 0, 0, 200);
-                gradOfi.addColorStop(0, '#1A1A1A');
-                gradOfi.addColorStop(1, '#4B5563');
-
-                const gradServ = ctx.createLinearGradient(0, 0, 0, 200);
-                gradServ.addColorStop(0, '#6C757D');
-                gradServ.addColorStop(1, '#9CA3AF');
-
-                const gradPass = ctx.createLinearGradient(0, 0, 0, 200);
-                gradPass.addColorStop(0, '#F0AD4E');
-                gradPass.addColorStop(1, '#D97706');
-
-                new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Produtos', 'Oficina', 'Serviços', 'Passagem'],
-                        datasets: [{
-                            data: [
-                                {{ (int) ($metrics['requisicoes']['produto'] ?? 0) }},
-                                {{ (int) ($metrics['requisicoes']['oficina'] ?? 0) }},
-                                {{ (int) ($metrics['requisicoes']['servico'] ?? 0) }},
-                                {{ (int) ($metrics['requisicoes']['passagem'] ?? 0) }}
-                            ],
-                            backgroundColor: [gradProd, gradOfi, gradServ, gradPass],
-                            borderWidth: 2,
-                            borderColor: '#ffffff',
-                            hoverOffset: 6
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        cutout: '72%',
-                        plugins: {
-                            legend: {
-                                position: 'right',
-                                labels: {
-                                    usePointStyle: true,
-                                    boxWidth: 8,
-                                    padding: 20,
-                                    font: {
-                                        size: 12,
-                                        weight: '600'
-                                    }
-                                }
-                            },
-                            tooltip: {
-                                backgroundColor: '#1e293b',
-                                padding: 12,
-                                cornerRadius: 8
-                            }
-                        }
-                    }
-                });
+                // Se o usuário clicou no botão atualizar, recarrega a página para atualizar também as listas
+                if (forceFresh) {
+                    window.location.reload();
+                }
             }
+        })
+        .catch(err => console.error('Erro ao atualizar dashboard:', err))
+        .finally(() => {
+            if (icon) icon.classList.remove('fa-spin');
         });
-    </script>
+    }
+
+    // Auto-refresh suave a cada 60s se a aba estiver em foco
+    let autoRefreshInterval = setInterval(() => {
+        if (!document.hidden) {
+            refreshDashboard(false);
+        }
+    }, 60000);
+</script>
 @endsection

@@ -31,157 +31,193 @@ class EdmsController extends Controller
     {
         $user = Auth::user();
 
-        // Resolver pasta atual
+        // 1. Alternância de Modo de Visualização (table vs grid)
+        $viewMode = $request->input('view_mode', 'table');
+        if (! in_array($viewMode, ['table', 'grid'])) {
+            $viewMode = 'table';
+        }
+
+        // 2. Parâmetros de Seleção da Árvore (Virtuais ou Físicas)
+        $activeTreeKey = $request->input('tree', $folderId ? 'dossies' : 'entradas'); // entradas, internos, dossies, pendentes
+        $treeYear = $request->input('year');
+        $treeMonth = $request->input('month'); // ex: '08' ou '8'
+        $treeMonthName = $treeMonth ? $this->formatMonthName((int) $treeMonth) : null;
+        $treeEspecie = $request->input('especie');
+
+        // Resolver pasta física se fornecida
         $currentFolder = null;
         if ($folderId) {
             $currentFolder = Pasta::with('parent')->findOrFail($folderId);
 
-            // Verificar acesso à pasta
             if (! $this->canAccessFolder($user, $currentFolder)) {
                 abort(403, 'Acesso negado a esta pasta.');
             }
+            $activeTreeKey = 'dossies';
         }
 
-        // --- 1. Buscar Pastas ---
+        // 3. Buscar Pastas Manuais / Dossiês (Custom Folders com RBAC)
         $pastasQuery = Pasta::query();
-
         if ($currentFolder) {
             $pastasQuery->where('parent_id', $currentFolder->id);
         } else {
-            // Se for busca global (raiz e sem termo), mantemos apenas na raiz
             if (! $request->filled('search')) {
                 $pastasQuery->whereNull('parent_id');
             }
         }
-
-        // Filtro de termo nas pastas (se for global ou local)
         if ($request->filled('search')) {
             $term = $request->search;
             $pastasQuery->where('nome', 'like', "%{$term}%");
         }
-
         $pastas = $pastasQuery->accessibleBy($user)
-            ->withCount(['children', 'documentosInternos'])
-            ->orderBy('is_system', 'desc') // Pastas de sistema primeiro
+            ->withCount(['children', 'documentos', 'documentosInternos'])
+            ->orderBy('is_system', 'desc')
             ->orderBy('nome')
             ->get();
 
-        // --- 2. Buscar Documentos Arquivados (Filtros e busca) ---
-        $documentosInternos = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 12);
-        $documentosEntrada = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 12);
+        // 4. Construir Árvore de Diretórios Virtuais Cronológicos (Tree Structure)
+        $virtualTree = $this->buildVirtualDirectoryTree($user);
 
-        $searchActive = $request->filled('search') || $request->filled('type') || $request->filled('date_start') || $request->filled('date_end');
+        // 5. Query e Filtros para Documentos no Main Workspace
+        $documentosInternos = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 15);
+        $documentosEntrada = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 15);
 
-        // Só buscamos documentos se estiver dentro de uma pasta OU se houver busca activa (busca global)
-        if ($currentFolder || $searchActive) {
-            $type = $request->input('type'); // interno, entrada, ou vazio para todos
-            $term = $request->input('search');
-            $dateStart = $request->input('date_start');
-            $dateEnd = $request->input('date_end');
+        $term = $request->input('search');
+        $dateStart = $request->input('date_start');
+        $dateEnd = $request->input('date_end');
+        $isGlobalSearch = $request->filled('search') && ! $request->filled('tree') && ! $request->filled('type') && ! $currentFolder;
 
-            // --- Query Documentos Internos ---
-            if (empty($type) || $type === 'interno') {
-                $internoQuery = DocumentoInterno::where('arquivado', true)
-                    ->accessibleBy($user)
-                    ->with(['autor', 'versoes', 'pasta', 'documentoEspecie.retentionSchedule']);
+        // A. DOCUMENTOS DE ENTRADA ARQUIVADOS
+        if ($activeTreeKey === 'entradas' || $isGlobalSearch || ($request->filled('type') && $request->type === 'entrada')) {
+            $entradaQuery = DocumentoEntrada::where('arquivado', true)
+                ->with(['pasta', 'arquivadoPor', 'anexos', 'departamento']);
+            $this->filterDocumentoEntradaByAccess($entradaQuery, $user);
 
-                if ($currentFolder && ! $searchActive) {
-                    $internoQuery->where('pasta_id', $currentFolder->id);
-                } elseif ($currentFolder && $searchActive) {
-                    $internoQuery->where('pasta_id', $currentFolder->id);
-                }
-
-                if ($term) {
-                    $internoQuery->where(function ($q) use ($term) {
-                        $q->where('titulo', 'like', "%{$term}%")
-                            ->orWhere('numero_referencia', 'like', "%{$term}%")
-                            ->orWhere('conteudo_final', 'like', "%{$term}%")
-                            ->orWhereHas('metadata', function ($subQ) use ($term) {
-                                $subQ->where('key', 'ocr_text')
-                                    ->where('value', 'like', "%{$term}%");
-                            });
-                    });
-                }
-
-                if ($dateStart) {
-                    $internoQuery->whereDate('arquivado_em', '>=', $dateStart);
-                }
-                if ($dateEnd) {
-                    $internoQuery->whereDate('arquivado_em', '<=', $dateEnd);
-                }
-
-                $documentosInternos = $internoQuery->latest('arquivado_em')->paginate(12, ['*'], 'page_int')->withQueryString();
+            if ($currentFolder) {
+                $entradaQuery->where('pasta_id', $currentFolder->id);
+            }
+            if ($treeYear) {
+                $entradaQuery->where('ano_referencia', (int) $treeYear);
+            }
+            if ($treeMonth) {
+                $entradaQuery->whereMonth('data_entrada', (int) $treeMonth);
+            }
+            if ($treeEspecie) {
+                $entradaQuery->where('classificacao_especie', $treeEspecie);
+            }
+            if ($term) {
+                $entradaQuery->where(function ($q) use ($term) {
+                    $q->where('assunto', 'like', "%{$term}%")
+                        ->orWhere('numero_sequencial', 'like', "%{$term}%")
+                        ->orWhere('procedencia', 'like', "%{$term}%")
+                        ->orWhere('classificacao_ref_numero', 'like', "%{$term}%")
+                        ->orWhere('observacoes', 'like', "%{$term}%")
+                        ->orWhereHas('anexos', function ($subQ) use ($term) {
+                            $subQ->where('texto_extraido', 'like', "%{$term}%")
+                                ->orWhere('nome_original', 'like', "%{$term}%");
+                        });
+                });
+            }
+            if ($dateStart) {
+                $entradaQuery->whereDate('arquivado_em', '>=', $dateStart);
+            }
+            if ($dateEnd) {
+                $entradaQuery->whereDate('arquivado_em', '<=', $dateEnd);
             }
 
-            // --- Query Documentos Entrada ---
-            if (empty($type) || $type === 'entrada') {
-                $entradaQuery = DocumentoEntrada::where('arquivado', true)
-                    ->with(['pasta', 'arquivadoPor', 'anexos']);
-                $entradaQuery = $this->filterDocumentoEntradaByAccess($entradaQuery, $user);
+            $documentosEntrada = $entradaQuery->latest('arquivado_em')->paginate(15, ['*'], 'page_ent')->withQueryString();
+        }
 
-                if ($currentFolder && ! $searchActive) {
-                    $entradaQuery->where('pasta_id', $currentFolder->id);
-                } elseif ($currentFolder && $searchActive) {
-                    $entradaQuery->where('pasta_id', $currentFolder->id);
-                }
+        // B. DOCUMENTOS INTERNOS ARQUIVADOS
+        if ($activeTreeKey === 'internos' || $isGlobalSearch || ($request->filled('type') && $request->type === 'interno')) {
+            $internoQuery = DocumentoInterno::where('arquivado', true)
+                ->accessibleBy($user)
+                ->with(['autor', 'versoes', 'pasta', 'departamento', 'documentoEspecie.retentionSchedule']);
 
-                if ($term) {
-                    $entradaQuery->where(function ($q) use ($term) {
-                        $q->where('assunto', 'like', "%{$term}%")
-                            ->orWhere('numero_sequencial', 'like', "%{$term}%")
-                            ->orWhere('procedencia', 'like', "%{$term}%")
-                            ->orWhere('observacoes', 'like', "%{$term}%")
-                            ->orWhereHas('anexos', function ($subQ) use ($term) {
-                                $subQ->where('texto_extraido', 'like', "%{$term}%")
-                                    ->orWhere('nome_original', 'like', "%{$term}%");
-                            });
-                    });
-                }
+            if ($currentFolder) {
+                $internoQuery->where('pasta_id', $currentFolder->id);
+            }
+            if ($treeYear) {
+                $internoQuery->whereYear('created_at', (int) $treeYear);
+            }
+            if ($treeMonth) {
+                $internoQuery->whereMonth('created_at', (int) $treeMonth);
+            }
+            if ($treeEspecie) {
+                $internoQuery->whereHas('documentoEspecie', function ($e) use ($treeEspecie) {
+                    $e->where('nome', $treeEspecie);
+                });
+            }
+            if ($term) {
+                $internoQuery->where(function ($q) use ($term) {
+                    $q->where('titulo', 'like', "%{$term}%")
+                        ->orWhere('numero_referencia', 'like', "%{$term}%")
+                        ->orWhere('conteudo_final', 'like', "%{$term}%");
+                });
+            }
+            if ($dateStart) {
+                $internoQuery->whereDate('arquivado_em', '>=', $dateStart);
+            }
+            if ($dateEnd) {
+                $internoQuery->whereDate('arquivado_em', '<=', $dateEnd);
+            }
 
-                if ($dateStart) {
-                    $entradaQuery->whereDate('arquivado_em', '>=', $dateStart);
-                }
-                if ($dateEnd) {
-                    $entradaQuery->whereDate('arquivado_em', '<=', $dateEnd);
-                }
+            $documentosInternos = $internoQuery->latest('arquivado_em')->paginate(15, ['*'], 'page_int')->withQueryString();
+        }
 
-                $documentosEntrada = $entradaQuery->latest('arquivado_em')->paginate(12, ['*'], 'page_ent')->withQueryString();
+        // C. DOCUMENTOS DE PASTA FÍSICA SELECIONADA
+        if ($currentFolder && $activeTreeKey === 'dossies') {
+            if (! $request->filled('type') || $request->type === 'entrada') {
+                $eQuery = DocumentoEntrada::where('arquivado', true)
+                    ->where('pasta_id', $currentFolder->id)
+                    ->with(['pasta', 'arquivadoPor', 'anexos', 'departamento']);
+                $this->filterDocumentoEntradaByAccess($eQuery, $user);
+                $documentosEntrada = $eQuery->latest('arquivado_em')->paginate(15, ['*'], 'page_ent')->withQueryString();
+            }
+            if (! $request->filled('type') || $request->type === 'interno') {
+                $iQuery = DocumentoInterno::where('arquivado', true)
+                    ->where('pasta_id', $currentFolder->id)
+                    ->accessibleBy($user)
+                    ->with(['autor', 'versoes', 'pasta', 'departamento', 'documentoEspecie.retentionSchedule']);
+                $documentosInternos = $iQuery->latest('arquivado_em')->paginate(15, ['*'], 'page_int')->withQueryString();
             }
         }
 
-        // --- 3. Buscar Documentos Pendentes de Arquivamento (Apenas no Painel Geral / Raiz) ---
+        // 6. DOCUMENTOS PENDENTES DE ARQUIVAMENTO
         $pendentesInternos = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 10);
         $pendentesEntrada = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 10);
 
-        if (! $currentFolder && $user->departamento_id) {
-            $pendentesInternos = DocumentoInterno::where('arquivado', false)
-                ->where('status', DocumentoStatus::ASSINADO)
-                ->where('departamento_id', $user->departamento_id)
-                ->with(['autor'])
-                ->latest()
-                ->paginate(10, ['*'], 'page_pend_int')
-                ->withQueryString();
+        $pIntQuery = DocumentoInterno::where('arquivado', false)
+            ->where('status', DocumentoStatus::ASSINADO)
+            ->accessibleBy($user)
+            ->with(['autor', 'departamento']);
 
-            $pendentesEntrada = DocumentoEntrada::naoArquivados()
-                ->where('departamento_id', $user->departamento_id)
-                ->latest()
-                ->paginate(10, ['*'], 'page_pend_ent')
-                ->withQueryString();
-        }
+        $pendentesInternos = $pIntQuery->latest()->paginate(10, ['*'], 'page_pend_int')->withQueryString();
 
-        // Departamentos para fins de Partilha
+        $pEntQuery = DocumentoEntrada::naoArquivados()->with(['departamento']);
+        $this->filterDocumentoEntradaByAccess($pEntQuery, $user);
+        $pendentesEntrada = $pEntQuery->latest()->paginate(10, ['*'], 'page_pend_ent')->withQueryString();
+
+        $pendentesTotal = $pendentesInternos->total() + $pendentesEntrada->total();
+
+        // Departamentos para partilha
         $departamentos = Departamento::orderBy('nome')->get();
-
-        // Breadcrumbs
         $breadcrumbs = $currentFolder ? $this->getBreadcrumbs($currentFolder) : [];
 
         return view('edms.index', compact(
             'currentFolder',
             'pastas',
+            'virtualTree',
+            'activeTreeKey',
+            'treeYear',
+            'treeMonth',
+            'treeMonthName',
+            'treeEspecie',
+            'viewMode',
             'documentosInternos',
             'documentosEntrada',
             'pendentesInternos',
             'pendentesEntrada',
+            'pendentesTotal',
             'departamentos',
             'breadcrumbs'
         ));
@@ -555,6 +591,213 @@ class EdmsController extends Controller
         return false;
     }
 
+    /**
+     * Auxiliar de Formatação dos Meses Arquivísticos (01 - Janeiro ... 12 - Dezembro)
+     */
+    private function formatMonthName(int $m): string
+    {
+        $meses = [
+            1 => '01 - Janeiro',
+            2 => '02 - Fevereiro',
+            3 => '03 - Março',
+            4 => '04 - Abril',
+            5 => '05 - Maio',
+            6 => '06 - Junho',
+            7 => '07 - Julho',
+            8 => '08 - Agosto',
+            9 => '09 - Setembro',
+            10 => '10 - Outubro',
+            11 => '11 - Novembro',
+            12 => '12 - Dezembro',
+        ];
+
+        return $meses[$m] ?? sprintf('%02d - Mês %d', $m, $m);
+    }
+
+    /**
+     * Endpoint API JSON da Árvore Hierárquica de Pastas (GET /api/edms/arvore-pastas)
+     */
+    public function arvorePastas(Request $request)
+    {
+        $user = Auth::user();
+        $virtualTree = $this->buildVirtualDirectoryTree($user);
+
+        $result = [];
+
+        foreach (['entradas', 'internos'] as $key) {
+            $item = $virtualTree[$key];
+            $anosFormatted = [];
+
+            foreach ($item['years'] as $anoStr => $anoData) {
+                $mesesFormatted = [];
+
+                foreach ($anoData['months'] as $mStr => $mGroup) {
+                    $speciesFormatted = [];
+                    foreach ($mGroup['species'] as $eNome => $eCount) {
+                        $speciesFormatted[] = [
+                            'nome' => $eNome,
+                            'total' => $eCount,
+                        ];
+                    }
+
+                    $mesesFormatted[] = [
+                        'mes_numero' => $mGroup['mes_numero'],
+                        'mes_nome' => $mGroup['mes_nome'],
+                        'total' => $mGroup['count'],
+                        'especies' => $speciesFormatted,
+                    ];
+                }
+
+                $anosFormatted[] = [
+                    'ano' => (string) $anoStr,
+                    'total' => $anoData['count'],
+                    'meses' => $mesesFormatted,
+                ];
+            }
+
+            $result[] = [
+                'id' => $key,
+                'nome' => $item['label'],
+                'tipo' => 'raiz',
+                'total' => $item['total'],
+                'anos' => $anosFormatted,
+            ];
+        }
+
+        return response()->json($result);
+    }
+
+    /**
+     * Gerador de Estrutura de Diretórios Virtuais (Tree View) por Tipo, Ano, Mês e Espécie.
+     */
+    private function buildVirtualDirectoryTree($user): array
+    {
+        $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+        $isSqlite = $driver === 'sqlite';
+        $isPgsql = $driver === 'pgsql';
+
+        // Expressões SQL compatíveis com MySQL, SQLite e PostgreSQL
+        if ($isSqlite) {
+            $monthExprEntrada = "strftime('%m', COALESCE(data_entrada, created_at))";
+            $yearExprInterno = "strftime('%Y', created_at)";
+            $monthExprInterno = "strftime('%m', created_at)";
+        } elseif ($isPgsql) {
+            $monthExprEntrada = "EXTRACT(MONTH FROM COALESCE(data_entrada, created_at))";
+            $yearExprInterno = "EXTRACT(YEAR FROM created_at)";
+            $monthExprInterno = "EXTRACT(MONTH FROM created_at)";
+        } else {
+            $monthExprEntrada = "MONTH(COALESCE(data_entrada, created_at))";
+            $yearExprInterno = "YEAR(created_at)";
+            $monthExprInterno = "MONTH(created_at)";
+        }
+
+        // 1. ENTRADAS: Agrupamento por Ano, Mês e Espécie
+        $qEntradas = DocumentoEntrada::where('arquivado', true);
+        $this->filterDocumentoEntradaByAccess($qEntradas, $user);
+
+        $entradasRaw = $qEntradas->select([
+            'ano_referencia',
+            \Illuminate\Support\Facades\DB::raw("{$monthExprEntrada} as mes_num"),
+            'classificacao_especie',
+            \Illuminate\Support\Facades\DB::raw('count(*) as total'),
+        ])
+            ->groupBy('ano_referencia', \Illuminate\Support\Facades\DB::raw($monthExprEntrada), 'classificacao_especie')
+            ->orderBy('ano_referencia', 'desc')
+            ->orderBy(\Illuminate\Support\Facades\DB::raw($monthExprEntrada), 'desc')
+            ->get();
+
+        $entradasTree = [];
+        $totalEntradas = 0;
+        foreach ($entradasRaw as $row) {
+            $ano = (string) ($row->ano_referencia ?: date('Y'));
+            $mNum = (int) ($row->mes_num ?: date('n'));
+            $mStr = sprintf('%02d', $mNum);
+            $mNome = $this->formatMonthName($mNum);
+            $especie = $row->classificacao_especie ?: 'Geral';
+            $count = (int) $row->total;
+            $totalEntradas += $count;
+
+            if (! isset($entradasTree[$ano])) {
+                $entradasTree[$ano] = [
+                    'count' => 0,
+                    'months' => [],
+                ];
+            }
+            $entradasTree[$ano]['count'] += $count;
+
+            if (! isset($entradasTree[$ano]['months'][$mStr])) {
+                $entradasTree[$ano]['months'][$mStr] = [
+                    'mes_numero' => $mStr,
+                    'mes_nome' => $mNome,
+                    'count' => 0,
+                    'species' => [],
+                ];
+            }
+            $entradasTree[$ano]['months'][$mStr]['count'] += $count;
+            $entradasTree[$ano]['months'][$mStr]['species'][$especie] = $count;
+        }
+
+        // 2. INTERNOS: Agrupamento por Ano, Mês e Espécie
+        $qInternos = DocumentoInterno::where('arquivado', true)->accessibleBy($user);
+        $internosRaw = $qInternos->select([
+            \Illuminate\Support\Facades\DB::raw("{$yearExprInterno} as ano"),
+            \Illuminate\Support\Facades\DB::raw("{$monthExprInterno} as mes_num"),
+            'documento_especie_id',
+            \Illuminate\Support\Facades\DB::raw('count(*) as total'),
+        ])
+            ->with('documentoEspecie:id,nome')
+            ->groupBy(\Illuminate\Support\Facades\DB::raw($yearExprInterno), \Illuminate\Support\Facades\DB::raw($monthExprInterno), 'documento_especie_id')
+            ->orderBy(\Illuminate\Support\Facades\DB::raw($yearExprInterno), 'desc')
+            ->orderBy(\Illuminate\Support\Facades\DB::raw($monthExprInterno), 'desc')
+            ->get();
+
+        $internosTree = [];
+        $totalInternos = 0;
+        foreach ($internosRaw as $row) {
+            $ano = (string) ($row->ano ?: date('Y'));
+            $mNum = (int) ($row->mes_num ?: date('n'));
+            $mStr = sprintf('%02d', $mNum);
+            $mNome = $this->formatMonthName($mNum);
+            $especieNome = $row->documentoEspecie ? $row->documentoEspecie->nome : 'Geral';
+            $count = (int) $row->total;
+            $totalInternos += $count;
+
+            if (! isset($internosTree[$ano])) {
+                $internosTree[$ano] = [
+                    'count' => 0,
+                    'months' => [],
+                ];
+            }
+            $internosTree[$ano]['count'] += $count;
+
+            if (! isset($internosTree[$ano]['months'][$mStr])) {
+                $internosTree[$ano]['months'][$mStr] = [
+                    'mes_numero' => $mStr,
+                    'mes_nome' => $mNome,
+                    'count' => 0,
+                    'species' => [],
+                ];
+            }
+            $internosTree[$ano]['months'][$mStr]['count'] += $count;
+            $internosTree[$ano]['months'][$mStr]['species'][$especieNome] = $count;
+        }
+
+        return [
+            'entradas' => [
+                'label' => 'Doc. de Entrada',
+                'icon' => 'fas fa-file-import text-warning',
+                'total' => $totalEntradas,
+                'years' => $entradasTree,
+            ],
+            'internos' => [
+                'label' => 'Doc. Internos',
+                'icon' => 'fas fa-file-alt text-info',
+                'total' => $totalInternos,
+                'years' => $internosTree,
+            ],
+        ];
+    }
+
     // Auxiliar para aplicar restrição RBAC aos Documentos de Entrada
     private function filterDocumentoEntradaByAccess($query, $user)
     {
@@ -569,6 +812,11 @@ class EdmsController extends Controller
                     $q->where('gabinete_id', $gabinete->id);
                 });
             }
+        }
+
+        $permissionService = app(\App\Services\DocumentoPermissionService::class);
+        if ($permissionService->isUserInAreaExpediente($user)) {
+            return $query;
         }
 
         return $query->where('departamento_id', $user->departamento_id);
