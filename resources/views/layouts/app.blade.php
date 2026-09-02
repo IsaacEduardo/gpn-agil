@@ -194,6 +194,7 @@
                     }, 500);
                 });
             }, 5000); // 5 seconds delay
+        });
 
         // UX P4: Global Keyboard Shortcuts (Ctrl+S / Ctrl+P)
         document.addEventListener('keydown', function(e) {

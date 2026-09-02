@@ -37,18 +37,18 @@ class SecurityHeadersMiddleware
         // 5. Modern XSS Filter (desativa filtro legado que introduzia falhas, confiando em CSP e encoding)
         $response->header('X-XSS-Protection', '0');
 
-        // 6. HSTS (HTTP Strict Transport Security) - ativo quando HTTPS
-        if ($request->isSecure() || $request->header('X-Forwarded-Proto') === 'https' || app()->environment('production')) {
+        // 6. HSTS (HTTP Strict Transport Security) - ativo apenas quando HTTPS
+        if ($request->isSecure() || $request->header('X-Forwarded-Proto') === 'https') {
             $response->header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
         }
 
         // 7. Content Security Policy (CSP)
-        // Permite recursos locais e CDNs corporativos utilizados pela plataforma (Bootstrap, FontAwesome, TinyMCE, Chart.js)
+        // Permite recursos locais e CDNs corporativos utilizados pela plataforma (Bootstrap, FontAwesome, DataTables, TinyMCE, Pusher, NProgress, Chart.js)
         // Permite WebSockets do Laravel Reverb (ws: wss:)
         $csp = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.bunny.net https://fonts.googleapis.com",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://code.jquery.com https://unpkg.com https://js.pusher.com",
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://unpkg.com https://fonts.bunny.net https://fonts.googleapis.com",
             "font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.bunny.net https://fonts.gstatic.com",
             "img-src 'self' data: blob: https:",
             "connect-src 'self' ws: wss: https:",

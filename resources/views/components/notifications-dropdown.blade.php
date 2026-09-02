@@ -356,7 +356,7 @@
         // Subscrição em tempo real via Echo (Reverb) quando disponível
         const userId = {{ auth()->id() ?? 'null' }};
         let echoActive = false;
-        if (window.Echo && userId) {
+        if (window.Echo && typeof window.Echo.private === 'function' && userId) {
             try {
                 window.Echo.private('App.Models.User.' + userId)
                     .notification(function(notification) {
