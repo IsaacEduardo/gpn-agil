@@ -138,7 +138,7 @@
                                         @enderror
                                     </div>
                                     <div class="alert alert-info small mb-0">
-                                        <i class="fas fa-info-circle me-1"></i> O documento será encaminhado automaticamente para a caixa de entrada do departamento selecionado.
+                                        <i class="fas fa-info-circle me-1"></i> A chefia do departamento selecionado e o responsável do gabinete são notificados assim que o registo for concluído.
                                     </div>
                                 </div>
 

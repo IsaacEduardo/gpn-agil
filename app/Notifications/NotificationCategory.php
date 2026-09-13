@@ -45,6 +45,7 @@ class NotificationCategory
         'tarefa_concluida' => 'tarefas',
         'tarefa_cancelada' => 'tarefas',
 
+        'documento_registado' => 'documentos',
         'documento_recebido' => 'documentos',
         'documento_enviado' => 'documentos',
         'documento_encaminhado_interno' => 'documentos',

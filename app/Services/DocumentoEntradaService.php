@@ -15,6 +15,7 @@ use App\Models\Tag;
 use App\Models\User;
 use App\Notifications\DocumentoEncaminhadoDepartamento;
 use App\Notifications\DocumentoEncaminhadoExterno;
+use App\Notifications\DocumentoEntradaRegistado;
 use App\Notifications\SimpleBroadcastNotification;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
@@ -22,6 +23,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 
@@ -261,9 +263,14 @@ class DocumentoEntradaService
     {
         for ($attempts = 1; $attempts <= 3; $attempts++) {
             try {
-                return DB::transaction(function () use ($data, $mainFile, $attachments) {
+                $documento = DB::transaction(function () use ($data, $mainFile, $attachments) {
                     return $this->processCreation($data, $mainFile, $attachments);
                 });
+
+                // Fora da transação: o destino tem de saber que entrou trabalho.
+                $this->notificarRegisto($documento, Auth::user());
+
+                return $documento;
             } catch (QueryException $e) {
                 $msg = strtolower($e->getMessage());
                 $isDup = str_contains($msg, 'duplicate') || (int) $e->getCode() === 23000 || $e->errorInfo[1] == 1062;
@@ -440,6 +447,47 @@ class DocumentoEntradaService
 
             return $tarefa;
         });
+    }
+
+    /**
+     * Avisa a chefia do departamento de destino e o responsável do gabinete de
+     * que entrou um documento novo.
+     *
+     * Corre fora da transação e engole qualquer falha: uma notificação nunca
+     * pode fazer falhar o registo. Em particular, deixar escapar uma
+     * QueryException aqui faria o ciclo de retentativa de numeração repetir a
+     * criação e gerar um documento duplicado — daí o catch a \Throwable.
+     */
+    private function notificarRegisto(DocumentoEntrada $documento, ?User $actor): void
+    {
+        try {
+            $dep = Departamento::with(['chefe', 'gabinete.responsavel'])->find($documento->departamento_id);
+            if (! $dep) {
+                return;
+            }
+
+            $destinatarios = collect([
+                $dep->chefe,
+                $dep->responsavel_id ? User::find($dep->responsavel_id) : null,
+                optional($dep->gabinete)->responsavel,
+            ])->filter();
+
+            if ($actor) {
+                $destinatarios = $destinatarios->reject(fn ($u) => (int) $u->id === (int) $actor->id);
+            }
+
+            $destinatarios = $destinatarios->unique('id')->values();
+            if ($destinatarios->isEmpty()) {
+                return;
+            }
+
+            Notification::send($destinatarios, new DocumentoEntradaRegistado($documento, $actor));
+        } catch (\Throwable $e) {
+            Log::warning('Falha ao notificar o registo do documento de entrada.', [
+                'documento_id' => $documento->id,
+                'erro' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

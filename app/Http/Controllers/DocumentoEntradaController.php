@@ -241,7 +241,12 @@ class DocumentoEntradaController extends Controller
 
         // ── Infra-estrutura — Persistência Completa ──────────────────────────────
         // O Service gere: numeração sequencial, upload de ficheiros, tags,
-        // encaminhamento inicial e jobs de OCR.
+        // jobs de OCR e a notificação à chefia do departamento de destino.
+        //
+        // Não é criado nenhum DocumentoEncaminhamento no registo: um
+        // encaminhamento por receber bloqueia o despacho, a saída de gabinete e
+        // o botão de encaminhar da listagem — o documento ficaria congelado à
+        // nascença. O destino é avisado por notificação.
         $this->documentoService->createDocument(
             $validated,
             $request->file('arquivo'),
