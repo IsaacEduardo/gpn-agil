@@ -129,22 +129,7 @@ class DocumentoEntradaTarefaController extends Controller
 
         $actor = Auth::user();
 
-        $can = false;
-        if ($tarefa->assigned_to_user_id && (int) $tarefa->assigned_to_user_id === (int) $actor->id) {
-            $can = true;
-        } elseif ($this->permissionService->canManageTasks($actor, $documento)) {
-            $can = true;
-        }
-
-        // Specific case: task assigned to department, check if user is in that department
-        if ($tarefa->assigned_to_departamento_id) {
-            $userDeps = $this->permissionService->getUserDepartments($actor);
-            if (in_array($tarefa->assigned_to_departamento_id, $userDeps)) {
-                $can = true;
-            }
-        }
-
-        if (! $can) {
+        if (! $this->permissionService->canConcluirTarefa($actor, $documento, $tarefa)) {
             return back()->with('danger', 'Sem permissão para concluir esta tarefa.');
         }
 
@@ -191,14 +176,8 @@ class DocumentoEntradaTarefaController extends Controller
         }
 
         $actor = Auth::user();
-        $can = false;
-        if ((int) $tarefa->assigned_by_id === (int) $actor->id) {
-            $can = true;
-        } elseif ($this->permissionService->canManageTasks($actor, $documento)) {
-            $can = true;
-        }
 
-        if (! $can) {
+        if (! $this->permissionService->canCancelarTarefa($actor, $documento, $tarefa)) {
             $msg = 'Sem permissão para cancelar esta tarefa.';
 
             return $request->wantsJson() ? response()->json(['message' => $msg], 403) : back()->with('danger', $msg);

@@ -31,9 +31,11 @@
                 @endif
                 
                 <div class="btn-group">
-                    <a href="{{ route('documentos-entradas.edit', $doc) }}" class="btn btn-outline-primary">
-                        <i class="fas fa-edit me-1"></i> Editar
-                    </a>
+                    @can('update', $doc)
+                        <a href="{{ route('documentos-entradas.edit', $doc) }}" class="btn btn-outline-primary">
+                            <i class="fas fa-edit me-1"></i> Editar
+                        </a>
+                    @endcan
                     <div class="btn-group">
                         <button class="btn btn-success dropdown-toggle fw-semibold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-barcode me-1"></i> Protocolo
@@ -323,12 +325,7 @@
                                     <h6 class="fw-bold mb-0">Lista de Tarefas</h6>
                                     @php($actor = Auth::user())
                                     @php($gab = optional($doc->departamento)->gabinete)
-                                    @php($actorIsRespGab = $actor && $gab && (int) optional($gab)->responsavel_id === (int) $actor->id)
-                                    @php($actorIsSuperChefe = $actor && $gab && $actor->isSuperChefeDoGabinete($gab))
-                                    @php($actorIsChiefDep = $actor && $actor->role && $actor->role->name === 'chefe-departamento')
-                                    @php($actorDeps = $actor && method_exists($actor, 'departamentos') && $actor->departamentos ? $actor->departamentos->pluck('id')->all() : [])
-                                    @php($actorDeps = !count($actorDeps) && $actor && $actor->departamento_id ? [$actor->departamento_id] : $actorDeps)
-                                    @php($canAssignTask = $actorIsRespGab || $actorIsSuperChefe || ($actorIsChiefDep && in_array((int) optional($doc->departamento)->id, $actorDeps)))
+                                    {{-- $canAssignTask vem do controller. A view não recalcula autorizações. --}}
                                     @if ($canAssignTask)
                                         <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalDesignarTarefa">
                                             <i class="fas fa-plus me-1"></i> Nova Tarefa
@@ -402,24 +399,10 @@
                                                             {{-- Action Buttons Logic --}}
                                                             @php($canAction = false)
                                                             @php($canConcluir = false)
-                                                            @php($canCancelar = false)
-                                                            @if ($t->status === 'pendente')
-                                                                @php($isAssignedUser = $t->assigned_to_user_id && (int) $t->assigned_to_user_id === (int) optional($actor)->id)
-                                                                @php($canChiefDep = false)
-                                                                @php($canRespGab = false)
-                                                                @if ($t->assigned_to_user_id)
-                                                                    @php($u = $t->assignedToUser)
-                                                                    @php($canChiefDep = $actorIsChiefDep && (in_array((int) optional($u)->departamento_id, $actorDeps) || ($u && $u->departamentos()->whereIn('departamento_id', $actorDeps)->exists())))
-                                                                    @php($gabDepIds = $gab ? \App\Models\Departamento::where('gabinete_id', $gab->id)->pluck('id')->all() : [])
-                                                                    @php($canRespGab = $actorIsRespGab && (in_array((int) optional($u)->departamento_id, $gabDepIds) || ($u && $u->departamentos()->whereIn('departamento_id', $gabDepIds)->exists())))
-                                                                @elseif($t->assigned_to_departamento_id)
-                                                                    @php($d = $t->assignedToDepartamento)
-                                                                    @php($canChiefDep = $actorIsChiefDep && in_array((int) optional($d)->id, $actorDeps))
-                                                                    @php($canRespGab = $actorIsRespGab && $gab && (int) optional($d)->gabinete_id === (int) $gab->id)
-                                                                @endif
-                                                                @php($canConcluir = $isAssignedUser || $canChiefDep || $canRespGab)
-                                                                @php($canCancelar = $canConcluir || (int) $t->assigned_by_id === (int) optional($actor)->id)
-                                                            @endif
+                                                            {{-- can_concluir/can_cancelar vêm do controller, com a
+                                                                 mesma regra dos endpoints (DocumentoPermissionService). --}}
+                                                            @php($canConcluir = $t->can_concluir ?? false)
+                                                            @php($canCancelar = $t->can_cancelar ?? false)
 
                                                             @if ($canConcluir)
                                                                 <form action="{{ route('documentos-entradas.tarefas.concluir', [$doc, $t]) }}" method="POST" class="d-inline">
@@ -571,8 +554,7 @@
                     <div class="card-body">
                         <!-- Department Visto -->
                         @php($actor = Auth::user())
-                        @php($actorIsChief = $actor && $actor->role && $actor->role->name === 'chefe-departamento')
-                        @php($canVisto = $actorIsChief && in_array((int) optional($doc->departamento)->id, $actorDeps))
+                        {{-- $canVisto vem do controller. --}}
                         @php($stDep = $doc->visto_departamento_status ?? 'pendente')
                         @php($depClass = $stDep === 'aprovado' ? 'success' : ($stDep === 'rejeitado' ? 'danger' : 'secondary'))
                         @php($depIcon = $stDep === 'aprovado' ? 'fa-check-circle' : ($stDep === 'rejeitado' ? 'fa-times-circle' : 'fa-hourglass-half'))
@@ -610,8 +592,9 @@
 
                         <!-- Gabinete Visto -->
                         @php($gab = optional($doc->departamento)->gabinete)
-                        @php($actorIsRespGab = $actor && $gab && (int) optional($gab)->responsavel_id === (int) $actor->id)
-                        @php($canVistoGabinete = $actorIsRespGab)
+                        {{-- $canVistoGabinete vem do controller: a versão que aqui estava
+                             era apenas "sou responsável de algum gabinete" e tinha
+                             perdido a verificação de que é o gabinete DO DOCUMENTO. --}}
                         @php($stGab = $doc->visto_gabinete_status ?? 'pendente')
                         @php($gabClass = $stGab === 'aprovado' ? 'success' : ($stGab === 'rejeitado' ? 'danger' : 'secondary'))
                         @php($gabIcon = $stGab === 'aprovado' ? 'fa-check-circle' : ($stGab === 'rejeitado' ? 'fa-times-circle' : 'fa-hourglass-half'))

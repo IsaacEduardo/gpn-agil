@@ -648,9 +648,11 @@ tr.keyboard-selected {
                                                 <li><a class="dropdown-item"
                                                         href="{{ route('documentos-entradas.show', $doc) }}"><i
                                                             class="fas fa-eye me-2 text-primary w-20"></i>Detalhes</a></li>
-                                                <li><a class="dropdown-item"
-                                                        href="{{ route('documentos-entradas.edit', $doc) }}"><i
-                                                            class="fas fa-edit me-2 text-secondary w-20"></i>Editar</a></li>
+                                                @can('update', $doc)
+                                                    <li><a class="dropdown-item"
+                                                            href="{{ route('documentos-entradas.edit', $doc) }}"><i
+                                                                class="fas fa-edit me-2 text-secondary w-20"></i>Editar</a></li>
+                                                @endcan
                                                 @if ($doc->arquivo_caminho)
                                                     <li><a class="dropdown-item"
                                                             href="{{ route('documentos-entradas.arquivo.download', $doc) }}"
@@ -697,14 +699,16 @@ tr.keyboard-selected {
                                                         </form>
                                                     </li>
                                                 @endif
-                                                <li>
-                                                    <form action="{{ route('documentos-entradas.destroy', $doc) }}"
-                                                        method="POST" onsubmit="return confirm('Tem certeza?');">
-                                                        @csrf @method('DELETE')
-                                                        <button class="dropdown-item text-danger" type="submit"><i
-                                                                class="fas fa-trash-alt me-2 w-20"></i>Eliminar</button>
-                                                    </form>
-                                                </li>
+                                                @can('delete', $doc)
+                                                    <li>
+                                                        <form action="{{ route('documentos-entradas.destroy', $doc) }}"
+                                                            method="POST" onsubmit="return confirm('Tem certeza?');">
+                                                            @csrf @method('DELETE')
+                                                            <button class="dropdown-item text-danger" type="submit"><i
+                                                                    class="fas fa-trash-alt me-2 w-20"></i>Eliminar</button>
+                                                        </form>
+                                                    </li>
+                                                @endcan
                                             </ul>
                                         </div>
                                     </td>

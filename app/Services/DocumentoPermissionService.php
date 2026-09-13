@@ -196,6 +196,45 @@ class DocumentoPermissionService
     }
 
     /**
+     * Quem pode concluir uma tarefa: o utilizador a quem foi atribuída, quem
+     * gere tarefas no documento, ou qualquer membro do departamento a que a
+     * tarefa foi atribuída.
+     *
+     * Fonte única partilhada pelo endpoint e pela view — existiam três versões
+     * desta regra (endpoint concluir, endpoint cancelar e show.blade.php) e
+     * tinham divergido.
+     */
+    public function canConcluirTarefa(User $user, $documento, \App\Models\DocumentoTarefa $tarefa): bool
+    {
+        if ($tarefa->assigned_to_user_id && (int) $tarefa->assigned_to_user_id === (int) $user->id) {
+            return true;
+        }
+
+        if ($this->canManageTasks($user, $documento)) {
+            return true;
+        }
+
+        if ($tarefa->assigned_to_departamento_id) {
+            return in_array((int) $tarefa->assigned_to_departamento_id, $this->getUserDepartments($user), true);
+        }
+
+        return false;
+    }
+
+    /**
+     * Quem pode cancelar uma tarefa: quem a atribuiu ou quem gere tarefas no
+     * documento.
+     */
+    public function canCancelarTarefa(User $user, $documento, \App\Models\DocumentoTarefa $tarefa): bool
+    {
+        if ((int) $tarefa->assigned_by_id === (int) $user->id) {
+            return true;
+        }
+
+        return $this->canManageTasks($user, $documento);
+    }
+
+    /**
      * Check if the user is responsible for a specific cabinet.
      */
     public function isGabineteResponsavel(User $user, ?int $gabineteId): bool
