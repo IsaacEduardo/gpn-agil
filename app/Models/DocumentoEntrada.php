@@ -202,7 +202,14 @@ class DocumentoEntrada extends Model
 
     public function getSlaStatusAttribute()
     {
-        if ($this->arquivado || in_array($this->status, ['arquivado', 'cancelado', 'finalizado'])) {
+        // Estados terminais não têm SLA. A lista anterior incluía 'cancelado',
+        // que não existe em DocumentoStatus — não filtrava nada.
+        $terminais = [
+            \App\Enums\DocumentoStatus::ARQUIVADO->value,
+            \App\Enums\DocumentoStatus::FINALIZADO->value,
+        ];
+
+        if ($this->arquivado || in_array($this->status, $terminais, true)) {
             return 'normal';
         }
 
