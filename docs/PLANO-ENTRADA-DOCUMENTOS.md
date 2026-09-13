@@ -289,6 +289,48 @@ precisa de confirmação).
 
 ---
 
+## Integração
+
+As cinco fases foram integradas em `feat/gestao-terrenos` por *fast-forward*
+(histórico linear, 19 commits). As branches de fase ficam como registo e podem
+ser apagadas quando o trabalho estiver em produção.
+
+**Validação feita antes de integrar:**
+
+| Verificação | Resultado |
+|---|---|
+| Suite completa | 347 testes, 1 falha pré-existente (ver abaixo) |
+| `migrate:fresh` de raiz (sqlite) | todas as migrations correm, incluindo as duas novas |
+| Pint nos ficheiros alterados | as violações são pré-existentes em todo o projeto (mesmos *fixers* na branch base); só a migration do FULLTEXT, criada aqui, foi corrigida |
+| Rotas do módulo | 47 rotas resolvem |
+| `config/documentos.php` | carrega (5000 / 200) |
+| Diff | confinado ao módulo; nenhum ficheiro inesperado |
+
+### ⚠️ Pré-requisitos de produção
+
+1. **`php artisan migrate`** — são precisas duas migrations:
+   - `2026_09_13_090000_grant_documentos_entrada_listar_to_all_roles`: **sem ela o
+     `viewAny` tranca os perfis operacionais fora da listagem.**
+   - `2026_09_13_100000_add_fulltext_index_to_anexos_texto_extraido`.
+2. **Validar a pesquisa de OCR em MySQL.** O `MATCH…AGAINST` e o `ALTER TABLE … ADD
+   FULLTEXT` estão cobertos por testes de gramática (SQL gerado), mas **não foram
+   executados contra um MySQL real** — a suite corre em sqlite e o Docker não estava
+   disponível na máquina de desenvolvimento. A migration é defensiva (apanha a falha
+   do `ALTER` e a pesquisa continua a funcionar por `LIKE`), mas confirme numa cópia
+   de produção antes de confiar no índice.
+3. **Comunicar a mudança de comportamento da pesquisa** (prefixo de palavra em vez de
+   subcadeia) a quem usa a pesquisa por conteúdo digitalizado.
+
+### Falha pré-existente por resolver (outro módulo)
+
+`Tests\Unit\DocumentoInternoServiceTest::test_processar_template_injects_date_line_before_signature`
+falha também na branch base. **Não é defeito de código:** o teste fixa
+`GOVERNO PROVINCIAL DO NAMIBE, em Moçâmedes`, mas o commit `477cc80` tornou esses
+valores dinâmicos (passam a vir de `DadosInstituicao`), deixando
+`Governo Provincial` / `Sede` como fallback genérico. O teste é que ficou
+desatualizado — devia semear um `DadosInstituicao` e afirmar sobre ele, em vez de
+congelar o fallback. Fora do âmbito deste plano.
+
 ## Registo de execução
 
 | Fase | Estado | Branch | Notas |
