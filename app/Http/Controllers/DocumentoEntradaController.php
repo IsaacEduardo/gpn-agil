@@ -69,7 +69,7 @@ class DocumentoEntradaController extends Controller
 
             // Search in attachments content (OCR) and filenames
             $q->orWhereHas('anexos', function ($subQ) use ($search) {
-                $subQ->where('texto_extraido', 'like', "%{$search}%")
+                $subQ->where(fn ($t) => $t->pesquisarTextoExtraido($search))
                     ->orWhere('nome_original', 'like', "%{$search}%");
             });
 

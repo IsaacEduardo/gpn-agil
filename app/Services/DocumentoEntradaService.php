@@ -181,7 +181,7 @@ class DocumentoEntradaService
                       $t->where('nome', 'like', "%$s%");
                   })
                   ->orWhereHas('anexos', function ($a) use ($s) {
-                      $a->where('texto_extraido', 'like', "%$s%");
+                      $a->pesquisarTextoExtraido($s);
                   });
             });
         }
