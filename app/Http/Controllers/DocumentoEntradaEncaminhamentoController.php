@@ -78,11 +78,9 @@ class DocumentoEntradaEncaminhamentoController extends Controller
             'observacao' => ['nullable', 'string'],
         ]);
 
-        $ids = json_decode($validated['ids'], true);
-        if (! is_array($ids) || empty($ids)) {
-            return $request->wantsJson()
-                ? response()->json(['success' => false, 'message' => 'Nenhum documento selecionado.'], 422)
-                : back()->with('error', 'Nenhum documento selecionado.');
+        $ids = $this->idsDoLote($validated['ids']);
+        if ($ids === null) {
+            return $this->recusarLote($request);
         }
 
         $result = $this->documentoService->forwardBatch(
@@ -109,9 +107,9 @@ class DocumentoEntradaEncaminhamentoController extends Controller
             'ids' => ['required', 'json'],
         ]);
 
-        $ids = json_decode($validated['ids'], true);
-        if (! is_array($ids) || empty($ids)) {
-            return back()->with('error', 'Nenhum documento selecionado.');
+        $ids = $this->idsDoLote($validated['ids']);
+        if ($ids === null) {
+            return $this->recusarLote($request);
         }
 
         $result = $this->documentoService->receiveBatch($ids, Auth::user());
@@ -218,6 +216,44 @@ class DocumentoEntradaEncaminhamentoController extends Controller
 
         return redirect()->route('documentos-entradas.show', $documento)
             ->with('success', 'Saída do gabinete registrada com sucesso.');
+    }
+
+    /**
+     * Descodifica e valida a lista de ids de um lote.
+     *
+     * O campo chegava como JSON sem limite de cardinalidade e o serviço itera
+     * com queries e notificações por documento — um lote arbitrariamente grande
+     * bloqueava o pedido.
+     *
+     * @return int[]|null  null quando a lista é inválida, vazia ou excede o limite.
+     */
+    private function idsDoLote(string $json): ?array
+    {
+        $ids = json_decode($json, true);
+
+        if (! is_array($ids) || empty($ids)) {
+            return null;
+        }
+
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        if (count($ids) > (int) config('documentos.limite_lote', 200)) {
+            return null;
+        }
+
+        return $ids;
+    }
+
+    private function recusarLote(Request $request)
+    {
+        $mensagem = sprintf(
+            'Selecione entre 1 e %d documentos por operação.',
+            (int) config('documentos.limite_lote', 200),
+        );
+
+        return $request->wantsJson()
+            ? response()->json(['success' => false, 'message' => $mensagem], 422)
+            : back()->with('error', $mensagem);
     }
 
     /**

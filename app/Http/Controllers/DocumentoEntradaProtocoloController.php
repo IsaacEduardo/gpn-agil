@@ -140,7 +140,11 @@ class DocumentoEntradaProtocoloController extends Controller
             'ultimoEncaminhamento.origemDepartamento:id,nome',
             'ultimoEncaminhamento.destinoDepartamento:id,nome',
         ]);
-        $documentos = $query->get();
+
+        $documentos = $this->colherAteAoLimite($query);
+        if ($documentos === null) {
+            return $this->recusarExportacao();
+        }
 
         $filtersSummary = [];
         if ($request->filled('departamento_id')) {
@@ -165,9 +169,39 @@ class DocumentoEntradaProtocoloController extends Controller
     public function exportExcel(Request $request)
     {
         $query = $this->documentoService->getFilteredDocumentsQuery($request, Auth::user());
-        $documentos = $query->get();
+
+        $documentos = $this->colherAteAoLimite($query);
+        if ($documentos === null) {
+            return $this->recusarExportacao();
+        }
 
         return Excel::download(new DocumentoEntradasExport($documentos), 'relatorio-documentos-entradas-'.date('Y-m-d').'.xlsx');
+    }
+
+    /**
+     * Colhe o resultado com um item a mais do que o limite: se vier esse item
+     * extra, o pedido excede o limite e é recusado. Uma só query — contar e
+     * depois colher percorreria o filtro duas vezes.
+     *
+     * @return \Illuminate\Support\Collection|null  null quando excede o limite.
+     */
+    private function colherAteAoLimite($query)
+    {
+        $limite = (int) config('documentos.limite_exportacao', 5000);
+
+        $documentos = $query->limit($limite + 1)->get();
+
+        return $documentos->count() > $limite ? null : $documentos;
+    }
+
+    private function recusarExportacao()
+    {
+        $limite = (int) config('documentos.limite_exportacao', 5000);
+
+        return back()->with('error', sprintf(
+            'A exportação excede o limite de %s registos. Restrinja o intervalo de datas, o departamento ou o estado e tente novamente.',
+            number_format($limite, 0, ',', ' '),
+        ));
     }
 
     /**
