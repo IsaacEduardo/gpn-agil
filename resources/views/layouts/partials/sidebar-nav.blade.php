@@ -124,6 +124,8 @@
                     @if ($isAdmin)
                         <a href="{{ route('admin.instituicao.edit') }}"
                             class="nav-link {{ request()->routeIs('admin.instituicao.*') ? 'active' : '' }}">Instituição</a>
+                        <a href="{{ route('admin.documento-especies.index') }}"
+                            class="nav-link {{ request()->routeIs('admin.documento-especies.*') ? 'active' : '' }}">Espécies e Prazos</a>
                     @endif
                     @if ($isAdmin || Auth::user()->can('configuracoes.editar'))
                         <a href="{{ route('empresas.index') }}"

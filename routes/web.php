@@ -230,6 +230,12 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('instituicao', [InstituicaoController::class, 'edit'])->name('admin.instituicao.edit');
     Route::put('instituicao', [InstituicaoController::class, 'update'])->name('admin.instituicao.update');
 
+    // Espécies de documento e respetivos prazos de tratamento (comandam o SLA)
+    Route::resource('documento-especies', \App\Http\Controllers\Admin\DocumentoEspecieController::class)
+        ->only(['index', 'store', 'update', 'destroy'])
+        ->parameters(['documento-especies' => 'documento_especie'])
+        ->names('admin.documento-especies');
+
     // Gestão de Permissões (RBAC)
     Route::prefix('permissoes')->name('configuracoes.permissoes.')->group(function () {
         Route::get('/', [RolePermissionController::class, 'index'])->name('index');

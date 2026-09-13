@@ -149,6 +149,7 @@
                     @if ($isAdmin)
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item py-2 {{ request()->routeIs('admin.instituicao.*') ? 'active' : '' }}" href="{{ route('admin.instituicao.edit') }}"><i class="fas fa-landmark me-2 text-muted"></i>Dados da Instituição</a></li>
+                        <li><a class="dropdown-item py-2 {{ request()->routeIs('admin.documento-especies.*') ? 'active' : '' }}" href="{{ route('admin.documento-especies.index') }}"><i class="fas fa-stopwatch me-2 text-muted"></i>Espécies e Prazos</a></li>
                     @endif
                     @if ($isAdmin || Auth::user()->can('configuracoes.editar'))
                         <li><a class="dropdown-item py-2 {{ request()->routeIs('empresas.*') ? 'active' : '' }}" href="{{ route('empresas.index') }}"><i class="fas fa-building-user me-2 text-muted"></i>Empresas Cadastradas</a></li>
