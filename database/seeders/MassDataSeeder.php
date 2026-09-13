@@ -61,7 +61,11 @@ class MassDataSeeder extends Seeder
                 'assunto' => "Documento de Carga N.º {$seq} - Projeto Infraestrutura",
                 'departamento_id' => $departamento->id,
                 'user_id' => $user->id,
-                'status' => 'registado',
+                // 'registado' (grafia PT) não existe em DocumentoStatus: os
+                // documentos de carga ficavam fora de todos os separadores da
+                // listagem e invisíveis ao SLA, o que tornava o teste de volume
+                // inútil para este módulo.
+                'status' => \App\Enums\DocumentoStatus::REGISTRADO->value,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
