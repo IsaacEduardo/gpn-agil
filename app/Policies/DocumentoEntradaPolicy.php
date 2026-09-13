@@ -49,31 +49,67 @@ class DocumentoEntradaPolicy
         return Response::allow();
     }
 
-    public function update(User $user, DocumentoEntrada $documento): bool
+    /**
+     * Alterar os dados do registo (assunto, procedência, espécie, anexos).
+     *
+     * A partir do momento em que o documento é despachado ou encaminhado, o
+     * registo deixa de ser corrigível: era possível a qualquer membro do
+     * departamento atual reescrever o assunto e a procedência — e até mudar o
+     * departamento_id, movendo o documento sem encaminhamento nem rasto de
+     * tramitação. O admin mantém-se como via de correção (ver before()).
+     */
+    public function update(User $user, DocumentoEntrada $documento): Response
     {
-        // Autor da entrada ou usuário do mesmo departamento (se ainda não tramitado/arquivado)
+        if ($documento->arquivado) {
+            return Response::deny('Documento arquivado: para o alterar é preciso desarquivá-lo primeiro.');
+        }
+
+        if ($documento->data_despacho !== null) {
+            return Response::deny('Documento já despachado: os dados do registo não podem ser alterados. Corrija por despacho ou peça a um administrador.');
+        }
+
+        if ($documento->encaminhamentos()->exists()) {
+            return Response::deny('Documento já em tramitação: os dados do registo não podem ser alterados.');
+        }
+
+        return $this->podeMexerNoRegisto($user, $documento)
+            ? Response::allow()
+            : Response::deny('Sem permissão para alterar este documento.');
+    }
+
+    /**
+     * Vincular/desvincular documentos relacionados é trabalho normal durante a
+     * tramitação, pelo que não segue o congelamento de 'update' — só o
+     * arquivamento o encerra.
+     */
+    public function relacionar(User $user, DocumentoEntrada $documento): bool
+    {
         if ($documento->arquivado) {
             return false;
         }
 
-        $permissionService = app(DocumentoPermissionService::class);
-        $userDeps = $permissionService->getUserDepartments($user);
+        return $this->podeMexerNoRegisto($user, $documento);
+    }
 
+    /**
+     * Quem tem relação com o documento: autor, membro do departamento onde ele
+     * está, ou responsável pelo gabinete desse departamento.
+     */
+    private function podeMexerNoRegisto(User $user, DocumentoEntrada $documento): bool
+    {
         if ((int) $documento->user_id === (int) $user->id) {
             return true;
         }
 
-        if (in_array((int) $documento->departamento_id, $userDeps, true)) {
+        $permissionService = app(DocumentoPermissionService::class);
+
+        if (in_array((int) $documento->departamento_id, $permissionService->getUserDepartments($user), true)) {
             return true;
         }
 
-        // Chefe de Gabinete do departamento
         $gabId = optional($documento->departamento)->gabinete_id;
-        if ($gabId && $permissionService->isGabineteResponsavel($user, $gabId)) {
-            return true;
-        }
 
-        return false;
+        return $gabId && $permissionService->isGabineteResponsavel($user, $gabId);
     }
 
     public function delete(User $user, DocumentoEntrada $documento): bool
@@ -92,7 +128,7 @@ class DocumentoEntradaPolicy
         return $this->view($user, $documento);
     }
 
-    public function manageAnexos(User $user, DocumentoEntrada $documento): bool
+    public function manageAnexos(User $user, DocumentoEntrada $documento): Response
     {
         return $this->update($user, $documento);
     }

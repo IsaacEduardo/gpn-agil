@@ -130,10 +130,9 @@
                     <div class="row g-3">
                         <div class="col-md-4">
                             <label class="form-label">Departamento Responsável</label>
-                            @php($actor = Auth::user())
-                            @php($isAdmin = $actor && $actor->role && $actor->role->name === 'admin')
-                            @php($hasMovs = $doc->encaminhamentos()->exists())
-                            @if ($isAdmin && !$hasMovs)
+                            {{-- A regra vem do controller (podeAlterarDepartamento):
+                                 é a mesma que o servidor aplica no update. --}}
+                            @if ($podeAlterarDepartamento ?? false)
                                 <select name="departamento_id"
                                     class="form-select @error('departamento_id') is-invalid @enderror" required>
                                     @foreach ($departamentos as $dep)
@@ -146,11 +145,8 @@
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             @else
-                                <input type="hidden" name="departamento_id"
-                                    value="{{ old('departamento_id', $doc->departamento_id) }}" />
                                 <div class="form-control-plaintext">{{ optional($doc->departamento)->nome ?? '—' }}</div>
-                                <div class="form-text">Departamento responsável não editável
-                                    {{ $hasMovs ? 'com histórico de encaminhamentos' : 'para seu perfil' }}.</div>
+                                <div class="form-text">A mudança de setor faz-se por encaminhamento, para ficar registada na tramitação.</div>
                             @endif
                         </div>
                         <div class="col-md-4">

@@ -125,4 +125,88 @@ class DocumentoEntradaPolicyTest extends TestCase
         $this->assertTrue($policy->saidaGabinete($chefeGab, $doc));
         $this->assertFalse($policy->saidaGabinete($member, $doc));
     }
+
+    /**
+     * P6 — a policy só bloqueava a edição de documentos arquivados. Qualquer
+     * membro do departamento atual podia alterar assunto, procedência e até
+     * departamento_id de um documento já despachado e encaminhado.
+     */
+    public function test_update_e_bloqueado_depois_do_despacho(): void
+    {
+        $roles = $this->seedRoles();
+
+        $gab = Gabinete::create(['nome' => 'Gab']);
+        $dep = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gab->id]);
+        $membro = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $dep->id]);
+        $admin = User::factory()->create(['role_id' => $roles['admin']->id, 'departamento_id' => $dep->id]);
+
+        $doc = $this->makeDoc($membro, $dep);
+        $policy = new DocumentoEntradaPolicy;
+
+        // Antes do despacho o registo ainda é corrigível.
+        $this->assertTrue($policy->update($membro, $doc)->allowed());
+
+        $doc->data_despacho = now();
+        $doc->texto_despacho = 'Para o departamento tratar';
+        $doc->save();
+
+        $this->assertFalse($policy->update($membro, $doc->fresh())->allowed());
+
+        // O admin continua a ser a via de correção. A isenção vem do before()
+        // da policy, pelo que tem de ser verificada através do Gate — chamar o
+        // método da policy diretamente salta-o.
+        $this->assertTrue(\Illuminate\Support\Facades\Gate::forUser($admin)->allows('update', $doc->fresh()));
+        $this->assertFalse(\Illuminate\Support\Facades\Gate::forUser($membro)->allows('update', $doc->fresh()));
+    }
+
+    public function test_update_e_bloqueado_depois_de_encaminhado(): void
+    {
+        $roles = $this->seedRoles();
+
+        $gab = Gabinete::create(['nome' => 'Gab']);
+        $depA = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gab->id]);
+        $depB = Departamento::create(['nome' => 'Dept B', 'gabinete_id' => $gab->id]);
+        $membro = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
+
+        $doc = $this->makeDoc($membro, $depA);
+        $policy = new DocumentoEntradaPolicy;
+
+        $this->assertTrue($policy->update($membro, $doc)->allowed());
+
+        \App\Models\DocumentoEncaminhamento::create([
+            'documento_entrada_id' => $doc->id,
+            'origem_departamento_id' => $depA->id,
+            'destino_departamento_id' => $depB->id,
+            'usuario_id' => $membro->id,
+            'encaminhado_em' => now(),
+        ]);
+
+        $this->assertFalse($policy->update($membro, $doc->fresh())->allowed());
+    }
+
+    /**
+     * Vincular documentos relacionados é trabalho normal durante a tramitação e
+     * não pode ser apanhado pelo congelamento da edição.
+     */
+    public function test_relacionar_continua_permitido_depois_do_despacho(): void
+    {
+        $roles = $this->seedRoles();
+
+        $gab = Gabinete::create(['nome' => 'Gab']);
+        $dep = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gab->id]);
+        $membro = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $dep->id]);
+
+        $doc = $this->makeDoc($membro, $dep);
+        $doc->data_despacho = now();
+        $doc->save();
+
+        $policy = new DocumentoEntradaPolicy;
+
+        $this->assertTrue($policy->relacionar($membro, $doc->fresh()));
+
+        // Mas não depois de arquivado.
+        $doc->arquivado = true;
+        $doc->save();
+        $this->assertFalse($policy->relacionar($membro, $doc->fresh()));
+    }
 }

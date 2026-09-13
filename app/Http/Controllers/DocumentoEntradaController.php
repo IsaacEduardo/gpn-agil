@@ -356,6 +356,14 @@ class DocumentoEntradaController extends Controller
 
         $canAssignTask = $this->permissionService->canManageTasks($actor, $doc);
 
+        // A view não decide autorizações: recebe-as já calculadas, com a mesma
+        // regra que os endpoints aplicam.
+        foreach ($doc->tarefas as $tarefa) {
+            $pendente = $tarefa->status === 'pendente';
+            $tarefa->setAttribute('can_concluir', $pendente && $this->permissionService->canConcluirTarefa($actor, $doc, $tarefa));
+            $tarefa->setAttribute('can_cancelar', $pendente && $this->permissionService->canCancelarTarefa($actor, $doc, $tarefa));
+        }
+
         $canVisto = false;
         $canVistoGabinete = false;
 
@@ -587,7 +595,7 @@ class DocumentoEntradaController extends Controller
 
     public function relacionar(Request $request, DocumentoEntrada $documento)
     {
-        $this->authorize('update', $documento);
+        $this->authorize('relacionar', $documento);
 
         $validated = $request->validate([
             'relacionado_id' => ['required', 'integer'],
@@ -644,7 +652,7 @@ class DocumentoEntradaController extends Controller
 
     public function desrelacionar(Request $request, DocumentoEntrada $documento, $relacionadoId)
     {
-        $this->authorize('update', $documento);
+        $this->authorize('relacionar', $documento);
 
         // Check if it's an internal document unlink
         if ($request->query('type') === 'interno') {
@@ -685,6 +693,7 @@ class DocumentoEntradaController extends Controller
             'especies' => $especies,
             'procedencias' => $procedencias,
             'tags' => $tags,
+            'podeAlterarDepartamento' => $this->podeAlterarDepartamento(Auth::user(), $documentos_entrada),
         ]);
     }
 
@@ -703,10 +712,18 @@ class DocumentoEntradaController extends Controller
             'saida_gabinete_data' => ['nullable', 'date'],
             'encaminhamento_orgao' => ['nullable', 'string', 'max:255'],
             'encaminhamento_oficio_numero' => ['nullable', 'string', 'max:100'],
-            'departamento_id' => ['required', 'exists:departamentos,id'],
+            'departamento_id' => ['nullable', 'exists:departamentos,id'],
             'arquivo' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:2048'],
             'anexos.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
         ]);
+
+        // Mudar de setor faz-se por encaminhamento, que deixa rasto. Gravar
+        // departamento_id pelo formulário movia o documento em silêncio, e o
+        // servidor aceitava-o de qualquer utilizador — a restrição só existia
+        // na view. A regra passa a ser a mesma nos dois lados.
+        if (! $this->podeAlterarDepartamento(Auth::user(), $documentos_entrada)) {
+            unset($validated['departamento_id']);
+        }
 
         $this->documentoService->updateDocument(
             $documentos_entrada,
@@ -716,6 +733,20 @@ class DocumentoEntradaController extends Controller
         );
 
         return redirect()->route('documentos-entradas.show', $documentos_entrada)->with('success', 'Documento atualizado com sucesso.');
+    }
+
+    /**
+     * O departamento do documento só é corrigível por um administrador e
+     * enquanto o documento não tiver saído do sítio. A partir daí, a mudança de
+     * setor faz-se por encaminhamento.
+     */
+    private function podeAlterarDepartamento(?User $actor, DocumentoEntrada $documento): bool
+    {
+        if (! $actor || ! $this->permissionService->isAdmin($actor)) {
+            return false;
+        }
+
+        return ! $documento->encaminhamentos()->exists();
     }
 
     public function destroyAnexo(DocumentoEntrada $documento, Anexo $anexo)
