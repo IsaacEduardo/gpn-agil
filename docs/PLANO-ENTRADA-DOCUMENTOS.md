@@ -293,9 +293,29 @@ precisa de confirmação).
 
 | Fase | Estado | Branch | Notas |
 |---|---|---|---|
-| 1 — Regra de perfis | em curso | `fix/entrada-docs-fase1-perfis` | |
+| 1 — Regra de perfis | **concluída** | `fix/entrada-docs-fase1-perfis` | P1–P4 fechados + 1 defeito novo (ver abaixo) |
 | 2 — Fluxo autónomo | por fazer | | |
 | 3 — Fonte única de autorização | por fazer | | |
 | 4 — Integridade do registo | por fazer | | |
 | 5 — Escala | por fazer | | |
 | 6 — Automação | por fazer | | |
+
+### Fase 1 — o que ficou feito
+
+| Commit | Defeito | Resolução |
+|---|---|---|
+| `89a9e02` | **P2** | Rotas de protocolo exigem a ability `view`; `marcarImpresso` também (e não `update`, para a reimpressão continuar a funcionar depois do despacho). |
+| `94431d8` | **P1** | `quickAction` exige `canDespachar()` no ramo gabinete e `canManageTasks()` + validação de destinatário no ramo chefia. A regra de destinatário saiu do `TarefaController` para `DocumentoEntradaService::validarDestinatarioTarefa()`. |
+| `e832dbd` | **novo** | `despachar()` e `encaminhar()` declaravam `$documentos_entrada` contra a rota `{documento}`: sem *implicit binding*, o Laravel injetava um modelo vazio e o despacho respondia **sempre 403**. O botão "Despachar Documento" da listagem estava morto e o fluxo só passava pelo `quickAction`. |
+| `1e27bc6` | **P3** | Destinos do despacho limitados ao gabinete do documento, no servidor (`Rule::in`) e nas listas das views, via `DocumentoEntradaService::departamentosDestinoPermitidos()`. |
+| `004174a` | **P4** | `index()` aplica `viewAny`. Migration idempotente concede `documentos_entrada.listar` a todos os perfis existentes antes de a exigir — `user` e `tecnico` não a tinham nos seeders. |
+
+**Antes de aplicar em produção:** correr `php artisan migrate` — sem a migration
+`2026_09_13_090000_grant_documentos_entrada_listar_to_all_roles`, o `viewAny`
+tranca os perfis operacionais fora da listagem.
+
+**Falha de teste pré-existente, não introduzida aqui:**
+`Tests\Unit\DocumentoInternoServiceTest::test_processar_template_injects_date_line_before_signature`
+falha também na branch base — espera `GOVERNO PROVINCIAL DO NAMIBE, em Moçâmedes`
+e recebe `GOVERNO PROVINCIAL, em Sede` (`DadosInstituicao` por omissão). Fica para
+tratar fora deste plano.
