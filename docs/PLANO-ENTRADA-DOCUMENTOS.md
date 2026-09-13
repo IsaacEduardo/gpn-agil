@@ -294,7 +294,7 @@ precisa de confirmação).
 | Fase | Estado | Branch | Notas |
 |---|---|---|---|
 | 1 — Regra de perfis | **concluída** | `fix/entrada-docs-fase1-perfis` | P1–P4 fechados + 1 defeito novo (ver abaixo) |
-| 2 — Fluxo autónomo | por fazer | | |
+| 2 — Fluxo autónomo | **concluída** | `fix/entrada-docs-fase2-fluxo` | F1 e F2 fechados (ramifica da fase 1, que ainda não está integrada) |
 | 3 — Fonte única de autorização | por fazer | | |
 | 4 — Integridade do registo | por fazer | | |
 | 5 — Escala | por fazer | | |
@@ -313,6 +313,29 @@ precisa de confirmação).
 **Antes de aplicar em produção:** correr `php artisan migrate` — sem a migration
 `2026_09_13_090000_grant_documentos_entrada_listar_to_all_roles`, o `viewAny`
 tranca os perfis operacionais fora da listagem.
+
+### Fase 2 — o que ficou feito
+
+| Commit | Defeito | Resolução |
+|---|---|---|
+| `c53dbfa` | **F2** | Nova `DocumentoEntradaRegistado` (type `documento_registado`, categoria `documentos`) enviada fora da transação a partir de `createDocument`. Destinatários: chefia do departamento de destino, responsável do departamento e responsável do gabinete — nunca quem regista. Texto do formulário e comentário do `store()` corrigidos. |
+| `61116d3` | **F1** | Estados em curso passam a incluir `pendente_tratamento` e `encaminhado`. Em `pendente_tratamento` o alerta vai a quem despacha; `encaminhado` ganha pista própria de recebimento pendente com o relógio no `encaminhado_em`. `getSlaStatusAttribute` alinhado com o enum. |
+
+**Decisões de implementação que convém não desfazer:**
+
+- **F2 resolve-se por notificação, não por encaminhamento inicial.** Um
+  `DocumentoEncaminhamento` com `recebido_em` a null bloqueia `forwardDocument()`,
+  o endpoint `encaminhar`, a saída de gabinete e o `can_forward` da listagem — o
+  documento ficaria congelado à nascença.
+- **`notificarRegisto()` apanha `\Throwable`, não `\Exception`.** Deixar escapar
+  uma `QueryException` faria o ciclo de retentativa de numeração em
+  `createDocument()` repetir a criação e gerar um documento duplicado.
+- **As duas pistas de SLA partilham `sla_nivel_notificado` com o prefixo
+  `recebimento:`.** Sem o prefixo, um documento avisado em `warning` no
+  departamento voltaria a ser silenciado depois de encaminhado.
+- **`Departamento::getChefeAttribute()` já recorre ao `responsavel_id`** quando não
+  há utilizador com o papel `chefe-departamento`. O fallback previsto no plano era
+  redundante e não foi acrescentado; ficou apenas um teste de regressão.
 
 **Falha de teste pré-existente, não introduzida aqui:**
 `Tests\Unit\DocumentoInternoServiceTest::test_processar_template_injects_date_line_before_signature`
