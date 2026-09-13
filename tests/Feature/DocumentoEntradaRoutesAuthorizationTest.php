@@ -243,4 +243,141 @@ class DocumentoEntradaRoutesAuthorizationTest extends TestCase
             ])
             ->assertStatus(403);
     }
+
+    /**
+     * quickAction protegia-se apenas com canViewDocument — que é largo de
+     * propósito (histórico de encaminhamentos, tarefas, departamentos destino).
+     * Conseguir ver nunca pode bastar para despachar.
+     */
+    public function test_quick_action_nega_despacho_em_documento_de_outro_gabinete(): void
+    {
+        config()->set('queue.default', 'sync');
+        Event::fake([BroadcastNotificationCreated::class]);
+        $roles = $this->seedRoles();
+
+        $gabA = Gabinete::create(['nome' => 'Gabinete A']);
+        $gabB = Gabinete::create(['nome' => 'Gabinete B']);
+        $depA = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gabA->id]);
+        $depB = Departamento::create(['nome' => 'Dept B', 'gabinete_id' => $gabB->id]);
+
+        $respA = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
+        $gabA->update(['responsavel_id' => $respA->id]);
+
+        $ownerB = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depB->id]);
+        $doc = $this->makeDoc($ownerB, $depB, 10);
+
+        // Dá visibilidade ao respA por histórico: o documento passou pelo Dept A.
+        DocumentoEncaminhamento::create([
+            'documento_entrada_id' => $doc->id,
+            'origem_departamento_id' => $depA->id,
+            'destino_departamento_id' => $depB->id,
+            'usuario_id' => $ownerB->id,
+            'encaminhado_em' => now()->subDay(),
+            'recebido_em' => now(),
+            'recebido_por_id' => $ownerB->id,
+        ]);
+
+        $this->actingAs($respA)
+            ->postJson(route('documentos-entradas.quick-action', $doc), [
+                'destino_departamento_ids' => [$depA->id],
+                'texto_despacho' => 'Despacho indevido noutro gabinete',
+            ])
+            ->assertStatus(403);
+
+        $doc->refresh();
+        $this->assertNull($doc->texto_despacho);
+        $this->assertNull($doc->visto_gabinete_status);
+        $this->assertSame('registrado', $doc->status);
+    }
+
+    public function test_quick_action_permite_despacho_no_proprio_gabinete(): void
+    {
+        config()->set('queue.default', 'sync');
+        Event::fake([BroadcastNotificationCreated::class]);
+        $roles = $this->seedRoles();
+
+        $gab = Gabinete::create(['nome' => 'Gabinete A']);
+        $depA = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gab->id]);
+        $depDestino = Departamento::create(['nome' => 'Dept Destino', 'gabinete_id' => $gab->id]);
+
+        $resp = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
+        $gab->update(['responsavel_id' => $resp->id]);
+
+        $doc = $this->makeDoc($resp, $depA, 11);
+
+        $this->actingAs($resp)
+            ->postJson(route('documentos-entradas.quick-action', $doc), [
+                'destino_departamento_ids' => [$depDestino->id],
+                'texto_despacho' => 'Para tratamento urgente',
+            ])
+            ->assertStatus(200)
+            ->assertJson(['success' => true]);
+
+        $doc->refresh();
+        $this->assertSame('tratado', $doc->status);
+        $this->assertSame('aprovado', $doc->visto_gabinete_status);
+    }
+
+    /**
+     * O ramo chefe_departamento aceitava qualquer exists:users,id. O
+     * DocumentoEntradaTarefaController já validava o destinatário — o
+     * quickAction era o caminho paralelo sem essa validação.
+     */
+    public function test_quick_action_nega_delegacao_a_utilizador_de_outro_departamento(): void
+    {
+        config()->set('queue.default', 'sync');
+        Event::fake([BroadcastNotificationCreated::class]);
+        $roles = $this->seedRoles();
+
+        $gab = Gabinete::create(['nome' => 'Gabinete A']);
+        $depA = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gab->id]);
+        $depB = Departamento::create(['nome' => 'Dept B', 'gabinete_id' => $gab->id]);
+
+        $chefeA = User::factory()->create(['role_id' => $roles['chefe']->id, 'departamento_id' => $depA->id]);
+        $depA->update(['responsavel_id' => $chefeA->id]);
+        $estranho = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depB->id]);
+
+        $doc = $this->makeDoc($chefeA, $depA, 12);
+
+        $this->actingAs($chefeA)
+            ->postJson(route('documentos-entradas.quick-action', $doc), [
+                'assigned_to_user_id' => $estranho->id,
+                'descricao' => 'Trate disto',
+                'prazo_at' => now()->addDays(3)->toDateString(),
+            ])
+            ->assertStatus(422);
+
+        $this->assertDatabaseCount('documento_tarefas', 0);
+        $doc->refresh();
+        $this->assertNull($doc->visto_departamento_status);
+    }
+
+    public function test_quick_action_permite_delegacao_dentro_do_departamento(): void
+    {
+        config()->set('queue.default', 'sync');
+        Event::fake([BroadcastNotificationCreated::class]);
+        $roles = $this->seedRoles();
+
+        $gab = Gabinete::create(['nome' => 'Gabinete A']);
+        $depA = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gab->id]);
+
+        $chefeA = User::factory()->create(['role_id' => $roles['chefe']->id, 'departamento_id' => $depA->id]);
+        $depA->update(['responsavel_id' => $chefeA->id]);
+        $tecnico = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
+
+        $doc = $this->makeDoc($chefeA, $depA, 13);
+
+        $this->actingAs($chefeA)
+            ->postJson(route('documentos-entradas.quick-action', $doc), [
+                'assigned_to_user_id' => $tecnico->id,
+                'descricao' => 'Elabore o parecer técnico',
+                'prazo_at' => now()->addDays(3)->toDateString(),
+            ])
+            ->assertStatus(200)
+            ->assertJson(['success' => true]);
+
+        $this->assertDatabaseCount('documento_tarefas', 1);
+        $doc->refresh();
+        $this->assertSame('aprovado', $doc->visto_departamento_status);
+    }
 }

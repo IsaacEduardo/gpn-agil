@@ -442,6 +442,46 @@ class DocumentoEntradaService
         });
     }
 
+    /**
+     * Regra única de quem pode receber uma tarefa num documento de entrada.
+     * Partilhada pelo DocumentoEntradaTarefaController e pelo quickAction — antes
+     * só o primeiro a aplicava, pelo que o segundo aceitava qualquer utilizador.
+     *
+     * @return string|null  mensagem de erro, ou null se o destinatário é válido.
+     */
+    public function validarDestinatarioTarefa(DocumentoEntrada $documento, User $destino, User $actor): ?string
+    {
+        $docGabId = optional($documento->departamento)->gabinete_id;
+
+        if ($actor->isSuperChefeDoGabinete($docGabId)) {
+            $gabinete = $documento->departamento ? $documento->departamento->gabinete : null;
+            $isChefeGab = $gabinete && (int) $gabinete->responsavel_id === (int) $destino->id;
+            $isChefeDep = Departamento::where('gabinete_id', $docGabId)
+                ->where('responsavel_id', $destino->id)
+                ->exists();
+
+            return ($isChefeGab || $isChefeDep)
+                ? null
+                : 'O Super Chefe só pode delegar tarefas ao Chefe de Gabinete ou aos Chefes de Departamento do respetivo gabinete.';
+        }
+
+        if ($this->permissionService->isGabineteResponsavel($actor, $docGabId)) {
+            $destinoDep = $destino->departamento;
+
+            return ($destinoDep && (int) $destinoDep->gabinete_id === (int) $docGabId)
+                ? null
+                : 'Selecione usuário do seu gabinete.';
+        }
+
+        // Chefe de departamento: o destinatário tem de pertencer ao departamento
+        // onde o documento se encontra.
+        $depId = (int) $documento->departamento_id;
+        $pertence = ((int) $destino->departamento_id === $depId)
+            || $destino->departamentos()->where('departamento_id', $depId)->exists();
+
+        return $pertence ? null : 'Selecione usuário do seu departamento.';
+    }
+
     public function completeTask(DocumentoTarefa $tarefa, User $actor, ?int $responsavelId = null)
     {
         if ($tarefa->assigned_to_departamento_id) {

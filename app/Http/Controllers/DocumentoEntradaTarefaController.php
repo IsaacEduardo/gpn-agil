@@ -59,31 +59,12 @@ class DocumentoEntradaTarefaController extends Controller
                     return back()->withErrors(['destino_ids' => 'Usuário não encontrado.']);
                 }
 
-                if ($isSuperChefe) {
-                    $gabinete = $documento->departamento ? $documento->departamento->gabinete : null;
-                    $isChefeGab = $gabinete && (int) $gabinete->responsavel_id === (int) $user->id;
-                    $isChefeDep = Departamento::where('gabinete_id', $docGabId)->where('responsavel_id', $user->id)->exists();
-
-                    if (! $isChefeGab && ! $isChefeDep) {
-                        return back()->withErrors(['destino_ids' => 'O Super Chefe só pode delegar tarefas ao Chefe de Gabinete ou aos Chefes de Departamento do respetivo gabinete.']);
-                    }
-                } else {
-                    $isGabResp = $this->permissionService->isGabineteResponsavel($actor, $docGabId);
-
-                    if ($isGabResp) {
-                        $uDep = $user->departamento;
-                        if (! $uDep || $uDep->gabinete_id !== $docGabId) {
-                            return back()->withErrors(['destino_ids' => 'Selecione usuário do seu gabinete.']);
-                        }
-                    } else {
-                        // Chief Dept
-                        $depId = (int) $documento->departamento_id;
-                        $belongs = ((int) $user->departamento_id === $depId) || $user->departamentos()->where('departamento_id', $depId)->exists();
-                        if (! $belongs) {
-                            return back()->withErrors(['destino_ids' => 'Selecione usuário do seu departamento.']);
-                        }
-                    }
+                // Regra partilhada com o quickAction — ver DocumentoEntradaService.
+                $erro = $this->documentoService->validarDestinatarioTarefa($documento, $user, $actor);
+                if ($erro !== null) {
+                    return back()->withErrors(['destino_ids' => $erro]);
                 }
+
                 $usuariosValidos[] = $user;
             }
         } else {

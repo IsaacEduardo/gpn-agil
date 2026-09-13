@@ -435,6 +435,15 @@ class DocumentoEntradaController extends Controller
         $profile = $this->permissionService->getUserWorkflowProfile($actor);
 
         if ($profile === 'gabinete') {
+            // Ver o documento nunca basta para o despachar: canViewDocument é largo
+            // (histórico, tarefas, departamentos destino). A regra é a mesma do
+            // endpoint despachar() — tem de ser o gabinete DESTE documento.
+            if (! $this->permissionService->canDespachar($actor, $documento)) {
+                return response()->json([
+                    'error' => 'Apenas o Chefe de Gabinete ou o Responsável pelo Gabinete deste documento podem despachá-lo.',
+                ], 403);
+            }
+
             $validated = $request->validate([
                 'destino_departamento_ids' => ['required', 'array', 'min:1'],
                 'destino_departamento_ids.*' => ['integer', 'exists:departamentos,id'],
@@ -470,11 +479,32 @@ class DocumentoEntradaController extends Controller
 
             $message = 'Despacho executivo emitido e documento encaminhado com sucesso!';
         } elseif ($profile === 'chefe_departamento') {
+            // Mesma exigência do DocumentoEntradaTarefaController::store.
+            if (! $this->permissionService->canManageTasks($actor, $documento)) {
+                return response()->json([
+                    'error' => 'Você não tem permissão para delegar tarefas neste documento.',
+                ], 403);
+            }
+
             $validated = $request->validate([
                 'assigned_to_user_id' => ['required', 'integer', 'exists:users,id'],
                 'descricao' => ['required', 'string'],
                 'prazo_at' => ['required', 'date'],
             ]);
+
+            // O destinatário tem de pertencer ao departamento/gabinete — regra
+            // partilhada com o TarefaController via DocumentoEntradaService.
+            $destino = User::find($validated['assigned_to_user_id']);
+            $erroDestino = $destino
+                ? $this->documentoService->validarDestinatarioTarefa($documento, $destino, $actor)
+                : 'Usuário não encontrado.';
+
+            if ($erroDestino !== null) {
+                return response()->json([
+                    'message' => $erroDestino,
+                    'errors' => ['assigned_to_user_id' => [$erroDestino]],
+                ], 422);
+            }
 
             // Criar Tarefa/Despacho atribuída ao técnico
             $tarefa = DocumentoTarefa::create([
