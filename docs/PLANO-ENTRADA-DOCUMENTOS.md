@@ -297,7 +297,7 @@ precisa de confirmação).
 | 2 — Fluxo autónomo | **concluída** | `fix/entrada-docs-fase2-fluxo` | F1 e F2 fechados (ramifica da fase 1, que ainda não está integrada) |
 | 3 — Fonte única de autorização | **concluída** | `fix/entrada-docs-fase3-autorizacao` | P5 e P6 fechados |
 | 4 — Integridade do registo | **concluída** | `fix/entrada-docs-fase4-registo` | F4, F5, F6, F9 e limites de ficheiro |
-| 5 — Escala | por fazer | | |
+| 5 — Escala | **concluída** | `fix/entrada-docs-fase5-escala` | F7 e F8 |
 | 6 — Automação | por fazer | | |
 
 ### Fase 1 — o que ficou feito
@@ -381,6 +381,31 @@ tranca os perfis operacionais fora da listagem.
   mais exige mexer na infra-estrutura.
 - **O aviso de duplicado é `withErrors`, não `session('warning')`**, para reaproveitar
   o `@error` do formulário e sobreviver ao `withInput()`.
+
+### Fase 5 — o que ficou feito
+
+| Commit | Defeito | Resolução |
+|---|---|---|
+| `5f17072` | **F8** | `config/documentos.php` com `limite_exportacao` (5000) e `limite_lote` (200). A exportação colhe `limite+1` e recusa se vier o extra; os lotes validam cardinalidade antes de chamar o serviço. |
+| `4bc0867` | **F7** | Migration FULLTEXT em `anexos.texto_extraido` (guardada por driver) e `Anexo::scopePesquisarTextoExtraido()` como único ponto de escolha: `MATCH…AGAINST` em MySQL, `LIKE` nos restantes. |
+
+**⚠️ Mudança de comportamento a validar em produção (F7):** em MySQL a pesquisa
+sobre o texto de OCR passa a ser **por prefixo de palavra**, não por subcadeia.
+`licenciamento` encontra `licenciamentos`, mas `cenciamento` deixa de encontrar
+`licenciamento`. É o que um índice FULLTEXT permite — a alternativa era manter o
+varrimento completo da tabela. Termos com menos de 3 caracteres recaem no `LIKE`,
+para não desaparecerem dos resultados sem aviso.
+
+**Outras decisões de implementação:**
+
+- **A exportação colhe `limite+1` em vez de contar primeiro.** Um `count()` seguido
+  de `get()` percorreria o filtro (com `distinct` e subconsultas de visibilidade)
+  duas vezes.
+- **A migration do FULLTEXT engole a falha do `ALTER`.** Sem o índice a pesquisa
+  continua a funcionar por `LIKE`; não vale a pena falhar um deploy por isto.
+- **O caminho MySQL está coberto por testes de gramática** (`tests/Unit/AnexoPesquisaTextoTest.php`),
+  que inspecionam o SQL gerado sem precisar de servidor MySQL — a suite corre em
+  sqlite e de outro modo esse caminho só seria exercitado em produção.
 
 **Falha de teste pré-existente, não introduzida aqui:**
 `Tests\Unit\DocumentoInternoServiceTest::test_processar_template_injects_date_line_before_signature`
