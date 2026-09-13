@@ -380,4 +380,79 @@ class DocumentoEntradaRoutesAuthorizationTest extends TestCase
         $doc->refresh();
         $this->assertSame('aprovado', $doc->visto_departamento_status);
     }
+
+    /**
+     * A rota declara {documento} e o método declarava $documentos_entrada, pelo
+     * que o Laravel injetava um DocumentoEntrada vazio e o despacho respondia
+     * sempre 403 — o botão "Despachar Documento" da listagem estava morto.
+     */
+    public function test_despacho_resolve_o_documento_da_rota(): void
+    {
+        config()->set('queue.default', 'sync');
+        Event::fake([BroadcastNotificationCreated::class]);
+        $roles = $this->seedRoles();
+
+        $gab = Gabinete::create(['nome' => 'Gabinete A']);
+        $depA = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gab->id]);
+        $depDestino = Departamento::create(['nome' => 'Dept Destino', 'gabinete_id' => $gab->id]);
+
+        $resp = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
+        $gab->update(['responsavel_id' => $resp->id]);
+
+        $doc = $this->makeDoc($resp, $depA, 30);
+
+        $this->actingAs($resp)
+            ->post(route('documentos-entradas.despachar', $doc), [
+                'texto_despacho' => 'Para tratamento do departamento destino',
+                'departamentos_ids' => [$depDestino->id],
+            ])
+            ->assertRedirect();
+
+        $doc->refresh();
+        $this->assertSame('tratado', $doc->status);
+        $this->assertSame('Para tratamento do departamento destino', $doc->texto_despacho);
+        $this->assertSame([$depDestino->id], $doc->departamentosDestino()->pluck('departamentos.id')->all());
+    }
+
+    /**
+     * Despachar para departamento de outro gabinete concedia-lhe visibilidade do
+     * documento via departamentosDestino. A saída inter-gabinete tem caminho
+     * próprio (saida-gabinete).
+     */
+    public function test_despacho_recusa_departamento_de_outro_gabinete(): void
+    {
+        config()->set('queue.default', 'sync');
+        Event::fake([BroadcastNotificationCreated::class]);
+        $roles = $this->seedRoles();
+
+        $gabA = Gabinete::create(['nome' => 'Gabinete A']);
+        $gabB = Gabinete::create(['nome' => 'Gabinete B']);
+        $depA = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gabA->id]);
+        $depAlheio = Departamento::create(['nome' => 'Dept Alheio', 'gabinete_id' => $gabB->id]);
+
+        $resp = User::factory()->create(['role_id' => $roles['user']->id, 'departamento_id' => $depA->id]);
+        $gabA->update(['responsavel_id' => $resp->id]);
+
+        $doc = $this->makeDoc($resp, $depA, 20);
+
+        $this->actingAs($resp)
+            ->postJson(route('documentos-entradas.despachar', $doc), [
+                'texto_despacho' => 'Despacho para fora do gabinete',
+                'departamentos_ids' => [$depAlheio->id],
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame(0, $doc->departamentosDestino()->count());
+
+        // O mesmo bloqueio no caminho rápido.
+        $this->actingAs($resp)
+            ->postJson(route('documentos-entradas.quick-action', $doc), [
+                'destino_departamento_ids' => [$depAlheio->id],
+                'texto_despacho' => 'Despacho para fora do gabinete',
+            ])
+            ->assertStatus(422);
+
+        $doc->refresh();
+        $this->assertNull($doc->texto_despacho);
+    }
 }

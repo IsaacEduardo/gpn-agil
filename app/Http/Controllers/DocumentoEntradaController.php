@@ -955,10 +955,10 @@ class DocumentoEntradaController extends Controller
         }
     }
 
-    public function despachar(Request $request, DocumentoEntrada $documentos_entrada)
+    public function despachar(Request $request, DocumentoEntrada $documento)
     {
         $actor = Auth::user();
-        if (! $this->permissionService->canDespachar($actor, $documentos_entrada)) {
+        if (! $this->permissionService->canDespachar($actor, $documento)) {
             abort(403, 'Apenas o Chefe de Gabinete ou o Responsável pelo Gabinete podem despachar este documento.');
         }
 
@@ -973,7 +973,7 @@ class DocumentoEntradaController extends Controller
         ]);
 
         $this->documentoService->despacharDocumento(
-            $documentos_entrada,
+            $documento,
             $validated['texto_despacho'],
             $validated['departamentos_ids'],
             $actor
@@ -982,15 +982,15 @@ class DocumentoEntradaController extends Controller
         return back()->with('success', 'Documento despachado com sucesso para os departamentos selecionados.');
     }
 
-    public function encaminhar(Request $request, DocumentoEntrada $documentos_entrada)
+    public function encaminhar(Request $request, DocumentoEntrada $documento)
     {
         $actor = Auth::user();
-        if (! $this->permissionService->canEncaminharTratado($actor, $documentos_entrada)) {
+        if (! $this->permissionService->canEncaminharTratado($actor, $documento)) {
             abort(403, 'Você não tem permissão para encaminhar este documento.');
         }
 
         try {
-            $this->documentoService->encaminharDocumentoTratado($documentos_entrada, $actor);
+            $this->documentoService->encaminharDocumentoTratado($documento, $actor);
             return back()->with('success', 'Documento encaminhado com sucesso para os departamentos destinatários.');
         } catch (\Throwable $e) {
             return back()->with('danger', $e->getMessage());
