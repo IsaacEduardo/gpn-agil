@@ -21,7 +21,7 @@ return new class extends Migration
     {
         try {
             return count(DB::select('SHOW INDEX FROM `anexos` WHERE Key_name = ?', [self::INDEX])) > 0;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             return false;
         }
     }
@@ -38,7 +38,7 @@ return new class extends Migration
 
         try {
             DB::statement('ALTER TABLE `anexos` ADD FULLTEXT INDEX `'.self::INDEX.'` (`texto_extraido`)');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // Sem o índice a pesquisa continua a funcionar por LIKE; não vale a
             // pena falhar o deploy por causa disto.
         }
@@ -52,7 +52,7 @@ return new class extends Migration
 
         try {
             DB::statement('ALTER TABLE `anexos` DROP INDEX `'.self::INDEX.'`');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // ignore
         }
     }
