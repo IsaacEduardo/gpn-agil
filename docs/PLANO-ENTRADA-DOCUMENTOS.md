@@ -340,7 +340,31 @@ congelar o fallback. Fora do âmbito deste plano.
 | 3 — Fonte única de autorização | **concluída** | `fix/entrada-docs-fase3-autorizacao` | P5 e P6 fechados |
 | 4 — Integridade do registo | **concluída** | `fix/entrada-docs-fase4-registo` | F4, F5, F6, F9 e limites de ficheiro |
 | 5 — Escala | **concluída** | `fix/entrada-docs-fase5-escala` | F7 e F8 |
-| 6 — Automação | por fazer | | |
+| 6 — Automação | **em curso** | `feat/entrada-docs-fase6-prazo-especie` | Prazo por espécie feito; restantes itens da tabela por fazer |
+
+### Fase 6 — feito até agora
+
+| Commit | Item | Resolução |
+|---|---|---|
+| `dbfabd2` | Prazo por espécie | `documento_especies.prazo_tratamento_dias` (nulo = prazo global). `config/documentos.php` ganha `prazo_tratamento_dias` (5) e `fracao_aviso_prazo` (0.4), valores que **reproduzem exatamente** os limiares fixos anteriores — nada muda até se atribuírem prazos. |
+| `6041987` | Ecrã de administração | CRUD em `/admin/documento-especies`, reservado a administradores. É por aqui que os prazos se definem, sem SQL nem migration. |
+
+**Decisões de implementação que convém não desfazer:**
+
+- **O prazo vem de um mapa em cache** (`DocumentoEspecie::prazosPorNome()`), não de uma
+  consulta por documento: a espécie é guardada pelo **nome** e `sla_status` é avaliado
+  em **cada linha da listagem**. Há um teste que falha se alguém reintroduzir a consulta
+  por linha. A cache é invalidada nos eventos `saved`/`deleted` do modelo.
+- **Prazo em branco significa "usar o prazo global", não zero.**
+- **A unicidade do nome é verificada com `LOWER(TRIM(...))`, não com `Rule::unique`**,
+  porque esta última depende do *collation*: em MySQL apanharia `parecer` vs `Parecer`,
+  em sqlite não. A verificação explícita dá o mesmo resultado nos dois motores.
+- **Não se elimina uma espécie que já classifica documentos** — perder-se-ia a ligação à
+  tabela de retenção. O ecrã sugere desativá-la.
+
+**Validado em MySQL real:** ecrã 200 para admin e 403 para utilizador comum; alterar o
+prazo de "Ofício" para 30 dias mudou o SLA de um documento real de `critical` para
+`warning` de imediato, e a reversão restaurou-o.
 
 ### Fase 1 — o que ficou feito
 
