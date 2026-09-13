@@ -140,4 +140,58 @@ class IdorProtectionTest extends TestCase
         $responseDelete = $this->actingAs($userB)->delete(route('pastas.destroy', $pastaA->id));
         $responseDelete->assertStatus(403);
     }
+
+    /**
+     * As rotas de protocolo expõem assunto, procedência, departamento e autor.
+     * Só exigiam 'auth', pelo que qualquer autenticado enumerava IDs de outros
+     * gabinetes.
+     */
+    public function test_user_cannot_access_protocolo_routes_from_other_department()
+    {
+        [$userA, $userB, $docA] = $this->criarDoisDepartamentosComDocumento();
+
+        $this->actingAs($userB)->get(route('documentos-entradas.protocolo', $docA))->assertStatus(403);
+        $this->actingAs($userB)->get(route('documentos-entradas.protocolo.pdf', $docA))->assertStatus(403);
+        $this->actingAs($userB)->get(route('documentos-entradas.protocolo.etiqueta', $docA))->assertStatus(403);
+        $this->actingAs($userB)->patch(route('documentos-entradas.protocolo.impresso', $docA))->assertStatus(403);
+    }
+
+    public function test_owner_still_accesses_own_protocolo_routes()
+    {
+        [$userA, $userB, $docA] = $this->criarDoisDepartamentosComDocumento();
+
+        $this->actingAs($userA)->get(route('documentos-entradas.protocolo', $docA))->assertStatus(200);
+        $this->actingAs($userA)->get(route('documentos-entradas.protocolo.etiqueta', $docA))->assertStatus(200);
+        $this->actingAs($userA)->patch(route('documentos-entradas.protocolo.impresso', $docA))->assertStatus(200);
+    }
+
+    /**
+     * @return array{0: User, 1: User, 2: DocumentoEntrada}
+     */
+    private function criarDoisDepartamentosComDocumento(): array
+    {
+        $userRole = Role::firstOrCreate(['name' => 'user'], ['description' => 'Usuário']);
+
+        $gabA = Gabinete::create(['nome' => 'Gabinete A']);
+        $gabB = Gabinete::create(['nome' => 'Gabinete B']);
+
+        $depA = Departamento::create(['nome' => 'Departamento A', 'gabinete_id' => $gabA->id]);
+        $depB = Departamento::create(['nome' => 'Departamento B', 'gabinete_id' => $gabB->id]);
+
+        $userA = User::factory()->create(['role_id' => $userRole->id, 'departamento_id' => $depA->id]);
+        $userB = User::factory()->create(['role_id' => $userRole->id, 'departamento_id' => $depB->id]);
+
+        $docA = DocumentoEntrada::create([
+            'numero_sequencial' => 301,
+            'ano_referencia' => (int) date('Y'),
+            'data_entrada' => now(),
+            'assunto' => 'Protocolo Confidencial Departamento A',
+            'departamento_id' => $depA->id,
+            'user_id' => $userA->id,
+            'status' => 'registrado',
+            'origem' => 'externo',
+        ]);
+
+        return [$userA, $userB, $docA];
+    }
 }

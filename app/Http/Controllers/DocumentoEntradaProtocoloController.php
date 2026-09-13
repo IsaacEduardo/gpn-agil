@@ -26,6 +26,8 @@ class DocumentoEntradaProtocoloController extends Controller
 
     public function protocolo(DocumentoEntrada $documento)
     {
+        $this->authorize('view', $documento);
+
         $documento->load(['departamento', 'usuario', 'protocolo']);
 
         $this->ensureProtocolo($documento);
@@ -38,6 +40,8 @@ class DocumentoEntradaProtocoloController extends Controller
 
     public function protocoloEtiqueta(DocumentoEntrada $documento, Request $request)
     {
+        $this->authorize('view', $documento);
+
         $documento->load(['departamento.gabinete', 'usuario', 'protocolo']);
 
         $this->ensureProtocolo($documento);
@@ -65,6 +69,8 @@ class DocumentoEntradaProtocoloController extends Controller
 
     public function protocoloPdf(DocumentoEntrada $documento)
     {
+        $this->authorize('view', $documento);
+
         $documento->load(['departamento', 'usuario', 'protocolo']);
 
         $this->ensureProtocolo($documento);
@@ -106,6 +112,11 @@ class DocumentoEntradaProtocoloController extends Controller
 
     public function marcarImpresso(DocumentoEntrada $documento, Request $request)
     {
+        // 'view' e não 'update': marcar o recibo como impresso é o carimbo de uma
+        // impressão legítima, não uma alteração do documento. Quem pode ver o
+        // protocolo pode imprimi-lo — incluindo reimprimir depois do despacho.
+        $this->authorize('view', $documento);
+
         $documento->load('protocolo');
         if (! $documento->protocolo) {
             return response()->json(['message' => 'Protocolo não encontrado'], 404);
