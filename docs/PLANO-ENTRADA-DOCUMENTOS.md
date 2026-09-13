@@ -331,6 +331,26 @@ valores dinâmicos (passam a vir de `DadosInstituicao`), deixando
 desatualizado — devia semear um `DadosInstituicao` e afirmar sobre ele, em vez de
 congelar o fallback. Fora do âmbito deste plano.
 
+## Correções posteriores à visibilidade do percurso
+
+Com a linha do tempo unificada e a aba de auditoria a tornarem o fluxo visível
+de ponta a ponta, o último passo do fluxo revelou-se partido (`936c0e5`):
+
+| Defeito | Resolução |
+|---|---|
+| O ramo `tecnico` do `quickAction` escrevia em `documento_tarefas.resposta` e `.concluida_em` — **colunas que nunca existiram**. Registar o parecer técnico pelo painel de ação rápida devolvia **500**. | Migration cria as duas colunas; modelo ganha `fillable` e cast. |
+| `completeTask()` não datava a conclusão, pelo que a linha do tempo usava `updated_at` — que se desloca com qualquer alteração posterior à tarefa. | Ambos os caminhos gravam `concluida_em`; a linha do tempo usa-o. |
+| A aba de auditoria mostra o **IP** de quem agiu e o antes/depois de cada alteração a **qualquer pessoa que consiga ver o documento** — e `canViewDocument` é deliberadamente largo. | Nova ability `verAuditoria` (chefia do departamento, responsável do gabinete, super chefe, admin pelo `before`) guarda separador e painel. |
+| `take(50)` truncava em silêncio, escondendo o **início** da história (a listagem vem do mais recente). | Contador passa a "N de M" quando trunca. |
+
+**Validado em MySQL real:** admin vê a aba e o IP; utilizador comum não vê nenhum
+dos dois; as colunas novas existem.
+
+**Nota de autoria:** o commit `936c0e5` inclui também a linha do tempo unificada e
+a aba de auditoria, que estavam por commitar na árvore de trabalho e vivem nos
+mesmos ficheiros que estas correções — não eram separáveis sem *staging*
+interativo.
+
 ## Registo de execução
 
 | Fase | Estado | Branch | Notas |
