@@ -37,16 +37,21 @@ class EncaminhamentoFlowTest extends TestCase
     {
         parent::setUp();
 
+        // A listagem exige 'documentos_entrada.listar' (policy viewAny), pelo que
+        // os utilizadores do teste precisam de um perfil com permissões reais.
+        $this->seed(\Database\Seeders\PermissionsSeeder::class);
         Role::firstOrCreate(['name' => 'admin'], ['description' => 'Admin']);
-        Role::firstOrCreate(['name' => 'user'], ['description' => 'User']);
+        $roleUser = Role::firstOrCreate(['name' => 'user'], ['description' => 'User']);
 
         $this->gab = Gabinete::create(['nome' => 'Gabinete', 'sigla' => 'G']);
         $this->depA = Departamento::create(['nome' => 'Dep A', 'sigla' => 'A', 'gabinete_id' => $this->gab->id]);
         $this->depB = Departamento::create(['nome' => 'Dep B', 'sigla' => 'B', 'gabinete_id' => $this->gab->id]);
         $this->depC = Departamento::create(['nome' => 'Dep C', 'sigla' => 'C', 'gabinete_id' => $this->gab->id]);
 
-        $this->userA = User::factory()->create(['departamento_id' => $this->depA->id]);
-        $this->userB = User::factory()->create(['departamento_id' => $this->depB->id]);
+        $this->userA = User::factory()->create(['departamento_id' => $this->depA->id, 'role_id' => $roleUser->id]);
+        $this->userB = User::factory()->create(['departamento_id' => $this->depB->id, 'role_id' => $roleUser->id]);
+        $this->userA->assignRole($roleUser);
+        $this->userB->assignRole($roleUser);
     }
 
     private function service(): DocumentoEntradaService

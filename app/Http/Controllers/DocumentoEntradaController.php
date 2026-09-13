@@ -132,6 +132,8 @@ class DocumentoEntradaController extends Controller
 
     public function index(Request $request)
     {
+        $this->authorize('viewAny', DocumentoEntrada::class);
+
         $actor = Auth::user();
         $documentos = $this->documentoService->getFilteredDocuments($request, $actor);
 

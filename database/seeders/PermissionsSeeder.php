@@ -112,6 +112,10 @@ class PermissionsSeeder extends Seeder
         $roleUser = Role::firstOrCreate(['name' => 'user', 'guard_name' => 'web']);
         $roleUser->givePermissionTo([
             'dashboard.view',
+            // Balcão/expediente regista e acompanha entradas — sem isto a policy
+            // viewAny tranca-os fora da listagem.
+            'documentos_entrada.listar',
+            'documentos_entrada.criar',
             'viaturas.listar',
             'credenciais.listar',
             'credenciais.criar',
@@ -120,6 +124,8 @@ class PermissionsSeeder extends Seeder
         $roleTecnico = Role::firstOrCreate(['name' => 'tecnico', 'guard_name' => 'web']);
         $roleTecnico->givePermissionTo([
             'dashboard.view',
+            'documentos_entrada.listar',
+            'documentos_entrada.criar',
             'viaturas.listar',
             'credenciais.listar',
             'credenciais.criar',

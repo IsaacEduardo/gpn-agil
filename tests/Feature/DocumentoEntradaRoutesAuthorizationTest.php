@@ -382,6 +382,38 @@ class DocumentoEntradaRoutesAuthorizationTest extends TestCase
     }
 
     /**
+     * index() passou a exigir 'documentos_entrada.listar' (policy viewAny).
+     * Nos seeders essa permissão só chegava a admin e chefe-departamento — o
+     * balcão e os técnicos ficariam trancados fora da listagem.
+     */
+    public function test_listagem_acessivel_aos_perfis_operacionais(): void
+    {
+        $this->seed(\Database\Seeders\PermissionsSeeder::class);
+
+        $gab = Gabinete::create(['nome' => 'Gabinete A']);
+        $dep = Departamento::create(['nome' => 'Dept A', 'gabinete_id' => $gab->id]);
+
+        foreach (['admin', 'chefe-departamento', 'user', 'tecnico'] as $roleName) {
+            $role = Role::where('name', $roleName)->firstOrFail();
+            $u = User::factory()->create(['role_id' => $role->id, 'departamento_id' => $dep->id]);
+            $u->assignRole($role);
+
+            $this->actingAs($u)
+                ->get(route('documentos-entradas.index'))
+                ->assertStatus(200);
+        }
+
+        // E a permissão é mesmo exigida: um perfil sem ela não entra.
+        $semAcesso = Role::create(['name' => 'perfil-sem-entradas', 'guard_name' => 'web']);
+        $estranho = User::factory()->create(['role_id' => $semAcesso->id, 'departamento_id' => $dep->id]);
+        $estranho->assignRole($semAcesso);
+
+        $this->actingAs($estranho)
+            ->get(route('documentos-entradas.index'))
+            ->assertStatus(403);
+    }
+
+    /**
      * A rota declara {documento} e o método declarava $documentos_entrada, pelo
      * que o Laravel injetava um DocumentoEntrada vazio e o despacho respondia
      * sempre 403 — o botão "Despachar Documento" da listagem estava morto.
