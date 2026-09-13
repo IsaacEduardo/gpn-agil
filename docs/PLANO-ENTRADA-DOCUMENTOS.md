@@ -296,7 +296,7 @@ precisa de confirmação).
 | 1 — Regra de perfis | **concluída** | `fix/entrada-docs-fase1-perfis` | P1–P4 fechados + 1 defeito novo (ver abaixo) |
 | 2 — Fluxo autónomo | **concluída** | `fix/entrada-docs-fase2-fluxo` | F1 e F2 fechados (ramifica da fase 1, que ainda não está integrada) |
 | 3 — Fonte única de autorização | **concluída** | `fix/entrada-docs-fase3-autorizacao` | P5 e P6 fechados |
-| 4 — Integridade do registo | por fazer | | |
+| 4 — Integridade do registo | **concluída** | `fix/entrada-docs-fase4-registo` | F4, F5, F6, F9 e limites de ficheiro |
 | 5 — Escala | por fazer | | |
 | 6 — Automação | por fazer | | |
 
@@ -359,6 +359,28 @@ tranca os perfis operacionais fora da listagem.
   que chamem a policy diretamente têm de usar `->allowed()`; para verificar a
   isenção do admin é preciso passar pelo `Gate`, porque o `before()` não corre numa
   chamada direta ao método.
+
+### Fase 4 — o que ficou feito
+
+| Commit | Defeito | Resolução |
+|---|---|---|
+| `b84e0bf` | **F6** | `classificacao_especie` passa a `required` no FormRequest. |
+| `b84e0bf` | **F5** | Campo `data_entrada` (não posterior a hoje, hoje por defeito); `processCreation` usa o valor recebido. |
+| `b84e0bf` | **F4** | `procurarPossivelDuplicado()` compara procedência + referência + data do documento; o `store()` devolve aviso com link para o registo existente e exige `confirmar_duplicado`. |
+| `b84e0bf` | limites | `StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB = 10240`, único para `arquivo` e `anexos`, lido também pelo componente de upload. |
+| `45e0d0a` | **F9** | Ability `cancelarEncaminhamento`: autor, chefia do departamento de origem ou responsável do gabinete. |
+
+**Decisões de implementação que convém não desfazer:**
+
+- **A deteção de duplicados exige número de referência.** Sem ele não há critério
+  fiável — dois ofícios do mesmo remetente no mesmo dia podem ser documentos
+  distintos — e um aviso falso a cada registo treinaria o balcão a ignorá-lo.
+- **O limite ficou nos 10 MB porque era o que a interface já prometia.** Havia três
+  valores em desacordo (2 MB, 5 MB, 10 MB); produção está documentada em
+  `upload_max_filesize = 25M` e `client_max_body_size 25M`, pelo que cabe. Subir
+  mais exige mexer na infra-estrutura.
+- **O aviso de duplicado é `withErrors`, não `session('warning')`**, para reaproveitar
+  o `@error` do formulário e sobreviver ao `withInput()`.
 
 **Falha de teste pré-existente, não introduzida aqui:**
 `Tests\Unit\DocumentoInternoServiceTest::test_processar_template_injects_date_line_before_signature`
