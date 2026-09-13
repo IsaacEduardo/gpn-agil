@@ -30,7 +30,32 @@
                     </a>
                 </div>
 
-                <form action="{{ route('documentos-entradas.store') }}" method="POST" enctype="multipart/form-data">
+                @error('duplicado')
+                    <div class="alert alert-warning border-warning shadow-sm mb-4">
+                        <div class="d-flex align-items-start gap-2">
+                            <i class="fas fa-triangle-exclamation mt-1"></i>
+                            <div>
+                                <div class="fw-bold mb-1">Possível registo duplicado</div>
+                                <div class="small">{{ $message }}</div>
+                                @if (session('duplicado_id'))
+                                    <a href="{{ route('documentos-entradas.show', session('duplicado_id')) }}"
+                                       target="_blank" class="small fw-semibold text-decoration-none">
+                                        Ver o documento já registado <i class="fas fa-arrow-up-right-from-square ms-1"></i>
+                                    </a>
+                                @endif
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" name="confirmar_duplicado"
+                                           value="1" id="confirmarDuplicado" form="formNovaEntrada">
+                                    <label class="form-check-label small fw-semibold" for="confirmarDuplicado">
+                                        É um documento diferente ou uma segunda via — registar mesmo assim.
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @enderror
+
+                <form id="formNovaEntrada" action="{{ route('documentos-entradas.store') }}" method="POST" enctype="multipart/form-data">
                     @csrf
 
                     {{-- Card 1: Informações Principais --}}
@@ -72,6 +97,17 @@
                                             <div class="invalid-feedback">{{ $message }}</div>
                                         @enderror
                                     </div>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <div class="form-floating">
+                                        <input type="date" name="data_entrada" class="form-control @error('data_entrada') is-invalid @enderror" id="floatingDataEntrada" max="{{ now()->toDateString() }}" value="{{ old('data_entrada', now()->toDateString()) }}">
+                                        <label for="floatingDataEntrada">Data de Entrada (receção)</label>
+                                        @error('data_entrada')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+                                    <div class="form-text small">Altere se estiver a registar correspondência recebida em data anterior.</div>
                                 </div>
 
                                 <div class="col-12">

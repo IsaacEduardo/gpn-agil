@@ -20,7 +20,7 @@
     <div class="d-flex flex-column align-items-center justify-content-center pointer-events-none">
         <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3 opacity-50"></i>
         <p class="mb-1 fw-medium text-dark">Arraste arquivos ou clique aqui para selecionar</p>
-        <p class="small text-muted mb-0">PDFs ou Imagens (Máx 10MB)</p>
+        <p class="small text-muted mb-0">PDFs ou Imagens (máx. {{ (int) (\App\Http\Requests\StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB / 1024) }} MB por ficheiro)</p>
     </div>
 </div>
 <ul id="fileList_{{ $id }}" class="list-group list-group-flush mt-3 small"></ul>

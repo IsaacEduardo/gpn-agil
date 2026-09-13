@@ -315,7 +315,8 @@ class DocumentoEntradaService
         $doc = DocumentoEntrada::create([
             'numero_sequencial' => $seq,
             'ano_referencia' => $ano,
-            'data_entrada' => now(),
+            // Data real de receção ao balcão; só recai em hoje se não for indicada.
+            'data_entrada' => ! empty($data['data_entrada']) ? Carbon::parse($data['data_entrada']) : now(),
             'classificacao_especie' => $data['classificacao_especie'] ?? null,
             'classificacao_ref_numero' => $data['classificacao_ref_numero'] ?? null,
             'data_documento' => $data['data_documento'] ?? null,
@@ -447,6 +448,43 @@ class DocumentoEntradaService
 
             return $tarefa;
         });
+    }
+
+    /**
+     * Procura um registo que aparente ser o mesmo documento físico: mesma
+     * procedência, mesmo número de referência e mesma data do documento.
+     *
+     * Sem número de referência não há critério fiável de comparação — dois
+     * ofícios do mesmo remetente no mesmo dia podem ser documentos distintos —
+     * pelo que nesse caso não se assinala nada.
+     */
+    public function procurarPossivelDuplicado(array $data): ?DocumentoEntrada
+    {
+        $referencia = trim((string) ($data['classificacao_ref_numero'] ?? ''));
+        if ($referencia === '') {
+            return null;
+        }
+
+        $procedenciaId = $data['procedencia_id'] ?? null;
+        $procedenciaNome = trim((string) ($data['procedencia'] ?? ''));
+        if (! $procedenciaId && $procedenciaNome === '') {
+            return null;
+        }
+
+        return DocumentoEntrada::query()
+            ->where('classificacao_ref_numero', $referencia)
+            ->when(
+                $procedenciaId,
+                fn ($q) => $q->where('procedencia_id', $procedenciaId),
+                fn ($q) => $q->whereRaw('LOWER(TRIM(procedencia)) = ?', [mb_strtolower($procedenciaNome)]),
+            )
+            ->when(
+                ! empty($data['data_documento']),
+                fn ($q) => $q->whereDate('data_documento', $data['data_documento']),
+                fn ($q) => $q->whereNull('data_documento'),
+            )
+            ->latest('id')
+            ->first();
     }
 
     /**

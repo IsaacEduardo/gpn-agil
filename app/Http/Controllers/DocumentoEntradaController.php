@@ -227,6 +227,25 @@ class DocumentoEntradaController extends Controller
     {
         $validated = $request->validated();
 
+        // Com dois operadores ao balcão, o mesmo ofício acaba registado duas
+        // vezes. Avisa-se, não se bloqueia: uma segunda via legítima tem de
+        // continuar a poder ser registada, mediante confirmação explícita.
+        if (! $request->boolean('confirmar_duplicado')) {
+            $existente = $this->documentoService->procurarPossivelDuplicado($validated);
+
+            if ($existente) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['duplicado' => sprintf(
+                        'Já existe o documento #%03d/%d com a mesma procedência, referência e data (%s). Confirme que pretende registar mesmo assim.',
+                        $existente->numero_sequencial,
+                        $existente->ano_referencia,
+                        \Illuminate\Support\Str::limit($existente->assunto, 60),
+                    )])
+                    ->with('duplicado_id', $existente->id);
+            }
+        }
+
         // ── Camada de Domínio (DDD) — Validação de Invariantes ──────────────────
         // Constrói o DTO, instancia a DocumentoEntradaEntity e valida as
         // invariantes de domínio (assunto obrigatório, protocolo não vazio).
@@ -713,8 +732,8 @@ class DocumentoEntradaController extends Controller
             'encaminhamento_orgao' => ['nullable', 'string', 'max:255'],
             'encaminhamento_oficio_numero' => ['nullable', 'string', 'max:100'],
             'departamento_id' => ['nullable', 'exists:departamentos,id'],
-            'arquivo' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:2048'],
-            'anexos.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            'arquivo' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB],
+            'anexos.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB],
         ]);
 
         // Mudar de setor faz-se por encaminhamento, que deixa rasto. Gravar
