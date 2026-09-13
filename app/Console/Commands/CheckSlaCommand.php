@@ -145,7 +145,9 @@ class CheckSlaCommand extends Command
             : "está pendente no departamento '{$departamento->nome}'";
 
         $titulo = "{$prefixo}: Documento #{$doc->numero_sequencial}/{$doc->ano_referencia}";
-        $mensagem = "O documento '{$doc->assunto}' {$onde} há {$dias} dias {$urgencia}.";
+        $prazo = $doc->prazo_tratamento_dias;
+        $mensagem = "O documento '{$doc->assunto}' {$onde} há {$dias} dias {$urgencia}. "
+            ."Prazo para esta espécie: {$prazo} dias.";
 
         if (! $this->notificar($destinatario, $doc, $titulo, $mensagem, $prioridade, 'sla_'.$statusSla)) {
             return false;

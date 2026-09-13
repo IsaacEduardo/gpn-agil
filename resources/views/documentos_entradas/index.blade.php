@@ -603,11 +603,13 @@ tr.keyboard-selected {
                                         
                                         @php($sla = $doc->sla_status)
                                         @if ($sla === 'critical')
-                                            <div class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill mt-1" title="SLA Crítico: {{ $doc->dias_decorridos }} dias decorridos">
+                                            <div class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill mt-1"
+                                                 title="Prazo excedido: {{ $doc->dias_decorridos }} dias decorridos, prazo de {{ $doc->prazo_tratamento_dias }} dias para {{ $doc->classificacao_especie ?: 'esta espécie' }}">
                                                 <i class="fas fa-exclamation-triangle me-1"></i>Crítico
                                             </div>
                                         @elseif ($sla === 'warning')
-                                            <div class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill mt-1" title="SLA Excedido: {{ $doc->dias_decorridos }} dias decorridos">
+                                            <div class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill mt-1"
+                                                 title="A aproximar-se do prazo: {{ $doc->dias_decorridos }} de {{ $doc->prazo_tratamento_dias }} dias">
                                                 <i class="fas fa-exclamation-circle me-1"></i>Atrasado
                                             </div>
                                         @endif

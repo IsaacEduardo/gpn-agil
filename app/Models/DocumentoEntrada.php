@@ -219,15 +219,42 @@ class DocumentoEntrada extends Model
         }
 
         $dias = $dataBase->diffInDays(now());
+        $prazo = $this->prazo_tratamento_dias;
 
-        if ($dias >= 5) {
+        if ($dias >= $prazo) {
             return 'critical';
         }
-        if ($dias >= 2) {
+
+        $aviso = (int) ceil($prazo * (float) config('documentos.fracao_aviso_prazo', 0.4));
+        if ($dias >= max(1, $aviso)) {
             return 'warning';
         }
 
         return 'normal';
+    }
+
+    /**
+     * Prazo de tratamento aplicável a este documento, em dias.
+     *
+     * Vem da espécie quando esta tem prazo próprio; caso contrário do prazo
+     * global. Um ofício urgente e um relatório anual deixam de partilhar o
+     * mesmo limiar.
+     *
+     * A espécie é guardada pelo nome (classificacao_especie), não por chave
+     * estrangeira, e este atributo é lido por linha na listagem — daí a
+     * consulta ao mapa em cache de DocumentoEspecie e não à base.
+     */
+    public function getPrazoTratamentoDiasAttribute(): int
+    {
+        $global = (int) config('documentos.prazo_tratamento_dias', 5);
+
+        if (empty($this->classificacao_especie)) {
+            return $global;
+        }
+
+        $prazos = \App\Models\DocumentoEspecie::prazosPorNome();
+
+        return $prazos[$this->classificacao_especie] ?? $global;
     }
 
     public function getDiasDecorridosAttribute()
