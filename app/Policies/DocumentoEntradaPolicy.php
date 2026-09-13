@@ -186,6 +186,33 @@ class DocumentoEntradaPolicy
     }
 
     /**
+     * Ver a trilha de auditoria do documento.
+     *
+     * A auditoria mostra o endereço IP de quem agiu e o antes/depois de cada
+     * alteração. Ver o documento não pode bastar: canViewDocument é
+     * deliberadamente largo (histórico de tramitação, tarefas, departamentos de
+     * destino), pelo que qualquer setor por onde o documento passou veria os IPs
+     * dos colegas. Fica na chefia — quem responde pelo processo.
+     */
+    public function verAuditoria(User $user, DocumentoEntrada $documento): bool
+    {
+        $permissionService = app(DocumentoPermissionService::class);
+
+        if ($permissionService->isChefeDepartamento($user)
+            && in_array((int) $documento->departamento_id, $permissionService->getUserDepartments($user), true)) {
+            return true;
+        }
+
+        $gabId = optional($documento->departamento)->gabinete_id;
+
+        if ($gabId && $permissionService->isGabineteResponsavel($user, $gabId)) {
+            return true;
+        }
+
+        return $gabId && $user->isSuperChefeDoGabinete($gabId);
+    }
+
+    /**
      * Cancelar um encaminhamento ainda por receber.
      *
      * Só o autor podia cancelar. Se essa pessoa estivesse ausente, o documento

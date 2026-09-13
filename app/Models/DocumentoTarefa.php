@@ -21,11 +21,14 @@ class DocumentoTarefa extends Model
         'responsavel_user_id',
         'prazo_at',
         'status',
+        'resposta',
+        'concluida_em',
         'grupo_tarefa_uuid',
     ];
 
     protected $casts = [
         'prazo_at' => 'datetime',
+        'concluida_em' => 'datetime',
     ];
 
     public function documento()

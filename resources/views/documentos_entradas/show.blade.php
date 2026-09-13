@@ -169,6 +169,338 @@
             </div>
         @endif
 
+        <style>
+            .stepper-wrapper {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                position: relative;
+                width: 100%;
+            }
+            .stepper-item {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                position: relative;
+                flex: 1;
+                z-index: 2;
+            }
+            .stepper-circle {
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 700;
+                font-size: 1rem;
+                margin-bottom: 0.5rem;
+                transition: all 0.3s ease;
+            }
+            .stepper-item.completed .stepper-circle {
+                background-color: #10b981;
+                color: #ffffff;
+                box-shadow: 0 4px 10px rgba(16, 185, 129, 0.25);
+            }
+            .stepper-item.active .stepper-circle {
+                background-color: #3b82f6;
+                color: #ffffff;
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+                border: 3px solid #bfdbfe;
+                animation: pulse-step 2s infinite;
+            }
+            .stepper-item.rejected .stepper-circle {
+                background-color: #ef4444;
+                color: #ffffff;
+                box-shadow: 0 4px 10px rgba(239, 68, 68, 0.25);
+            }
+            .stepper-item.pending .stepper-circle {
+                background-color: #f3f4f6;
+                color: #9ca3af;
+                border: 2px solid #e5e7eb;
+            }
+            .stepper-line {
+                flex: 1;
+                height: 4px;
+                background-color: #e5e7eb;
+                margin-top: 20px;
+                position: relative;
+                z-index: 1;
+                transition: background-color 0.3s ease;
+            }
+            .stepper-line.active {
+                background: linear-gradient(90deg, #10b981, #3b82f6);
+            }
+            .stepper-title {
+                font-size: 0.85rem;
+                color: #1f2937;
+                margin-bottom: 0.2rem;
+            }
+            .stepper-desc {
+                font-size: 0.75rem;
+                line-height: 1.25;
+            }
+            @keyframes pulse-step {
+                0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+                70% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+            }
+            @media (max-width: 768px) {
+                .stepper-wrapper {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 1.5rem;
+                }
+                .stepper-item {
+                    flex-direction: row;
+                    text-align: left;
+                    gap: 1rem;
+                    width: 100%;
+                }
+                .stepper-line {
+                    display: none;
+                }
+            }
+
+            /* Unified Timeline Styles */
+            .unified-timeline {
+                position: relative;
+                padding-left: 28px;
+            }
+            .unified-timeline::before {
+                content: '';
+                position: absolute;
+                top: 10px;
+                bottom: 10px;
+                left: 14px;
+                width: 2px;
+                background: #e2e8f0;
+            }
+            .timeline-event-item {
+                position: relative;
+                margin-bottom: 1.5rem;
+            }
+            .timeline-event-item:last-child {
+                margin-bottom: 0;
+            }
+            .timeline-event-marker {
+                position: absolute;
+                left: -28px;
+                top: 4px;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.8rem;
+                color: #ffffff;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+                z-index: 2;
+            }
+            .timeline-event-card {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 0.6rem;
+                padding: 1rem;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+                transition: box-shadow 0.2s ease, border-color 0.2s ease;
+            }
+            .timeline-event-card:hover {
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                border-color: #cbd5e1;
+            }
+        </style>
+
+        {{-- Workflow Stepper: Pipeline Visual de Tramitação --}}
+        <?php
+            // 1. Registo
+            $step1Done = true;
+
+            // 2. Validação / Vistos
+            $vistoDepStatus = $doc->visto_departamento_status;
+            $vistoGabStatus = $doc->visto_gabinete_status;
+            $hasVistoRejeitado = ($vistoDepStatus === 'rejeitado' || $vistoGabStatus === 'rejeitado');
+            $hasVistoAprovado = ($vistoDepStatus === 'aprovado' || $vistoGabStatus === 'aprovado');
+            $hasDespacho = !empty($doc->texto_despacho) || !empty($doc->data_despacho) || $doc->status === 'tratado';
+
+            if ($hasVistoRejeitado) {
+                $step2State = 'rejected';
+            } elseif ($hasVistoAprovado || $hasDespacho) {
+                $step2State = 'completed';
+            } else {
+                $step2State = 'active';
+            }
+
+            // 3. Despacho / Diretriz
+            if ($hasDespacho) {
+                $step3State = 'completed';
+            } elseif ($step2State === 'completed') {
+                $step3State = 'active';
+            } else {
+                $step3State = 'pending';
+            }
+
+            // 4. Tramitação & Execução
+            $hasEncaminhamento = $doc->encaminhamentos->count() > 0 || $doc->encaminhamentosExternos->count() > 0;
+            $hasRecebimento = $doc->encaminhamentos->whereNotNull('recebido_em')->count() > 0;
+            $hasTarefas = $doc->tarefas->count() > 0;
+            $allTarefasDone = $hasTarefas && $doc->tarefas->whereIn('status', ['concluida', 'concluido'])->count() === $doc->tarefas->count();
+            $isArquivado = $doc->arquivado || in_array($doc->status, ['arquivado', 'finalizado']);
+
+            if ($isArquivado || ($hasRecebimento && ($hasTarefas ? $allTarefasDone : true))) {
+                $step4State = 'completed';
+            } elseif ($hasEncaminhamento || $hasTarefas || $step3State === 'completed') {
+                $step4State = 'active';
+            } else {
+                $step4State = 'pending';
+            }
+
+            // 5. Conclusão & Arquivo
+            $hasResposta = $doc->relationLoaded('vinculosOrigem') ? $doc->vinculosOrigem->where('tipo_relacao', 'RESPOSTA')->count() > 0 : false;
+            if ($isArquivado) {
+                $step5State = 'completed';
+            } elseif ($hasResposta) {
+                $step5State = 'completed';
+            } elseif ($step4State === 'completed') {
+                $step5State = 'active';
+            } else {
+                $step5State = 'pending';
+            }
+        ?>
+
+        <div class="card shadow-sm border-0 mb-4 overflow-hidden">
+            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6 class="card-title mb-0 fw-bold text-dark d-flex align-items-center gap-2">
+                    <i class="fas fa-route text-primary"></i>
+                    Fluxo do Documento (Pipeline de Tramitação)
+                </h6>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-light text-dark border px-2.5 py-1">
+                        Status Atual: <strong class="text-primary text-uppercase">{{ str_replace('_', ' ', $doc->status) }}</strong>
+                    </span>
+                </div>
+            </div>
+            <div class="card-body p-4 bg-light bg-opacity-25">
+                <div class="stepper-wrapper">
+                    {{-- Step 1: Registo --}}
+                    <div class="stepper-item completed">
+                        <div class="stepper-circle"><i class="fas fa-check"></i></div>
+                        <div class="stepper-title fw-bold">1. Registo & Protocolo</div>
+                        <div class="stepper-desc small text-muted">
+                            #{{ $doc->numero_sequencial }}/{{ $doc->ano_referencia }}<br>
+                            <span class="text-success fw-medium"><i class="fas fa-check-circle me-0.5"></i> Protocolado</span>
+                        </div>
+                    </div>
+
+                    <div class="stepper-line {{ $step2State !== 'pending' ? 'active' : '' }}"></div>
+
+                    {{-- Step 2: Validação / Vistos --}}
+                    <div class="stepper-item {{ $step2State }}">
+                        <div class="stepper-circle">
+                            @if($step2State === 'completed')
+                                <i class="fas fa-check"></i>
+                            @elseif($step2State === 'rejected')
+                                <i class="fas fa-times"></i>
+                            @elseif($step2State === 'active')
+                                <i class="fas fa-hourglass-half"></i>
+                            @else
+                                <span>2</span>
+                            @endif
+                        </div>
+                        <div class="stepper-title fw-bold">2. Validação & Visto</div>
+                        <div class="stepper-desc small text-muted">
+                            @if($step2State === 'rejected')
+                                <span class="text-danger fw-medium"><i class="fas fa-times-circle me-0.5"></i> Rejeitado</span>
+                            @elseif($step2State === 'completed')
+                                <span class="text-success fw-medium"><i class="fas fa-check-circle me-0.5"></i> Validado</span>
+                            @else
+                                <span class="text-warning-emphasis fw-medium"><i class="fas fa-clock me-0.5"></i> Aguardando Visto</span>
+                            @endif
+                        </div>
+                    </div>
+
+                    <div class="stepper-line {{ $step3State !== 'pending' ? 'active' : '' }}"></div>
+
+                    {{-- Step 3: Despacho / Diretriz --}}
+                    <div class="stepper-item {{ $step3State }}">
+                        <div class="stepper-circle">
+                            @if($step3State === 'completed')
+                                <i class="fas fa-check"></i>
+                            @elseif($step3State === 'active')
+                                <i class="fas fa-pen-nib"></i>
+                            @else
+                                <span>3</span>
+                            @endif
+                        </div>
+                        <div class="stepper-title fw-bold">3. Despacho / Diretriz</div>
+                        <div class="stepper-desc small text-muted">
+                            @if($step3State === 'completed')
+                                <span class="text-success fw-medium"><i class="fas fa-check-circle me-0.5"></i> Despachado</span>
+                            @elseif($step3State === 'active')
+                                <span class="text-primary fw-medium"><i class="fas fa-clock me-0.5"></i> Pronto p/ Despacho</span>
+                            @else
+                                <span class="text-muted">Aguardando</span>
+                            @endif
+                        </div>
+                    </div>
+
+                    <div class="stepper-line {{ $step4State !== 'pending' ? 'active' : '' }}"></div>
+
+                    {{-- Step 4: Tramitação & Tarefas --}}
+                    <div class="stepper-item {{ $step4State }}">
+                        <div class="stepper-circle">
+                            @if($step4State === 'completed')
+                                <i class="fas fa-check"></i>
+                            @elseif($step4State === 'active')
+                                <i class="fas fa-shipping-fast"></i>
+                            @else
+                                <span>4</span>
+                            @endif
+                        </div>
+                        <div class="stepper-title fw-bold">4. Tramitação & Tarefas</div>
+                        <div class="stepper-desc small text-muted">
+                            @if($step4State === 'completed')
+                                <span class="text-success fw-medium"><i class="fas fa-check-circle me-0.5"></i> Distribuído / Recebido</span>
+                            @elseif($step4State === 'active')
+                                <span class="text-primary fw-medium"><i class="fas fa-spinner fa-spin me-0.5"></i> Em Execução</span>
+                            @else
+                                <span class="text-muted">Pendente</span>
+                            @endif
+                        </div>
+                    </div>
+
+                    <div class="stepper-line {{ $step5State !== 'pending' ? 'active' : '' }}"></div>
+
+                    {{-- Step 5: Conclusão & Arquivo --}}
+                    <div class="stepper-item {{ $step5State }}">
+                        <div class="stepper-circle">
+                            @if($step5State === 'completed')
+                                <i class="fas fa-archive"></i>
+                            @elseif($step5State === 'active')
+                                <i class="fas fa-reply"></i>
+                            @else
+                                <span>5</span>
+                            @endif
+                        </div>
+                        <div class="stepper-title fw-bold">5. Resposta & Arquivo</div>
+                        <div class="stepper-desc small text-muted">
+                            @if($isArquivado)
+                                <span class="text-secondary fw-medium"><i class="fas fa-archive me-0.5"></i> Arquivado</span>
+                            @elseif($hasResposta)
+                                <span class="text-success fw-medium"><i class="fas fa-reply me-0.5"></i> Respondido</span>
+                            @elseif($step5State === 'active')
+                                <span class="text-primary fw-medium">Pronto p/ Arquivo</span>
+                            @else
+                                <span class="text-muted">Aberto</span>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="row g-4">
             <!-- Left Column: Main Content -->
             <div class="col-lg-8">
@@ -296,31 +628,120 @@
                     <div class="card-header bg-white border-bottom-0 pb-0">
                         <ul class="nav nav-tabs card-header-tabs" id="docTabs" role="tablist">
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link active fw-medium" id="tasks-tab" data-bs-toggle="tab" data-bs-target="#tasks" type="button" role="tab" aria-controls="tasks" aria-selected="true">
+                                <button class="nav-link active fw-medium" id="timeline-tab" data-bs-toggle="tab" data-bs-target="#timeline" type="button" role="tab" aria-controls="timeline" aria-selected="true">
+                                    <i class="fas fa-stream me-2 text-primary"></i>Linha do Tempo
+                                    <span class="badge bg-primary-subtle text-primary rounded-pill ms-1">{{ count($timelineEvents ?? []) }}</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link fw-medium" id="tasks-tab" data-bs-toggle="tab" data-bs-target="#tasks" type="button" role="tab" aria-controls="tasks" aria-selected="false">
                                     <i class="fas fa-tasks me-2"></i>Tarefas
+                                    @if($doc->tarefas->count())
+                                        <span class="badge bg-secondary-subtle text-secondary rounded-pill ms-1">{{ $doc->tarefas->count() }}</span>
+                                    @endif
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link fw-medium" id="internal-tab" data-bs-toggle="tab" data-bs-target="#internal" type="button" role="tab" aria-controls="internal" aria-selected="false">
                                     <i class="fas fa-history me-2"></i>Histórico Interno
+                                    @if($doc->encaminhamentos->count())
+                                        <span class="badge bg-info-subtle text-info rounded-pill ms-1">{{ $doc->encaminhamentos->count() }}</span>
+                                    @endif
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link fw-medium" id="external-tab" data-bs-toggle="tab" data-bs-target="#external" type="button" role="tab" aria-controls="external" aria-selected="false">
                                     <i class="fas fa-globe me-2"></i>Histórico Externo
+                                    @if($doc->encaminhamentosExternos->count())
+                                        <span class="badge bg-primary-subtle text-primary rounded-pill ms-1">{{ $doc->encaminhamentosExternos->count() }}</span>
+                                    @endif
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link fw-medium" id="relations-tab" data-bs-toggle="tab" data-bs-target="#relations" type="button" role="tab" aria-controls="relations" aria-selected="false">
                                     <i class="fas fa-link me-2"></i>Vínculos
+                                    @if(count($relacionados ?? []))
+                                        <span class="badge bg-dark-subtle text-dark rounded-pill ms-1">{{ count($relacionados) }}</span>
+                                    @endif
                                 </button>
                             </li>
+                            @if ($canVerAuditoria ?? false)
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link fw-medium" id="audits-tab" data-bs-toggle="tab" data-bs-target="#audits" type="button" role="tab" aria-controls="audits" aria-selected="false">
+                                        <i class="fas fa-shield-alt me-2 text-secondary"></i>Auditoria
+                                        @if (($auditsTotal ?? 0) > 0)
+                                            <span class="badge bg-light text-secondary border rounded-pill ms-1">{{ $auditsTotal }}</span>
+                                        @endif
+                                    </button>
+                                </li>
+                            @endif
                         </ul>
                     </div>
                     <div class="card-body">
                         <div class="tab-content" id="docTabsContent">
+                            <!-- Timeline Tab (Unified Chronological Flow) -->
+                            <div class="tab-pane fade show active" id="timeline" role="tabpanel" aria-labelledby="timeline-tab">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div>
+                                        <h6 class="fw-bold mb-1"><i class="fas fa-stream text-primary me-2"></i>Linha do Tempo Cronológica Unificada</h6>
+                                        <p class="text-muted small mb-0">Visão consolidada de todas as etapas, validações, despachos, encaminhamentos e respostas.</p>
+                                    </div>
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">
+                                        {{ count($timelineEvents ?? []) }} eventos
+                                    </span>
+                                </div>
+
+                                @if (isset($timelineEvents) && count($timelineEvents))
+                                    <div class="unified-timeline mt-4">
+                                        @foreach ($timelineEvents as $ev)
+                                            <div class="timeline-event-item">
+                                                <div class="timeline-event-marker {{ $ev['badge_class'] }}">
+                                                    <i class="{{ $ev['icone'] }}"></i>
+                                                </div>
+                                                <div class="timeline-event-card">
+                                                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-2 mb-2">
+                                                        <div>
+                                                            <span class="badge {{ $ev['badge_class'] }} text-uppercase rounded-pill px-2.5 py-1 mb-1" style="font-size: 0.68rem;">
+                                                                {{ $ev['badge_text'] }}
+                                                            </span>
+                                                            <h6 class="fw-bold text-dark mb-0 mt-1">{{ $ev['titulo'] }}</h6>
+                                                        </div>
+                                                        <div class="text-md-end text-muted small" style="min-width: 160px;">
+                                                            <div><i class="far fa-calendar-alt me-1"></i><strong>{{ optional($ev['data'])->format('d/m/Y H:i') }}</strong></div>
+                                                            <div style="font-size: 0.72rem;">{{ optional($ev['data'])->diffForHumans() }}</div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="text-secondary mb-2 small" style="white-space: pre-line; line-height: 1.45;">
+                                                        {{ $ev['descricao'] }}
+                                                    </div>
+
+                                                    <div class="d-flex flex-wrap align-items-center gap-3 border-top pt-2 mt-2 text-muted small" style="font-size: 0.78rem;">
+                                                        <span>
+                                                            <i class="fas fa-user-circle me-1 text-primary"></i>
+                                                            <strong>Ator:</strong> {{ $ev['autor'] }}
+                                                        </span>
+                                                        @if ($ev['setor'])
+                                                            <span>
+                                                                <i class="fas fa-building me-1 text-secondary"></i>
+                                                                <strong>Setor:</strong> {{ $ev['setor'] }}
+                                                            </span>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <div class="text-center py-4 text-muted">
+                                        <i class="fas fa-history fa-2x mb-2 opacity-50"></i>
+                                        <p>Nenhum evento registrado nesta linha do tempo.</p>
+                                    </div>
+                                @endif
+                            </div>
+
                             <!-- Tasks Tab -->
-                            <div class="tab-pane fade show active" id="tasks" role="tabpanel" aria-labelledby="tasks-tab">
+                            <div class="tab-pane fade" id="tasks" role="tabpanel" aria-labelledby="tasks-tab">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <h6 class="fw-bold mb-0">Lista de Tarefas</h6>
                                     @php($actor = Auth::user())
@@ -448,10 +869,10 @@
                                         <table class="table table-hover align-middle">
                                             <thead class="table-light">
                                                 <tr>
-                                                    <th>Data</th>
+                                                    <th>Data Envio</th>
                                                     <th>Origem</th>
                                                     <th>Destino</th>
-                                                    <th>Status</th>
+                                                    <th>Status & Recebimento</th>
                                                     <th>Observação</th>
                                                     <th>Ações</th>
                                                 </tr>
@@ -462,10 +883,30 @@
                                                     @php($rowClass = $isPending && $loop->last ? 'table-warning' : '')
                                                     @php($st = $e->recebido_em ? 'recebido' : $e->status ?? 'encaminhado')
                                                     <tr class="{{ $rowClass }}">
-                                                        <td>{{ optional($e->encaminhado_em)->format('d/m/Y H:i') }}</td>
-                                                        <td>{{ optional($e->origemDepartamento)->nome ?? '—' }}</td>
-                                                        <td>{{ optional($e->destinoDepartamento)->nome ?? '—' }}</td>
-                                                        <td><span class="badge text-bg-{{ $st === 'recebido' ? 'success' : 'warning' }}">{{ ucfirst($st) }}</span></td>
+                                                        <td>
+                                                            <div class="fw-semibold">{{ optional($e->encaminhado_em)->format('d/m/Y H:i') }}</div>
+                                                            <div class="small text-muted"><i class="fas fa-user-edit me-1"></i>{{ optional($e->usuario)->name ?? '—' }}</div>
+                                                        </td>
+                                                        <td>
+                                                            <span class="badge bg-light text-dark border"><i class="fas fa-building text-secondary me-1"></i>{{ optional($e->origemDepartamento)->nome ?? '—' }}</span>
+                                                        </td>
+                                                        <td>
+                                                            <span class="badge bg-light text-dark border"><i class="fas fa-location-arrow text-primary me-1"></i>{{ optional($e->destinoDepartamento)->nome ?? '—' }}</span>
+                                                        </td>
+                                                        <td>
+                                                            @if ($e->recebido_em)
+                                                                <span class="badge text-bg-success mb-1"><i class="fas fa-check-double me-1"></i>Recebido</span>
+                                                                <div class="small text-dark fw-medium">
+                                                                    <i class="fas fa-user-check text-success me-1"></i>{{ optional($e->recebidoPor)->name ?? 'Utilizador' }}
+                                                                </div>
+                                                                <div class="small text-muted" style="font-size: 0.75rem;">
+                                                                    <i class="far fa-clock me-1"></i>{{ $e->recebido_em->format('d/m/Y H:i') }}
+                                                                </div>
+                                                            @else
+                                                                <span class="badge text-bg-warning"><i class="fas fa-hourglass-half me-1"></i>Pendente de Recebimento</span>
+                                                                <div class="small text-muted mt-1" style="font-size: 0.75rem;">Aguardando confirmação no destino</div>
+                                                            @endif
+                                                        </td>
                                                         <td>{{ $e->observacao ?? '—' }}</td>
                                                         <td class="text-end">
                                                             @php($canReceiveRow = !$e->recebido_em && in_array((int) $e->destino_departamento_id, $deps))
@@ -538,6 +979,98 @@
                             <div class="tab-pane fade" id="relations" role="tabpanel" aria-labelledby="relations-tab">
                                 <x-documento-vinculos :documento="$doc" tipo="EXTERNO" />
                             </div>
+
+                            <!-- Audits Tab -->
+                            @if ($canVerAuditoria ?? false)
+                            <div class="tab-pane fade" id="audits" role="tabpanel" aria-labelledby="audits-tab">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div>
+                                        <h6 class="fw-bold mb-1"><i class="fas fa-shield-alt text-primary me-2"></i>Trilha de Auditoria & Modificações</h6>
+                                        <p class="text-muted small mb-0">Registo de integridade e rastreabilidade de todas as alterações feitas neste documento.</p>
+                                    </div>
+                                    @php($mostrados = isset($audits) ? $audits->count() : 0)
+                                    @php($total = $auditsTotal ?? $mostrados)
+                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill"
+                                          @if ($total > $mostrados) title="A listagem mostra os mais recentes; os restantes {{ $total - $mostrados }} estão no registo central de auditoria." @endif>
+                                        @if ($total > $mostrados)
+                                            {{ $mostrados }} de {{ $total }} registos
+                                        @else
+                                            {{ $total }} registos
+                                        @endif
+                                    </span>
+                                </div>
+
+                                @if (isset($audits) && $audits->count())
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle table-sm border">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th style="width: 150px;">Data / Hora</th>
+                                                    <th style="width: 170px;">Utilizador</th>
+                                                    <th style="width: 110px;">Operação</th>
+                                                    <th>Campos Alterados</th>
+                                                    <th style="width: 130px;">Endereço IP</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach ($audits as $audit)
+                                                    <tr>
+                                                        <td>
+                                                            <div class="fw-semibold">{{ $audit->created_at->format('d/m/Y H:i:s') }}</div>
+                                                            <div class="text-muted small" style="font-size: 0.72rem;">{{ $audit->created_at->diffForHumans() }}</div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="fw-medium text-dark"><i class="fas fa-user-circle text-secondary me-1"></i>{{ optional($audit->user)->name ?? 'Sistema' }}</div>
+                                                        </td>
+                                                        <td>
+                                                            @php($act = strtolower($audit->action))
+                                                            @php($actBadge = match($act) {
+                                                                'create' => 'bg-success',
+                                                                'update' => 'bg-primary',
+                                                                'delete' => 'bg-danger',
+                                                                default => 'bg-secondary'
+                                                            })
+                                                            <span class="badge {{ $actBadge }} text-uppercase" style="font-size: 0.7rem;">
+                                                                {{ $act }}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            @if ($audit->action === 'update' && is_array($audit->new_values))
+                                                                <div class="d-flex flex-column gap-1 small">
+                                                                    @foreach ($audit->new_values as $key => $newVal)
+                                                                        @php($oldVal = $audit->old_values[$key] ?? '—')
+                                                                        @if ($oldVal != $newVal)
+                                                                            <div class="p-1 rounded bg-light border" style="font-size: 0.78rem;">
+                                                                                <strong class="text-secondary">{{ $key }}:</strong>
+                                                                                <span class="text-danger text-decoration-line-through me-1">{{ is_array($oldVal) ? json_encode($oldVal) : ($oldVal ?: 'vazio') }}</span>
+                                                                                <i class="fas fa-arrow-right text-muted small mx-1"></i>
+                                                                                <span class="text-success fw-semibold">{{ is_array($newVal) ? json_encode($newVal) : ($newVal ?: 'vazio') }}</span>
+                                                                            </div>
+                                                                        @endif
+                                                                    @endforeach
+                                                                </div>
+                                                            @elseif($audit->action === 'create' && is_array($audit->new_values))
+                                                                <span class="small text-muted">Registo inicial de criação com {{ count($audit->new_values) }} atributos.</span>
+                                                            @else
+                                                                <span class="small text-muted">—</span>
+                                                            @endif
+                                                        </td>
+                                                        <td>
+                                                            <span class="text-muted small" style="font-size: 0.75rem;"><i class="fas fa-network-wired me-1"></i>{{ $audit->ip_address ?: '—' }}</span>
+                                                        </td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                @else
+                                    <div class="text-center py-4 text-muted">
+                                        <i class="fas fa-shield-alt fa-2x mb-2 opacity-50"></i>
+                                        <p class="mb-0">Nenhum log de auditoria registrado para este documento.</p>
+                                    </div>
+                                @endif
+                            </div>
+                            @endif
                         </div>
                     </div>
                 </div>

@@ -32,6 +32,13 @@ use Illuminate\Validation\Rule;
 
 class DocumentoEntradaController extends Controller
 {
+    /**
+     * Nº de registos de auditoria mostrados de uma vez. A listagem vem do mais
+     * recente para o mais antigo, pelo que truncar sem indicar o total esconderia
+     * o início da história do documento.
+     */
+    private const LIMITE_AUDITORIA = 50;
+
     protected $documentoService;
 
     protected $permissionService;
@@ -299,6 +306,10 @@ class DocumentoEntradaController extends Controller
             'usuario:id,name',
             'vistoDepartamentoPor:id,name',
             'vistoGabinetePor:id,name',
+            'despachadoPor:id,name',
+            'departamentosDestino:id,nome',
+            'pasta:id,nome',
+            'arquivadoPor:id,name',
             'anexos',
             'encaminhamentos' => fn ($q) => $q->orderBy('encaminhado_em', 'asc'),
             'encaminhamentos.origemDepartamento:id,nome',
@@ -315,6 +326,7 @@ class DocumentoEntradaController extends Controller
             'tarefas.assignedToDepartamento:id,nome',
             'tarefas.assignedToDepartamento.usuarios:id,name,departamento_id',
             'tarefas.responsavelAtual:id,name',
+            'vinculosOrigem.vinculadoPor:id,name',
         ])->findOrFail($documentos_entrada->id);
 
         $departamentos = Cache::remember('departamentos_list', 600, fn () => Departamento::select(['id', 'nome'])->orderBy('nome')->get());
@@ -400,7 +412,215 @@ class DocumentoEntradaController extends Controller
             $canVistoGabinete = true;
         }
 
-        return view('documentos_entradas.show', compact('doc', 'departamentos', 'gabinetes', 'gabUsuarios', 'gabDepartamentos', 'depUsuarios', 'hasPendente', 'deps', 'pastas', 'modelosDespacho', 'relacionados', 'canAssignTask', 'canVisto', 'canVistoGabinete'));
+        $canDespachar = $this->permissionService->canDespachar($actor, $doc);
+        $canEncaminharTratado = $actor->can('encaminhar', $doc) && $doc->status === 'tratado';
+        // A auditoria expõe IPs e o antes/depois de cada alteração: fica na
+        // chefia, não em quem apenas consegue ver o documento.
+        $canVerAuditoria = $actor->can('verAuditoria', $doc);
+
+        $auditsTotal = $canVerAuditoria ? $doc->audits()->count() : 0;
+        $audits = $canVerAuditoria
+            ? $doc->audits()->with('user')->take(self::LIMITE_AUDITORIA)->get()
+            : collect();
+
+        $timelineEvents = $this->buildTimelineEvents($doc);
+
+        return view('documentos_entradas.show', compact(
+            'doc', 'departamentos', 'gabinetes', 'gabUsuarios', 'gabDepartamentos', 'depUsuarios',
+            'hasPendente', 'deps', 'pastas', 'modelosDespacho', 'relacionados', 'canAssignTask',
+            'canVisto', 'canVistoGabinete', 'canDespachar', 'canEncaminharTratado', 'audits',
+            'auditsTotal', 'canVerAuditoria', 'timelineEvents'
+        ));
+    }
+
+    /**
+     * Constrói a coleção unificada de eventos cronológicos do ciclo de vida do documento.
+     */
+    protected function buildTimelineEvents(DocumentoEntrada $doc): \Illuminate\Support\Collection
+    {
+        $events = collect();
+
+        // 1. Registo Inicial
+        $dataRegisto = $doc->created_at ?? $doc->data_entrada;
+        if ($dataRegisto) {
+            $events->push([
+                'tipo' => 'registo',
+                'data' => $dataRegisto,
+                'titulo' => 'Registo e Entrada no Sistema',
+                'descricao' => "Documento registado com a espécie '{$doc->classificacao_especie}' e Ref. nº " . ($doc->classificacao_ref_numero ?: 'S/N') . ($doc->procedencia ? " com procedência de {$doc->procedencia}." : "."),
+                'autor' => optional($doc->usuario)->name ?? 'Sistema',
+                'setor' => optional($doc->departamento)->nome ?? 'Gabinete',
+                'icone' => 'fas fa-file-import',
+                'badge_class' => 'bg-primary',
+                'badge_text' => 'Registo',
+            ]);
+        }
+
+        // 2. Visto do Chefe de Departamento
+        if ($doc->visto_departamento_data) {
+            $isAprovado = $doc->visto_departamento_status === 'aprovado';
+            $events->push([
+                'tipo' => 'visto_departamento',
+                'data' => $doc->visto_departamento_data,
+                'titulo' => 'Visto da Chefia Departamental: ' . ($isAprovado ? 'Aprovado' : 'Rejeitado'),
+                'descricao' => $doc->visto_departamento_observacao ?: ($isAprovado ? 'Documento validado pelo chefe do departamento.' : 'Documento rejeitado na verificação departamental.'),
+                'autor' => optional($doc->vistoDepartamentoPor)->name ?? 'Chefe do Departamento',
+                'setor' => optional($doc->departamento)->nome,
+                'icone' => $isAprovado ? 'fas fa-user-check' : 'fas fa-user-times',
+                'badge_class' => $isAprovado ? 'bg-success' : 'bg-danger',
+                'badge_text' => $isAprovado ? 'Visto Aprovado' : 'Visto Rejeitado',
+            ]);
+        }
+
+        // 3. Visto do Gabinete
+        if ($doc->visto_gabinete_data) {
+            $isAprovado = $doc->visto_gabinete_status === 'aprovado';
+            $events->push([
+                'tipo' => 'visto_gabinete',
+                'data' => $doc->visto_gabinete_data,
+                'titulo' => 'Visto do Gabinete: ' . ($isAprovado ? 'Aprovado' : 'Rejeitado'),
+                'descricao' => $doc->visto_gabinete_observacao ?: ($isAprovado ? 'Aprovação institucional concedida pelo Gabinete.' : 'Documento rejeitado pelo Gabinete.'),
+                'autor' => optional($doc->vistoGabinetePor)->name ?? 'Responsável do Gabinete',
+                'setor' => optional(optional($doc->departamento)->gabinete)->nome ?? 'Gabinete',
+                'icone' => $isAprovado ? 'fas fa-stamp' : 'fas fa-times-circle',
+                'badge_class' => $isAprovado ? 'bg-success' : 'bg-danger',
+                'badge_text' => $isAprovado ? 'Gabinete Aprovou' : 'Gabinete Rejeitou',
+            ]);
+        }
+
+        // 4. Despacho / Parecer do Gabinete
+        if ($doc->texto_despacho || $doc->data_despacho) {
+            $destinos = $doc->departamentosDestino->pluck('nome')->implode(', ');
+            $events->push([
+                'tipo' => 'despacho',
+                'data' => $doc->data_despacho ?? $doc->updated_at,
+                'titulo' => 'Despacho Emitido pelo Gabinete',
+                'descricao' => ($destinos ? "Destinatários: {$destinos}\n\n" : '') . $doc->texto_despacho,
+                'autor' => optional($doc->despachadoPor)->name ?? 'Chefe de Gabinete',
+                'setor' => 'Gabinete',
+                'icone' => 'fas fa-file-signature',
+                'badge_class' => 'bg-warning text-dark',
+                'badge_text' => 'Despacho',
+            ]);
+        }
+
+        // 5. Encaminhamentos Internos
+        foreach ($doc->encaminhamentos as $enc) {
+            $origem = optional($enc->origemDepartamento)->nome ?? '—';
+            $destino = optional($enc->destinoDepartamento)->nome ?? '—';
+
+            // Evento de Envio
+            $events->push([
+                'tipo' => 'encaminhamento_envio',
+                'data' => $enc->encaminhado_em,
+                'titulo' => "Encaminhamento Interno: {$origem} ➔ {$destino}",
+                'descricao' => $enc->observacao ?: 'Documento tramitado internamente entre setores.',
+                'autor' => optional($enc->usuario)->name ?? 'Utilizador',
+                'setor' => $origem,
+                'icone' => 'fas fa-share',
+                'badge_class' => 'bg-info',
+                'badge_text' => 'Tramitado',
+            ]);
+
+            // Evento de Recebimento (se recebido)
+            if ($enc->recebido_em) {
+                $events->push([
+                    'tipo' => 'encaminhamento_recebido',
+                    'data' => $enc->recebido_em,
+                    'titulo' => "Recebimento Confirmado: {$destino}",
+                    'descricao' => 'Recebido no departamento de destino por ' . (optional($enc->recebidoPor)->name ?? 'Utilizador') . '.',
+                    'autor' => optional($enc->recebidoPor)->name ?? 'Utilizador',
+                    'setor' => $destino,
+                    'icone' => 'fas fa-inbox',
+                    'badge_class' => 'bg-success',
+                    'badge_text' => 'Recebido no Setor',
+                ]);
+            }
+        }
+
+        // 6. Encaminhamentos Externos (Saída de Gabinete)
+        foreach ($doc->encaminhamentosExternos as $ext) {
+            $origemGab = optional($ext->origemGabinete)->nome ?? 'Gabinete';
+            $destinoGab = optional($ext->destinoGabinete)->nome ?? 'Destino Externo';
+            $events->push([
+                'tipo' => 'encaminhamento_externo',
+                'data' => $ext->enviado_em,
+                'titulo' => "Saída Externa: {$origemGab} ➔ {$destinoGab}",
+                'descricao' => 'Encaminhamento institucional externo' . ($ext->oficio_numero ? " através do Ofício nº {$ext->oficio_numero}." : '.') . ($ext->observacao ? " Obs: {$ext->observacao}" : ''),
+                'autor' => optional($ext->usuario)->name ?? 'Gabinete',
+                'setor' => $origemGab,
+                'icone' => 'fas fa-globe',
+                'badge_class' => 'bg-primary',
+                'badge_text' => 'Saída Externa',
+            ]);
+        }
+
+        // 7. Tarefas Atribuídas e Concluídas
+        foreach ($doc->tarefas as $t) {
+            $destinoNome = $t->assignedToUser ? optional($t->assignedToUser)->name : (optional($t->assignedToDepartamento)->nome ?? 'Setor');
+            $events->push([
+                'tipo' => 'tarefa_criada',
+                'data' => $t->created_at,
+                'titulo' => "Tarefa Atribuída: {$t->titulo}",
+                'descricao' => ($t->descricao ? "{$t->descricao}\n" : '') . "Atribuído a: {$destinoNome}" . ($t->prazo_at ? ' • Prazo: ' . $t->prazo_at->format('d/m/Y') : ''),
+                'autor' => optional($t->assignedBy)->name ?? 'Chefia',
+                'setor' => optional($t->assignedToDepartamento)->nome,
+                'icone' => 'fas fa-tasks',
+                'badge_class' => 'bg-secondary',
+                'badge_text' => 'Tarefa Criada',
+            ]);
+
+            if ($t->status === 'concluida' || $t->status === 'concluido') {
+                $executor = optional($t->responsavelAtual)->name ?? (optional($t->assignedToUser)->name ?? 'Técnico');
+                $events->push([
+                    'tipo' => 'tarefa_concluida',
+                    // concluida_em e a data do facto; updated_at desloca-se com
+                    // qualquer alteracao posterior a tarefa.
+                    'data' => $t->concluida_em ?? $t->updated_at,
+                    'titulo' => "Tarefa Concluída: {$t->titulo}",
+                    'descricao' => "Demanda executada e finalizada por {$executor}.",
+                    'autor' => $executor,
+                    'setor' => optional($t->assignedToDepartamento)->nome,
+                    'icone' => 'fas fa-check-double',
+                    'badge_class' => 'bg-success',
+                    'badge_text' => 'Tarefa Concluída',
+                ]);
+            }
+        }
+
+        // 8. Vínculos e Dossiê (ex: respostas elaboradas)
+        if ($doc->relationLoaded('vinculosOrigem')) {
+            foreach ($doc->vinculosOrigem as $v) {
+                $events->push([
+                    'tipo' => 'vinculo',
+                    'data' => $v->created_at,
+                    'titulo' => 'Dossiê: Vínculo Bilateral (' . ($v->tipo_relacao ?: 'RELACIONADO') . ')',
+                    'descricao' => 'Vinculado ao documento ' . ($v->destino_tipo === 'INTERNO' ? 'Interno' : 'Externo') . " #{$v->destino_id} com relação de {$v->tipo_relacao}.",
+                    'autor' => optional($v->vinculadoPor)->name ?? 'Utilizador',
+                    'setor' => null,
+                    'icone' => 'fas fa-link',
+                    'badge_class' => 'bg-dark',
+                    'badge_text' => 'Vínculo / Resposta',
+                ]);
+            }
+        }
+
+        // 9. Arquivamento
+        if ($doc->arquivado && $doc->arquivado_em) {
+            $events->push([
+                'tipo' => 'arquivamento',
+                'data' => $doc->arquivado_em,
+                'titulo' => 'Processo Arquivado',
+                'descricao' => 'Documento devidamente finalizado e arquivado no acervo digital' . ($doc->pasta ? " na pasta: {$doc->pasta->nome}." : '.'),
+                'autor' => optional($doc->arquivadoPor)->name ?? 'Arquivo',
+                'setor' => optional($doc->pasta)->nome,
+                'icone' => 'fas fa-archive',
+                'badge_class' => 'bg-secondary',
+                'badge_text' => 'Arquivado',
+            ]);
+        }
+
+        return $events->sortByDesc('data')->values();
     }
 
     public function previewAjax(DocumentoEntrada $documento)

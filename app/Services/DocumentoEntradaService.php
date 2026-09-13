@@ -600,6 +600,9 @@ class DocumentoEntradaService
             }
         }
         $tarefa->status = 'concluida';
+        // A linha do tempo precisa da data real de conclusão: o updated_at
+        // deslocar-se-ia com qualquer alteração posterior à tarefa.
+        $tarefa->concluida_em = $tarefa->concluida_em ?? now();
         $tarefa->save();
 
         $documento = $tarefa->documento;
