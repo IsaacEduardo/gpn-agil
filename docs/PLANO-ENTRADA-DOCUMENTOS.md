@@ -295,7 +295,7 @@ precisa de confirmação).
 |---|---|---|---|
 | 1 — Regra de perfis | **concluída** | `fix/entrada-docs-fase1-perfis` | P1–P4 fechados + 1 defeito novo (ver abaixo) |
 | 2 — Fluxo autónomo | **concluída** | `fix/entrada-docs-fase2-fluxo` | F1 e F2 fechados (ramifica da fase 1, que ainda não está integrada) |
-| 3 — Fonte única de autorização | por fazer | | |
+| 3 — Fonte única de autorização | **concluída** | `fix/entrada-docs-fase3-autorizacao` | P5 e P6 fechados |
 | 4 — Integridade do registo | por fazer | | |
 | 5 — Escala | por fazer | | |
 | 6 — Automação | por fazer | | |
@@ -336,6 +336,29 @@ tranca os perfis operacionais fora da listagem.
 - **`Departamento::getChefeAttribute()` já recorre ao `responsavel_id`** quando não
   há utilizador com o papel `chefe-departamento`. O fallback previsto no plano era
   redundante e não foi acrescentado; ficou apenas um teste de regressão.
+
+### Fase 3 — o que ficou feito
+
+| Commit | Defeito | Resolução |
+|---|---|---|
+| `ac42680` | **P6** | `update()` nega a partir do despacho ou do primeiro encaminhamento (`Response::deny` explícito); admin mantém-se como via de correção pelo `before()`. `departamento_id` passa a ter regra única (`podeAlterarDepartamento`) aplicada na view **e** no servidor. |
+| `7d52746` | **P5** | Removidos todos os blocos `@php` de autorização de `show.blade.php`; `canConcluirTarefa()`/`canCancelarTarefa()` no `DocumentoPermissionService` como fonte única; `@can` em "Editar"/"Eliminar" na listagem e no show. |
+
+**Decisões de implementação que convém não desfazer:**
+
+- **`relacionar` é uma ability separada de `update`.** Vincular documentos é
+  trabalho normal durante a tramitação; se ficasse em `update`, o congelamento do
+  P6 apanhava-a por arrasto. `edit`, `update` e `destroyAnexo` continuam em
+  `update` — ou seja, **depois do despacho já não se acrescentam nem removem
+  anexos pelo formulário de edição**. Se o balcão precisar disso, a alteração é
+  separar `manageAnexos` como se fez com `relacionar`.
+- **A regra de concluir/cancelar tarefas existia em três versões** (endpoint
+  `concluir`, endpoint `cancelar` e a view, esta última com N+1 dentro do ciclo
+  dos utilizadores do gabinete). Passou a uma só, no `DocumentoPermissionService`.
+- **`update()` devolve `Response`, não `bool`.** `manageAnexos` acompanhou. Testes
+  que chamem a policy diretamente têm de usar `->allowed()`; para verificar a
+  isenção do admin é preciso passar pelo `Gate`, porque o `before()` não corre numa
+  chamada direta ao método.
 
 **Falha de teste pré-existente, não introduzida aqui:**
 `Tests\Unit\DocumentoInternoServiceTest::test_processar_template_injects_date_line_before_signature`
