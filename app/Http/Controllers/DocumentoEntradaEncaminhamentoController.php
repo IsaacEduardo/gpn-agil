@@ -9,6 +9,7 @@ use App\Services\DocumentoEntradaService;
 use App\Services\DocumentoPermissionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Encaminhamento de documentos de entrada (individual, em lote, receção,
@@ -141,10 +142,9 @@ class DocumentoEntradaEncaminhamentoController extends Controller
 
         $actor = Auth::user();
 
-        // 3. Verifica permissão: apenas quem encaminhou pode cancelar
-        $isAuthor = (int) $encaminhamento->usuario_id === (int) $actor->id;
-
-        if (! $isAuthor) {
+        // 3. Autor, chefia do departamento de origem ou responsável do gabinete.
+        //    Ver DocumentoEntradaPolicy::cancelarEncaminhamento.
+        if (! Gate::forUser($actor)->allows('cancelarEncaminhamento', [$documento, $encaminhamento])) {
             abort(403, 'Você não tem permissão para cancelar este encaminhamento.');
         }
 

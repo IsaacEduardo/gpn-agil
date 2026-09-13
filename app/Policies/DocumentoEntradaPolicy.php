@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Models\DocumentoEncaminhamento;
 use App\Models\DocumentoEntrada;
 use App\Models\Gabinete;
 use App\Models\User;
@@ -182,6 +183,32 @@ class DocumentoEntradaPolicy
         $deps = $permissionService->getUserDepartments($user);
 
         return in_array((int) $destinoDepartamentoId, $deps, true);
+    }
+
+    /**
+     * Cancelar um encaminhamento ainda por receber.
+     *
+     * Só o autor podia cancelar. Se essa pessoa estivesse ausente, o documento
+     * ficava preso: com uma pendência em aberto não se cria novo encaminhamento,
+     * não se dá saída de gabinete e o botão de encaminhar desliga-se. A chefia
+     * da origem e o responsável do gabinete passam a poder desbloquear.
+     */
+    public function cancelarEncaminhamento(User $user, DocumentoEntrada $documento, DocumentoEncaminhamento $encaminhamento): bool
+    {
+        if ((int) $encaminhamento->usuario_id === (int) $user->id) {
+            return true;
+        }
+
+        $permissionService = app(DocumentoPermissionService::class);
+
+        if ($permissionService->isChefeDepartamento($user)
+            && in_array((int) $encaminhamento->origem_departamento_id, $permissionService->getUserDepartments($user), true)) {
+            return true;
+        }
+
+        $gabId = optional($documento->departamento)->gabinete_id;
+
+        return $gabId && $permissionService->isGabineteResponsavel($user, $gabId);
     }
 
     public function saidaGabinete(User $user, DocumentoEntrada $documento): bool
