@@ -36,13 +36,13 @@
                         <label class="form-label fw-bold">
                             Departamento(s) Destinatário(s) <span class="text-danger">*</span>
                         </label>
-                        <p class="text-muted small mb-2">Selecione um ou mais departamentos para onde este documento será encaminhado.</p>
+                        <p class="text-muted small mb-2">Selecione um ou mais departamentos do gabinete deste documento. Para enviar a outro gabinete, use "Saída de Gabinete".</p>
                         
                         <div class="row g-2 max-vh-30 overflow-auto p-2 border rounded bg-white" style="max-height: 200px;">
                             @php
                                 $selectedDeps = old('departamentos_ids', $doc->departamentosDestino->pluck('id')->toArray());
                             @endphp
-                            @foreach($departamentos as $dep)
+                            @foreach(($doc->departamentos_despacho ?? $departamentos) as $dep)
                                 <div class="col-md-6">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" name="departamentos_ids[]" value="{{ $dep->id }}" id="dep_dest_{{ $doc->id }}_{{ $dep->id }}" {{ in_array($dep->id, $selectedDeps) ? 'checked' : '' }}>

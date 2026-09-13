@@ -239,7 +239,7 @@ class DocumentoEntradaService
     {
         $query = $this->getFilteredDocumentsQuery($request, $user)
             ->with([
-                'departamento:id,nome',
+                'departamento:id,nome,gabinete_id',
                 'ultimoEncaminhamento',
                 'ultimoEncaminhamento.origemDepartamento:id,nome',
                 'ultimoEncaminhamento.destinoDepartamento:id,nome',
@@ -440,6 +440,28 @@ class DocumentoEntradaService
 
             return $tarefa;
         });
+    }
+
+    /**
+     * Departamentos para onde este documento pode ser despachado: os do seu
+     * próprio gabinete. Despachar para fora concederia visibilidade via
+     * departamentosDestino — a saída inter-gabinete tem caminho próprio
+     * (sendToGabinete).
+     *
+     * Documentos cujo departamento não tem gabinete definido (dados legados)
+     * não são restringidos, para não bloquear o despacho; a causa corrige-se
+     * com `php artisan departamentos:fix-null-gabinete`.
+     */
+    public function departamentosDestinoPermitidos(DocumentoEntrada $documento)
+    {
+        $gabId = optional($documento->departamento)->gabinete_id;
+
+        $query = Departamento::query()->orderBy('nome');
+        if ($gabId) {
+            $query->where('gabinete_id', $gabId);
+        }
+
+        return $query->get(['id', 'nome', 'sigla', 'gabinete_id']);
     }
 
     /**

@@ -28,6 +28,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class DocumentoEntradaController extends Controller
 {
@@ -148,6 +149,13 @@ class DocumentoEntradaController extends Controller
             $isChefe = $this->permissionService->isChefeDepartamento($actor);
             $isAdmin = $this->permissionService->isAdmin($actor);
 
+            // Departamentos elegíveis para despacho, agrupados por gabinete: evita
+            // uma query por linha no modal de despacho da listagem.
+            $depsPorGabinete = Cache::remember('departamentos_por_gabinete', 300, function () {
+                return Departamento::select(['id', 'nome', 'sigla', 'gabinete_id'])
+                    ->orderBy('nome')->get()->groupBy('gabinete_id');
+            });
+
             $docIds = $documentos->pluck('id')->filter()->all();
             $minhasTarefas = count($docIds) ? \App\Models\DocumentoTarefa::with(['assignedBy:id,name'])
                 ->whereIn('documento_entrada_id', $docIds)
@@ -171,7 +179,14 @@ class DocumentoEntradaController extends Controller
                 $doc->setAttribute('can_forward', $canForward);
 
                 $doc->setAttribute('is_chefe', $isChefe && in_array((int) $doc->departamento_id, $userDeps));
-                $doc->setAttribute('can_despachar', $this->permissionService->canDespachar($actor, $doc));
+                $canDespachar = $this->permissionService->canDespachar($actor, $doc);
+                $doc->setAttribute('can_despachar', $canDespachar);
+                $doc->setAttribute(
+                    'departamentos_despacho',
+                    $canDespachar
+                        ? ($depsPorGabinete->get(optional($doc->departamento)->gabinete_id) ?? collect())
+                        : collect()
+                );
                 $doc->setAttribute('can_encaminhar_tratado', $this->permissionService->canEncaminharTratado($actor, $doc));
             }
         }
@@ -392,7 +407,9 @@ class DocumentoEntradaController extends Controller
             ->orderBy('nome')
             ->get();
 
-        $departamentos = \App\Models\Departamento::orderBy('nome')->get(['id', 'nome']);
+        // Só departamentos do gabinete do documento: a mesma regra que o servidor
+        // aplica no despacho (ver DocumentoEntradaService).
+        $departamentos = $this->documentoService->departamentosDestinoPermitidos($doc);
 
         // Técnicos/utilizadores do departamento para atribuição
         $depUsuarios = \App\Models\User::whereHas('departamentos', function ($q) use ($userDeps) {
@@ -444,11 +461,15 @@ class DocumentoEntradaController extends Controller
                 ], 403);
             }
 
+            $permitidos = $this->documentoService->departamentosDestinoPermitidos($documento)->pluck('id')->all();
+
             $validated = $request->validate([
                 'destino_departamento_ids' => ['required', 'array', 'min:1'],
-                'destino_departamento_ids.*' => ['integer', 'exists:departamentos,id'],
+                'destino_departamento_ids.*' => ['integer', Rule::in($permitidos)],
                 'texto_despacho' => ['required', 'string'],
                 'prazo_at' => ['nullable', 'date'],
+            ], [
+                'destino_departamento_ids.*.in' => 'Só é possível despachar para departamentos do gabinete deste documento.',
             ]);
 
             // Despachar do Gabinete e encaminhar para os destinos selecionados
@@ -962,14 +983,17 @@ class DocumentoEntradaController extends Controller
             abort(403, 'Apenas o Chefe de Gabinete ou o Responsável pelo Gabinete podem despachar este documento.');
         }
 
+        $permitidos = $this->documentoService->departamentosDestinoPermitidos($documento)->pluck('id')->all();
+
         $validated = $request->validate([
             'texto_despacho' => ['required', 'string'],
             'departamentos_ids' => ['required', 'array', 'min:1'],
-            'departamentos_ids.*' => ['integer', 'exists:departamentos,id'],
+            'departamentos_ids.*' => ['integer', Rule::in($permitidos)],
         ], [
             'texto_despacho.required' => 'O texto do despacho é obrigatório.',
             'departamentos_ids.required' => 'Selecione pelo menos um departamento de destino.',
             'departamentos_ids.min' => 'Selecione pelo menos um departamento de destino.',
+            'departamentos_ids.*.in' => 'Só é possível despachar para departamentos do gabinete deste documento.',
         ]);
 
         $this->documentoService->despacharDocumento(
