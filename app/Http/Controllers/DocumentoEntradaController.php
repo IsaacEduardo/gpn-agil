@@ -230,7 +230,13 @@ class DocumentoEntradaController extends Controller
 
         $userDepartamentoId = Auth::user()->departamento_id;
 
-        return view('documentos_entradas.create', compact('departamentos', 'especies', 'procedencias', 'userDepartamentoId'));
+        // Destino provavel por procedencia, a partir do historico. Fica vazio
+        // enquanto nao houver base — ver departamentoSugeridoPara().
+        $sugestoesDestino = $this->documentoService->sugestoesDeDestino();
+
+        return view('documentos_entradas.create', compact(
+            'departamentos', 'especies', 'procedencias', 'userDepartamentoId', 'sugestoesDestino'
+        ));
     }
 
     public function store(StoreDocumentoEntradaRequest $request)

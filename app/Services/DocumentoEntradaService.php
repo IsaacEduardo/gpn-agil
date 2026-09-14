@@ -456,6 +456,82 @@ class DocumentoEntradaService
     }
 
     /**
+     * Nº mínimo de documentos de uma procedência para haver base de sugestão,
+     * e fração do histórico que tem de ter ido ao mesmo departamento.
+     *
+     * Sem estes limiares a funcionalidade sugeriria a partir de um único caso —
+     * e uma sugestão errada a cada registo treina o balcão a ignorá-la.
+     */
+    private const MIN_HISTORICO_SUGESTAO = 3;
+
+    private const FRACAO_DOMINANCIA_SUGESTAO = 0.6;
+
+    /**
+     * Departamento para onde os documentos desta procedência costumam ir.
+     *
+     * @return int|null null quando não há histórico suficiente ou quando ele
+     *                  está dividido entre setores.
+     */
+    public function departamentoSugeridoPara(?int $procedenciaId): ?int
+    {
+        if (! $procedenciaId) {
+            return null;
+        }
+
+        $historico = DocumentoEntrada::query()
+            ->where('procedencia_id', $procedenciaId)
+            ->whereNotNull('departamento_id')
+            ->selectRaw('departamento_id, COUNT(*) AS total')
+            ->groupBy('departamento_id')
+            ->orderByDesc('total')
+            ->get();
+
+        $total = (int) $historico->sum('total');
+        if ($total < self::MIN_HISTORICO_SUGESTAO) {
+            return null;
+        }
+
+        $dominante = $historico->first();
+        if (! $dominante || ($dominante->total / $total) < self::FRACAO_DOMINANCIA_SUGESTAO) {
+            return null;
+        }
+
+        return (int) $dominante->departamento_id;
+    }
+
+    /**
+     * Mapa procedência -> departamento sugerido, para o formulário de registo
+     * poder reagir sem ida ao servidor a cada mudança de procedência.
+     *
+     * @return array<int, int>
+     */
+    public function sugestoesDeDestino(): array
+    {
+        $historico = DocumentoEntrada::query()
+            ->whereNotNull('procedencia_id')
+            ->whereNotNull('departamento_id')
+            ->selectRaw('procedencia_id, departamento_id, COUNT(*) AS total')
+            ->groupBy('procedencia_id', 'departamento_id')
+            ->get()
+            ->groupBy('procedencia_id');
+
+        $sugestoes = [];
+        foreach ($historico as $procedenciaId => $linhas) {
+            $total = (int) $linhas->sum('total');
+            if ($total < self::MIN_HISTORICO_SUGESTAO) {
+                continue;
+            }
+
+            $dominante = $linhas->sortByDesc('total')->first();
+            if (($dominante->total / $total) >= self::FRACAO_DOMINANCIA_SUGESTAO) {
+                $sugestoes[(int) $procedenciaId] = (int) $dominante->departamento_id;
+            }
+        }
+
+        return $sugestoes;
+    }
+
+    /**
      * Procura um registo que aparente ser o mesmo documento físico: mesma
      * procedência, mesmo número de referência e mesma data do documento.
      *

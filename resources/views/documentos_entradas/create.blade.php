@@ -160,7 +160,8 @@
                             <div class="row g-4">
                                 <div class="col-md-6">
                                     <div class="form-floating mb-3">
-                                        <select name="departamento_id" class="form-select @error('departamento_id') is-invalid @enderror" id="floatingDep" required>
+                                        <select name="departamento_id" class="form-select @error('departamento_id') is-invalid @enderror" id="floatingDep" required
+                                                data-sugestao-destino='@json($sugestoesDestino ?? [])'>
                                             <option value="" selected disabled>Selecione...</option>
                                             @foreach ($departamentos as $dep)
                                                 <option value="{{ $dep->id }}" {{ (old('departamento_id') ?? ($userDepartamentoId ?? '')) == $dep->id ? 'selected' : '' }}>
@@ -173,6 +174,11 @@
                                             <div class="invalid-feedback">{{ $message }}</div>
                                         @enderror
                                     </div>
+                                    <div id="avisoSugestaoDestino" class="alert alert-primary small py-2 mb-2 d-none">
+                                        <i class="fas fa-wand-magic-sparkles me-1"></i>
+                                        Destino preenchido a partir do histórico desta procedência. Altere se não for o caso.
+                                    </div>
+
                                     <div class="alert alert-info small mb-0">
                                         <i class="fas fa-info-circle me-1"></i> A chefia do departamento selecionado e o responsável do gabinete são notificados assim que o registo for concluído.
                                     </div>
@@ -200,3 +206,34 @@
     {{-- Componente Modal do Scanner Direct (WebScan Bridge) --}}
     <x-webscan-modal targetInputId="fileInput" />
 @endsection
+
+@push('scripts')
+<script>
+    // Ao escolher a procedencia, propoe o destino que o historico indica.
+    // Nunca sobrepoe uma escolha ja feita pelo operador.
+    document.addEventListener('DOMContentLoaded', function () {
+        const destino = document.getElementById('floatingDep');
+        const aviso = document.getElementById('avisoSugestaoDestino');
+        if (!destino) return;
+
+        let sugestoes = {};
+        try { sugestoes = JSON.parse(destino.dataset.sugestaoDestino || '{}'); } catch (e) { return; }
+
+        const combo = document.querySelector('[name="procedencia_id"]');
+        if (!combo) return;
+
+        let tocadoPeloOperador = false;
+        destino.addEventListener('change', function () { tocadoPeloOperador = true; });
+
+        combo.addEventListener('change', function () {
+            if (tocadoPeloOperador) return;
+
+            const sugerido = sugestoes[combo.value];
+            if (!sugerido) { aviso.classList.add('d-none'); return; }
+
+            destino.value = sugerido;
+            aviso.classList.remove('d-none');
+        });
+    });
+</script>
+@endpush
