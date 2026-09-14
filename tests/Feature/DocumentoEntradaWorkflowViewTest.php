@@ -2,12 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Enums\TipoRelacaoDocumento;
 use App\Models\AuditLog;
 use App\Models\Departamento;
 use App\Models\DocumentoEncaminhamento;
 use App\Models\DocumentoEncaminhamentoExterno;
 use App\Models\DocumentoEntrada;
+use App\Models\DocumentoEspecie;
+use App\Models\DocumentoInterno;
 use App\Models\DocumentoTarefa;
+use App\Models\DocumentoVinculo;
 use App\Models\Gabinete;
 use App\Models\Role;
 use App\Models\User;
@@ -171,5 +175,71 @@ class DocumentoEntradaWorkflowViewTest extends TestCase
         // O botão Despachar deve estar visível agora no show
         $response->assertSee('Despachar', false);
         $response->assertSee('modalDespacho' . $doc->id, false);
+    }
+
+    public function test_show_com_vinculos_enum_carrega_sem_erro_de_conversao_string(): void
+    {
+        $roleAdmin = Role::where('name', 'admin')->firstOrFail();
+        $gab = Gabinete::create(['nome' => 'Gabinete Superior']);
+        $dep = Departamento::create(['nome' => 'Departamento Geral', 'gabinete_id' => $gab->id]);
+
+        $admin = User::factory()->create(['role_id' => $roleAdmin->id, 'departamento_id' => $dep->id]);
+        $admin->assignRole($roleAdmin);
+
+        $docEntrada = DocumentoEntrada::create([
+            'numero_sequencial' => 101,
+            'ano_referencia' => 2026,
+            'data_entrada' => now(),
+            'assunto' => 'Documento com Vínculos e Enums',
+            'departamento_id' => $dep->id,
+            'user_id' => $admin->id,
+            'status' => 'recebido',
+        ]);
+
+        $especie = DocumentoEspecie::firstOrCreate(
+            ['nome' => 'Ofício'],
+            ['sigla' => 'OFI', 'ativo' => true]
+        );
+
+        $docInterno = DocumentoInterno::create([
+            'titulo' => 'Ofício Resposta 01/2026',
+            'conteudo_final' => '<p>Ofício de resposta formal...</p>',
+            'departamento_id' => $dep->id,
+            'criado_por' => $admin->id,
+            'status' => 'aprovado',
+            'numero_referencia' => 'OFI.01/2026',
+            'documento_especie_id' => $especie->id,
+        ]);
+
+        // Criar vínculo de saída (origem = entrada, destino = interno) com enum RESPOSTA
+        DocumentoVinculo::create([
+            'origem_tipo' => 'EXTERNO',
+            'origem_id' => $docEntrada->id,
+            'destino_tipo' => 'INTERNO',
+            'destino_id' => $docInterno->id,
+            'tipo_relacao' => TipoRelacaoDocumento::RESPOSTA,
+            'vinculado_por_id' => $admin->id,
+            'justificativa' => 'Ofício de resposta formal emitido.',
+        ]);
+
+        // Criar vínculo inverso (origem = interno, destino = entrada) com enum INSTRUCAO_TECNICA
+        DocumentoVinculo::create([
+            'origem_tipo' => 'INTERNO',
+            'origem_id' => $docInterno->id,
+            'destino_tipo' => 'EXTERNO',
+            'destino_id' => $docEntrada->id,
+            'tipo_relacao' => TipoRelacaoDocumento::INSTRUCAO_TECNICA,
+            'vinculado_por_id' => $admin->id,
+            'justificativa' => 'Instrução que instrui a entrada.',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('documentos-entradas.show', $docEntrada));
+
+        $response->assertStatus(200);
+        // Validar que ambos os vínculos aparecem na linha do tempo com seus rótulos corretos
+        $response->assertSee('Dossiê: Vínculo Bilateral (Resposta Formal)', false);
+        $response->assertSee('Dossiê: Vínculo Bilateral (Instrução / Parecer Técnico)', false);
+        $response->assertSee('Resposta Formal', false);
+        $response->assertSee('Instrução / Parecer Técnico', false);
     }
 }

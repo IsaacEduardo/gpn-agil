@@ -75,11 +75,10 @@
         @media (max-width: 768px) {
         }
 
-        /* ---------- Cabeçalho compacto e fixo ---------- */
+        /* ---------- Cabeçalho compacto do documento ---------- */
         .doc-topbar {
-            position: sticky;
-            top: 0;
-            z-index: 1020;
+            position: relative;
+            z-index: 1;
             display: flex;
             align-items: center;
             justify-content: space-between;

@@ -336,6 +336,7 @@ class DocumentoEntradaController extends Controller
             'tarefas.assignedToDepartamento.usuarios:id,name,departamento_id',
             'tarefas.responsavelAtual:id,name',
             'vinculosOrigem.vinculadoPor:id,name',
+            'vinculosDestino.vinculadoPor:id,name',
         ])->findOrFail($documentos_entrada->id);
 
         $departamentos = Cache::remember('departamentos_list', 600, fn () => Departamento::select(['id', 'nome'])->orderBy('nome')->get());
@@ -597,19 +598,61 @@ class DocumentoEntradaController extends Controller
             }
         }
 
-        // 8. Vínculos e Dossiê (ex: respostas elaboradas)
+        // 8. Vínculos e Dossiê (ex: respostas elaboradas, anexos, pareceres)
         if ($doc->relationLoaded('vinculosOrigem')) {
             foreach ($doc->vinculosOrigem as $v) {
+                $relacaoEnum = $v->tipo_relacao instanceof \App\Enums\TipoRelacaoDocumento
+                    ? $v->tipo_relacao
+                    : (is_string($v->tipo_relacao) ? \App\Enums\TipoRelacaoDocumento::tryFrom($v->tipo_relacao) : null);
+
+                $relacaoLabel = $relacaoEnum ? $relacaoEnum->label() : (is_string($v->tipo_relacao) ? $v->tipo_relacao : 'Relacionado');
+                $icone = $relacaoEnum ? $relacaoEnum->icon() : 'fas fa-link';
+                $badgeClass = $relacaoEnum ? $relacaoEnum->badgeClass() : 'bg-dark';
+
+                $destinoTipoStr = $v->destino_tipo instanceof \BackedEnum
+                    ? $v->destino_tipo->value
+                    : (string) $v->destino_tipo;
+                $destinoTipoNome = ($destinoTipoStr === 'INTERNO') ? 'Interno' : 'Externo';
+
                 $events->push([
                     'tipo' => 'vinculo',
                     'data' => $v->created_at,
-                    'titulo' => 'Dossiê: Vínculo Bilateral ('.($v->tipo_relacao ?: 'RELACIONADO').')',
-                    'descricao' => 'Vinculado ao documento '.($v->destino_tipo === 'INTERNO' ? 'Interno' : 'Externo')." #{$v->destino_id} com relação de {$v->tipo_relacao}.",
+                    'titulo' => "Dossiê: Vínculo Bilateral ({$relacaoLabel})",
+                    'descricao' => "Vinculado ao documento {$destinoTipoNome} #{$v->destino_id} com relação de {$relacaoLabel}.".($v->justificativa ? " Justificativa: {$v->justificativa}" : ''),
                     'autor' => optional($v->vinculadoPor)->name ?? 'Utilizador',
                     'setor' => null,
-                    'icone' => 'fas fa-link',
-                    'badge_class' => 'bg-dark',
-                    'badge_text' => 'Vínculo / Resposta',
+                    'icone' => $icone,
+                    'badge_class' => $badgeClass,
+                    'badge_text' => $relacaoLabel,
+                ]);
+            }
+        }
+
+        if ($doc->relationLoaded('vinculosDestino')) {
+            foreach ($doc->vinculosDestino as $v) {
+                $relacaoEnum = $v->tipo_relacao instanceof \App\Enums\TipoRelacaoDocumento
+                    ? $v->tipo_relacao
+                    : (is_string($v->tipo_relacao) ? \App\Enums\TipoRelacaoDocumento::tryFrom($v->tipo_relacao) : null);
+
+                $relacaoLabel = $relacaoEnum ? $relacaoEnum->label() : (is_string($v->tipo_relacao) ? $v->tipo_relacao : 'Relacionado');
+                $icone = $relacaoEnum ? $relacaoEnum->icon() : 'fas fa-link';
+                $badgeClass = $relacaoEnum ? $relacaoEnum->badgeClass() : 'bg-dark';
+
+                $origemTipoStr = $v->origem_tipo instanceof \BackedEnum
+                    ? $v->origem_tipo->value
+                    : (string) $v->origem_tipo;
+                $origemTipoNome = ($origemTipoStr === 'INTERNO') ? 'Interno' : 'Externo';
+
+                $events->push([
+                    'tipo' => 'vinculo',
+                    'data' => $v->created_at,
+                    'titulo' => "Dossiê: Vínculo Bilateral ({$relacaoLabel})",
+                    'descricao' => "Vinculado a partir do documento {$origemTipoNome} #{$v->origem_id} com relação de {$relacaoLabel}.".($v->justificativa ? " Justificativa: {$v->justificativa}" : ''),
+                    'autor' => optional($v->vinculadoPor)->name ?? 'Utilizador',
+                    'setor' => null,
+                    'icone' => $icone,
+                    'badge_class' => $badgeClass,
+                    'badge_text' => $relacaoLabel,
                 ]);
             }
         }

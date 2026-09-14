@@ -57,6 +57,9 @@
         /* Utilitários legados (agora derivam do verde institucional) */
         .text-accent { color: var(--primary-accent); }
         .bg-accent { background-color: var(--primary-accent); }
+
+        /* Garante que o header institucional e seus dropdowns sobreponham o conteúdo da página */
+        .gov-header { z-index: 1040 !important; }
     </style>
     @yield('styles')
 </head>

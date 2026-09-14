@@ -43,7 +43,9 @@
             }
 
             // 5. Conclusão & Arquivo
-            $hasResposta = $doc->relationLoaded('vinculosOrigem') ? $doc->vinculosOrigem->where('tipo_relacao', 'RESPOSTA')->count() > 0 : false;
+            $isRespostaCheck = fn ($v) => ($v->tipo_relacao instanceof \BackedEnum ? $v->tipo_relacao->value : $v->tipo_relacao) === 'RESPOSTA';
+            $hasResposta = ($doc->relationLoaded('vinculosOrigem') && $doc->vinculosOrigem->contains($isRespostaCheck))
+                || ($doc->relationLoaded('vinculosDestino') && $doc->vinculosDestino->contains($isRespostaCheck));
             if ($isArquivado) {
                 $step5State = 'completed';
             } elseif ($hasResposta) {
