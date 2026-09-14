@@ -390,6 +390,37 @@ ganhou o badge de prazo/SLA, que só existia na listagem.
 **Por validar com utilizadores:** a troca de abas por chips é a mudança que mais
 mexe com hábitos de quem já usa o sistema.
 
+## Fase 6 — itens restantes
+
+| Commit | Item | Resolução |
+|---|---|---|
+| `f3a3f33` | Despacho em lote | Mesmo texto e destinos para vários documentos. **Recusa em bloco** seleções que atravessem gabinetes: o P3 restringe os destinos ao gabinete de cada documento, e falhar em silêncio metade do lote seria pior. |
+| `804118b` | Consulta pública de protocolo | `/protocolo/{codigo}` com `throttle:30,1`. Mostra **menos** do que a interna — código, data, estado traduzido. Um teste falha se o assunto, a procedência ou o departamento aparecerem. O QR do recibo passa a apontar para aqui. |
+| `ebf99de` | Modelos de despacho | CRUD em `/modelos-despacho` (havia **zero** modelos e nenhuma forma de os criar) + seletor no painel de ação rápida, que **acrescenta** ao texto em vez de o substituir. |
+| `5bfc0a2` | Destino sugerido | A partir do histórico da procedência, **com limiar de confiança**: ≥3 documentos e ≥60% no mesmo departamento. |
+
+**Decisões que convém não desfazer:**
+
+- **O destino sugerido tem limiar de confiança de propósito.** Com pouco histórico
+  seria adivinhação: hoje, na base real, só **2 procedências** o passam. Uma
+  sugestão errada a cada registo treina o balcão a carregar em "ok" sem ler. A
+  funcionalidade melhora sozinha à medida que o sistema é usado.
+- **A página pública mostra menos do que a interna, não o mesmo.** O P2 fechou a
+  fuga de assunto/procedência/departamento a utilizadores internos sem relação
+  com o documento; abri-la ao público seria reabri-la em maior escala.
+- **O despacho em lote reutiliza `despacharDocumento()`**, o mesmo do endpoint de
+  um documento só — e esse **não** marca `visto_gabinete=aprovado`, ao contrário
+  do `quickAction`. Divergência pré-existente entre os dois caminhos de despacho,
+  deixada como está e **fixada por teste** para não mudar sem querer.
+
+### Único item da Fase 6 por fazer
+
+**Auto-preenchimento por OCR** continua bloqueado por infraestrutura, não por
+código: faltam Poppler ou Ghostscript para rasterizar PDF digitalizado, a
+extensão Imagick está inativa, e o *worker* da fila não corre (268 jobs parados,
+todos os anexos em `ocr_status = PENDENTE`). O passo zero é pôr o OCR a funcionar
+e medir a qualidade em documentos reais — é isso que decide se vale a pena.
+
 ## Registo de execução
 
 | Fase | Estado | Branch | Notas |
@@ -399,7 +430,7 @@ mexe com hábitos de quem já usa o sistema.
 | 3 — Fonte única de autorização | **concluída** | `fix/entrada-docs-fase3-autorizacao` | P5 e P6 fechados |
 | 4 — Integridade do registo | **concluída** | `fix/entrada-docs-fase4-registo` | F4, F5, F6, F9 e limites de ficheiro |
 | 5 — Escala | **concluída** | `fix/entrada-docs-fase5-escala` | F7 e F8 |
-| 6 — Automação | **em curso** | `feat/entrada-docs-fase6-prazo-especie` | Prazo por espécie feito; restantes itens da tabela por fazer |
+| 6 — Automação | **concluída** (exceto OCR) | `feat/entrada-docs-fase6-restante` | Só o auto-preenchimento por OCR fica, bloqueado por infraestrutura |
 
 ### Fase 6 — feito até agora
 
