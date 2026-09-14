@@ -165,6 +165,12 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('throttle:heavy-exports')
         ->name('documentos-entradas.export.excel');
 
+    // Modelos de texto de despacho (reutilizaveis no painel rapido e no modal)
+    Route::resource('modelos-despacho', \App\Http\Controllers\ModeloDespachoController::class)
+        ->only(['index', 'store', 'update', 'destroy'])
+        ->parameters(['modelos-despacho' => 'modelos_despacho'])
+        ->names('modelos-despacho');
+
     // Minhas Tarefas
     Route::get('/tarefas', [TarefaController::class, 'index'])->name('tarefas.index');
 

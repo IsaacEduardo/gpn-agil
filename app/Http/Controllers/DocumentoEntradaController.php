@@ -7,22 +7,25 @@ use App\Application\DocumentManagement\DTOs\CriarDocumentoEntradaDTO;
 use App\Application\DocumentManagement\Handlers\CriarDocumentoEntradaHandler;
 use App\Enums\DocumentoStatus;
 use App\Http\Requests\StoreDocumentoEntradaRequest;
+use App\Jobs\ProcessarOcrAnexo;
 use App\Models\Anexo;
 use App\Models\Departamento;
 use App\Models\DocumentoEncaminhamento;
 use App\Models\DocumentoEntrada;
-use App\Models\DocumentoTarefa;
 use App\Models\DocumentoEspecie;
 use App\Models\DocumentoInterno;
+use App\Models\DocumentoTarefa;
 use App\Models\Gabinete;
 use App\Models\ModeloDespacho;
 use App\Models\Pasta;
+use App\Models\Procedencia;
 use App\Models\User;
 use App\Services\Ai\DocumentoAssistantService;
 use App\Services\DocumentoEntradaService;
 use App\Services\DocumentoPermissionService;
 use App\Support\SafeFileHeaders;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -166,7 +169,7 @@ class DocumentoEntradaController extends Controller
             });
 
             $docIds = $documentos->pluck('id')->filter()->all();
-            $minhasTarefas = count($docIds) ? \App\Models\DocumentoTarefa::with(['assignedBy:id,name'])
+            $minhasTarefas = count($docIds) ? DocumentoTarefa::with(['assignedBy:id,name'])
                 ->whereIn('documento_entrada_id', $docIds)
                 ->where('assigned_to_user_id', $actor->id)
                 ->whereIn('status', ['pendente', 'em_andamento'])
@@ -222,7 +225,7 @@ class DocumentoEntradaController extends Controller
         });
 
         $procedencias = Cache::remember('procedencias_list', 300, function () {
-            return \App\Models\Procedencia::where('ativo', true)->orderBy('nome')->get(['id', 'nome']);
+            return Procedencia::where('ativo', true)->orderBy('nome')->get(['id', 'nome']);
         });
 
         $userDepartamentoId = Auth::user()->departamento_id;
@@ -247,7 +250,7 @@ class DocumentoEntradaController extends Controller
                         'Já existe o documento #%03d/%d com a mesma procedência, referência e data (%s). Confirme que pretende registar mesmo assim.',
                         $existente->numero_sequencial,
                         $existente->ano_referencia,
-                        \Illuminate\Support\Str::limit($existente->assunto, 60),
+                        Str::limit($existente->assunto, 60),
                     )])
                     ->with('duplicado_id', $existente->id);
             }
@@ -436,7 +439,7 @@ class DocumentoEntradaController extends Controller
     /**
      * Constrói a coleção unificada de eventos cronológicos do ciclo de vida do documento.
      */
-    protected function buildTimelineEvents(DocumentoEntrada $doc): \Illuminate\Support\Collection
+    protected function buildTimelineEvents(DocumentoEntrada $doc): Collection
     {
         $events = collect();
 
@@ -447,7 +450,7 @@ class DocumentoEntradaController extends Controller
                 'tipo' => 'registo',
                 'data' => $dataRegisto,
                 'titulo' => 'Registo e Entrada no Sistema',
-                'descricao' => "Documento registado com a espécie '{$doc->classificacao_especie}' e Ref. nº " . ($doc->classificacao_ref_numero ?: 'S/N') . ($doc->procedencia ? " com procedência de {$doc->procedencia}." : "."),
+                'descricao' => "Documento registado com a espécie '{$doc->classificacao_especie}' e Ref. nº ".($doc->classificacao_ref_numero ?: 'S/N').($doc->procedencia ? " com procedência de {$doc->procedencia}." : '.'),
                 'autor' => optional($doc->usuario)->name ?? 'Sistema',
                 'setor' => optional($doc->departamento)->nome ?? 'Gabinete',
                 'icone' => 'fas fa-file-import',
@@ -462,7 +465,7 @@ class DocumentoEntradaController extends Controller
             $events->push([
                 'tipo' => 'visto_departamento',
                 'data' => $doc->visto_departamento_data,
-                'titulo' => 'Visto da Chefia Departamental: ' . ($isAprovado ? 'Aprovado' : 'Rejeitado'),
+                'titulo' => 'Visto da Chefia Departamental: '.($isAprovado ? 'Aprovado' : 'Rejeitado'),
                 'descricao' => $doc->visto_departamento_observacao ?: ($isAprovado ? 'Documento validado pelo chefe do departamento.' : 'Documento rejeitado na verificação departamental.'),
                 'autor' => optional($doc->vistoDepartamentoPor)->name ?? 'Chefe do Departamento',
                 'setor' => optional($doc->departamento)->nome,
@@ -478,7 +481,7 @@ class DocumentoEntradaController extends Controller
             $events->push([
                 'tipo' => 'visto_gabinete',
                 'data' => $doc->visto_gabinete_data,
-                'titulo' => 'Visto do Gabinete: ' . ($isAprovado ? 'Aprovado' : 'Rejeitado'),
+                'titulo' => 'Visto do Gabinete: '.($isAprovado ? 'Aprovado' : 'Rejeitado'),
                 'descricao' => $doc->visto_gabinete_observacao ?: ($isAprovado ? 'Aprovação institucional concedida pelo Gabinete.' : 'Documento rejeitado pelo Gabinete.'),
                 'autor' => optional($doc->vistoGabinetePor)->name ?? 'Responsável do Gabinete',
                 'setor' => optional(optional($doc->departamento)->gabinete)->nome ?? 'Gabinete',
@@ -495,7 +498,7 @@ class DocumentoEntradaController extends Controller
                 'tipo' => 'despacho',
                 'data' => $doc->data_despacho ?? $doc->updated_at,
                 'titulo' => 'Despacho Emitido pelo Gabinete',
-                'descricao' => ($destinos ? "Destinatários: {$destinos}\n\n" : '') . $doc->texto_despacho,
+                'descricao' => ($destinos ? "Destinatários: {$destinos}\n\n" : '').$doc->texto_despacho,
                 'autor' => optional($doc->despachadoPor)->name ?? 'Chefe de Gabinete',
                 'setor' => 'Gabinete',
                 'icone' => 'fas fa-file-signature',
@@ -528,7 +531,7 @@ class DocumentoEntradaController extends Controller
                     'tipo' => 'encaminhamento_recebido',
                     'data' => $enc->recebido_em,
                     'titulo' => "Recebimento Confirmado: {$destino}",
-                    'descricao' => 'Recebido no departamento de destino por ' . (optional($enc->recebidoPor)->name ?? 'Utilizador') . '.',
+                    'descricao' => 'Recebido no departamento de destino por '.(optional($enc->recebidoPor)->name ?? 'Utilizador').'.',
                     'autor' => optional($enc->recebidoPor)->name ?? 'Utilizador',
                     'setor' => $destino,
                     'icone' => 'fas fa-inbox',
@@ -546,7 +549,7 @@ class DocumentoEntradaController extends Controller
                 'tipo' => 'encaminhamento_externo',
                 'data' => $ext->enviado_em,
                 'titulo' => "Saída Externa: {$origemGab} ➔ {$destinoGab}",
-                'descricao' => 'Encaminhamento institucional externo' . ($ext->oficio_numero ? " através do Ofício nº {$ext->oficio_numero}." : '.') . ($ext->observacao ? " Obs: {$ext->observacao}" : ''),
+                'descricao' => 'Encaminhamento institucional externo'.($ext->oficio_numero ? " através do Ofício nº {$ext->oficio_numero}." : '.').($ext->observacao ? " Obs: {$ext->observacao}" : ''),
                 'autor' => optional($ext->usuario)->name ?? 'Gabinete',
                 'setor' => $origemGab,
                 'icone' => 'fas fa-globe',
@@ -562,7 +565,7 @@ class DocumentoEntradaController extends Controller
                 'tipo' => 'tarefa_criada',
                 'data' => $t->created_at,
                 'titulo' => "Tarefa Atribuída: {$t->titulo}",
-                'descricao' => ($t->descricao ? "{$t->descricao}\n" : '') . "Atribuído a: {$destinoNome}" . ($t->prazo_at ? ' • Prazo: ' . $t->prazo_at->format('d/m/Y') : ''),
+                'descricao' => ($t->descricao ? "{$t->descricao}\n" : '')."Atribuído a: {$destinoNome}".($t->prazo_at ? ' • Prazo: '.$t->prazo_at->format('d/m/Y') : ''),
                 'autor' => optional($t->assignedBy)->name ?? 'Chefia',
                 'setor' => optional($t->assignedToDepartamento)->nome,
                 'icone' => 'fas fa-tasks',
@@ -594,8 +597,8 @@ class DocumentoEntradaController extends Controller
                 $events->push([
                     'tipo' => 'vinculo',
                     'data' => $v->created_at,
-                    'titulo' => 'Dossiê: Vínculo Bilateral (' . ($v->tipo_relacao ?: 'RELACIONADO') . ')',
-                    'descricao' => 'Vinculado ao documento ' . ($v->destino_tipo === 'INTERNO' ? 'Interno' : 'Externo') . " #{$v->destino_id} com relação de {$v->tipo_relacao}.",
+                    'titulo' => 'Dossiê: Vínculo Bilateral ('.($v->tipo_relacao ?: 'RELACIONADO').')',
+                    'descricao' => 'Vinculado ao documento '.($v->destino_tipo === 'INTERNO' ? 'Interno' : 'Externo')." #{$v->destino_id} com relação de {$v->tipo_relacao}.",
                     'autor' => optional($v->vinculadoPor)->name ?? 'Utilizador',
                     'setor' => null,
                     'icone' => 'fas fa-link',
@@ -611,7 +614,7 @@ class DocumentoEntradaController extends Controller
                 'tipo' => 'arquivamento',
                 'data' => $doc->arquivado_em,
                 'titulo' => 'Processo Arquivado',
-                'descricao' => 'Documento devidamente finalizado e arquivado no acervo digital' . ($doc->pasta ? " na pasta: {$doc->pasta->nome}." : '.'),
+                'descricao' => 'Documento devidamente finalizado e arquivado no acervo digital'.($doc->pasta ? " na pasta: {$doc->pasta->nome}." : '.'),
                 'autor' => optional($doc->arquivadoPor)->name ?? 'Arquivo',
                 'setor' => optional($doc->pasta)->nome,
                 'icone' => 'fas fa-archive',
@@ -666,25 +669,33 @@ class DocumentoEntradaController extends Controller
         $departamentos = $this->documentoService->departamentosDestinoPermitidos($doc);
 
         // Técnicos/utilizadores do departamento para atribuição
-        $depUsuarios = \App\Models\User::whereHas('departamentos', function ($q) use ($userDeps) {
+        $depUsuarios = User::whereHas('departamentos', function ($q) use ($userDeps) {
             $q->whereIn('departamentos.id', $userDeps);
         })->orWhere('departamento_id', $actor->departamento_id)
-          ->distinct()
-          ->orderBy('name')
-          ->get(['id', 'name']);
+            ->distinct()
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
-        $minhaTarefa = \App\Models\DocumentoTarefa::where('documento_entrada_id', $doc->id)
+        $minhaTarefa = DocumentoTarefa::where('documento_entrada_id', $doc->id)
             ->where('assigned_to_user_id', $actor->id)
             ->whereIn('status', ['pendente', 'em_andamento'])
             ->first();
 
-        $tarefas = \App\Models\DocumentoTarefa::with(['assignedToUser:id,name', 'assignedBy:id,name'])
+        $tarefas = DocumentoTarefa::with(['assignedToUser:id,name', 'assignedBy:id,name'])
             ->where('documento_entrada_id', $doc->id)
             ->orderByDesc('created_at')
             ->get();
 
+        // O painel de acao rapida e onde o gabinete despacha com mais frequencia:
+        // os modelos de texto tem de estar aqui, nao so no modal do detalhe.
+        $modelosDespacho = ModeloDespacho::ativos()
+            ->globalOrUser($actor->id)
+            ->orderBy('titulo')
+            ->get(['id', 'titulo', 'texto']);
+
         return view('documentos_entradas.partials.preview', compact(
             'doc',
+            'modelosDespacho',
             'userProfile',
             'canReceive',
             'canForward',
@@ -922,7 +933,7 @@ class DocumentoEntradaController extends Controller
 
         $departamentos = Cache::remember('departamentos_list', 600, fn () => Departamento::select('id', 'nome')->orderBy('nome')->get());
         $especies = Cache::remember('documento_especies_names', 600, fn () => DocumentoEspecie::where('ativo', true)->orderBy('ordem')->pluck('nome')->all());
-        $procedencias = Cache::remember('procedencias_list', 300, fn () => \App\Models\Procedencia::where('ativo', true)->orderBy('nome')->get(['id', 'nome']));
+        $procedencias = Cache::remember('procedencias_list', 300, fn () => Procedencia::where('ativo', true)->orderBy('nome')->get(['id', 'nome']));
 
         $tags = $documentos_entrada->tags->pluck('nome')->implode(', ');
 
@@ -1180,7 +1191,7 @@ class DocumentoEntradaController extends Controller
             'ocr_erro' => null,
         ]);
 
-        \App\Jobs\ProcessarOcrAnexo::dispatch($anexo->id);
+        ProcessarOcrAnexo::dispatch($anexo->id);
 
         return response()->json([
             'success' => true,
@@ -1292,6 +1303,7 @@ class DocumentoEntradaController extends Controller
 
         try {
             $this->documentoService->encaminharDocumentoTratado($documento, $actor);
+
             return back()->with('success', 'Documento encaminhado com sucesso para os departamentos destinatários.');
         } catch (\Throwable $e) {
             return back()->with('danger', $e->getMessage());

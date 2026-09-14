@@ -118,6 +118,18 @@
                         <label class="form-label fw-bold small text-uppercase text-muted">
                             Instrução do Despacho / Diretriz <span class="text-danger">*</span>
                         </label>
+
+                        @if (isset($modelosDespacho) && $modelosDespacho->count())
+                            {{-- Modelos de texto: este painel e onde o gabinete despacha
+                                 com mais frequencia e escrevia-se tudo a mao. --}}
+                            <select class="form-select form-select-sm mb-2 js-modelo-despacho" aria-label="Aplicar um modelo de despacho">
+                                <option value="">Aplicar um modelo de despacho…</option>
+                                @foreach ($modelosDespacho as $modelo)
+                                    <option value="{{ $modelo->texto }}">{{ $modelo->titulo }}</option>
+                                @endforeach
+                            </select>
+                        @endif
+
                         <textarea name="texto_despacho" class="form-control form-control-sm" rows="3" placeholder="Digite a ordem executiva / orientação para os departamentos..." required></textarea>
                     </div>
 
@@ -345,4 +357,23 @@ if (typeof window.gerarResumoIaDrawer === 'undefined') {
         });
     };
 }
+</script>
+
+<script>
+    // O drawer e injetado por AJAX: liga-se no momento em que este HTML entra no DOM.
+    (function () {
+        document.querySelectorAll('.js-modelo-despacho').forEach(function (seletor) {
+            seletor.addEventListener('change', function () {
+                if (!seletor.value) return;
+                const campo = seletor.closest('form').querySelector('textarea[name="texto_despacho"]');
+                if (!campo) return;
+                // Acrescenta ao que ja la esta, em vez de substituir sem aviso.
+                campo.value = campo.value.trim() ? campo.value.trim() + '
+
+' + seletor.value : seletor.value;
+                campo.focus();
+                seletor.selectedIndex = 0;
+            });
+        });
+    })();
 </script>
