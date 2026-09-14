@@ -8,6 +8,7 @@ use App\Models\DocumentoEntrada;
 use App\Models\Gabinete;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\PermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -34,7 +35,7 @@ class DocumentoEntradaAuditoriaVisibilidadeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(\Database\Seeders\PermissionsSeeder::class);
+        $this->seed(PermissionsSeeder::class);
 
         $papelUser = Role::where('name', 'user')->firstOrFail();
 

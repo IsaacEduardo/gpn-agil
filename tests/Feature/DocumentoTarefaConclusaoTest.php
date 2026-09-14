@@ -9,7 +9,9 @@ use App\Models\Gabinete;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\DocumentoEntradaService;
+use Database\Seeders\PermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
@@ -34,7 +36,7 @@ class DocumentoTarefaConclusaoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(\Database\Seeders\PermissionsSeeder::class);
+        $this->seed(PermissionsSeeder::class);
         Notification::fake();
 
         $papelChefe = Role::where('name', 'chefe-departamento')->firstOrFail();
@@ -122,7 +124,7 @@ class DocumentoTarefaConclusaoTest extends TestCase
         $this->assertNotNull($conclusao, 'A conclusão da tarefa devia constar da linha do tempo.');
         $this->assertSame(
             $dataConclusao->format('Y-m-d H:i'),
-            \Illuminate\Support\Carbon::parse($conclusao['data'])->format('Y-m-d H:i'),
+            Carbon::parse($conclusao['data'])->format('Y-m-d H:i'),
         );
     }
 }
