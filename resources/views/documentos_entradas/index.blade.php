@@ -433,6 +433,11 @@ tr.keyboard-selected {
                     <button type="button" class="btn btn-sm btn-success shadow-sm" id="btnEncaminharLote">
                         <i class="fas fa-paper-plane me-1"></i> Encaminhar
                     </button>
+                    @if ($userProfile === 'gabinete')
+                        <button type="button" class="btn btn-sm btn-warning shadow-sm fw-semibold" id="btnDespacharLote">
+                            <i class="fas fa-file-signature me-1"></i> Despachar
+                        </button>
+                    @endif
                     <button type="button" class="btn btn-sm btn-outline-primary"
                         id="clearSelectionBtn">Cancelar</button>
                 </div>
@@ -756,6 +761,10 @@ tr.keyboard-selected {
 
     {{-- Encaminhamento (individual + lote) a partir da listagem, via AJAX --}}
     @include('documentos_entradas.partials.encaminhamento-index')
+
+    @if ($userProfile === 'gabinete')
+        @include('documentos_entradas.partials.despacho-lote')
+    @endif
 
     {{-- Arquivamento por arrastar-e-soltar: arraste uma linha para a barra de destinos --}}
     <x-archive-dropzone document-type="entrada" />

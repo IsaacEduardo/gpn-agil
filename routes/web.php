@@ -95,6 +95,8 @@ Route::middleware(['auth'])->group(function () {
         ->name('documentos-entradas.batch.receber');
     Route::post('documentos-entradas/batch/encaminhar', [DocumentoEntradaEncaminhamentoController::class, 'batchEncaminhar'])
         ->name('documentos-entradas.batch.encaminhar');
+    Route::post('documentos-entradas/batch/despachar', [DocumentoEntradaEncaminhamentoController::class, 'batchDespachar'])
+        ->name('documentos-entradas.batch.despachar');
     Route::get('documentos-entradas/search/json', [DocumentoEntradaController::class, 'searchJson'])
         ->name('documentos-entradas.search.json');
     Route::resource('documentos-entradas', DocumentoEntradaController::class)->names('documentos-entradas');

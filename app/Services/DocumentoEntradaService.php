@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\DocumentoStatus;
+use App\Events\TaskAssigned;
+use App\Jobs\ProcessarOcrAnexo;
 use App\Models\AuditLog;
 use App\Models\Departamento;
 use App\Models\DocumentoEncaminhamento;
@@ -11,6 +13,7 @@ use App\Models\DocumentoEntrada;
 use App\Models\DocumentoProtocolo;
 use App\Models\DocumentoTarefa;
 use App\Models\Gabinete;
+use App\Models\Procedencia;
 use App\Models\Tag;
 use App\Models\User;
 use App\Notifications\DocumentoEncaminhadoDepartamento;
@@ -18,6 +21,7 @@ use App\Notifications\DocumentoEncaminhadoExterno;
 use App\Notifications\DocumentoEntradaRegistado;
 use App\Notifications\SimpleBroadcastNotification;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class DocumentoEntradaService
@@ -161,28 +166,28 @@ class DocumentoEntradaService
                 if ($numSearch !== null && $anoSearch !== null) {
                     $q->orWhere(function ($qNumAno) use ($numSearch, $anoSearch) {
                         $qNumAno->where('numero_sequencial', $numSearch)
-                                ->where('ano_referencia', $anoSearch);
+                            ->where('ano_referencia', $anoSearch);
                     });
                 } elseif ($numSearch !== null) {
                     $q->orWhere('numero_sequencial', $numSearch)
-                      ->orWhere('ano_referencia', $numSearch);
+                        ->orWhere('ano_referencia', $numSearch);
                 }
 
                 $q->orWhere(DB::raw($concatExpr1), 'like', "%$s%")
-                  ->orWhere(DB::raw($concatExpr2), 'like', "%$s%")
-                  ->orWhere('assunto', 'like', "%$s%")
-                  ->orWhere('procedencia', 'like', "%$s%")
-                  ->orWhere('classificacao_especie', 'like', "%$s%")
-                  ->orWhere('classificacao_ref_numero', 'like', "%$s%")
-                  ->orWhereHas('protocolo', function ($p) use ($s) {
-                      $p->where('codigo', 'like', "%$s%");
-                  })
-                  ->orWhereHas('tags', function ($t) use ($s) {
-                      $t->where('nome', 'like', "%$s%");
-                  })
-                  ->orWhereHas('anexos', function ($a) use ($s) {
-                      $a->pesquisarTextoExtraido($s);
-                  });
+                    ->orWhere(DB::raw($concatExpr2), 'like', "%$s%")
+                    ->orWhere('assunto', 'like', "%$s%")
+                    ->orWhere('procedencia', 'like', "%$s%")
+                    ->orWhere('classificacao_especie', 'like', "%$s%")
+                    ->orWhere('classificacao_ref_numero', 'like', "%$s%")
+                    ->orWhereHas('protocolo', function ($p) use ($s) {
+                        $p->where('codigo', 'like', "%$s%");
+                    })
+                    ->orWhereHas('tags', function ($t) use ($s) {
+                        $t->where('nome', 'like', "%$s%");
+                    })
+                    ->orWhereHas('anexos', function ($a) use ($s) {
+                        $a->pesquisarTextoExtraido($s);
+                    });
             });
         }
 
@@ -297,13 +302,13 @@ class DocumentoEntradaService
         $procedenciaId = $data['procedencia_id'] ?? null;
         $procedenciaNome = $data['procedencia'] ?? null;
 
-        if ($procedenciaId && !$procedenciaNome) {
-            $pObj = \App\Models\Procedencia::find($procedenciaId);
+        if ($procedenciaId && ! $procedenciaNome) {
+            $pObj = Procedencia::find($procedenciaId);
             if ($pObj) {
                 $procedenciaNome = $pObj->nome;
             }
-        } elseif ($procedenciaNome && !$procedenciaId) {
-            $pObj = \App\Models\Procedencia::whereRaw('LOWER(TRIM(nome)) = ?', [mb_strtolower(trim($procedenciaNome))])->first();
+        } elseif ($procedenciaNome && ! $procedenciaId) {
+            $pObj = Procedencia::whereRaw('LOWER(TRIM(nome)) = ?', [mb_strtolower(trim($procedenciaNome))])->first();
             if ($pObj) {
                 $procedenciaId = $pObj->id;
             }
@@ -390,7 +395,7 @@ class DocumentoEntradaService
                 ]);
 
                 if ($isOcr) {
-                    \App\Jobs\ProcessarOcrAnexo::dispatch($anexo->id);
+                    ProcessarOcrAnexo::dispatch($anexo->id);
                 }
 
                 if (! $doc->arquivo_caminho && $ordem === 1) {
@@ -423,7 +428,7 @@ class DocumentoEntradaService
             if ($this->permissionService->canManageTasks($actor, $documento) || $this->permissionService->isAdmin($actor)) {
                 $documento->status = DocumentoStatus::TRATADO->value;
                 if (empty($documento->texto_despacho)) {
-                    $documento->texto_despacho = "Documento aprovado via delegação de tarefa: " . $data['titulo'];
+                    $documento->texto_despacho = 'Documento aprovado via delegação de tarefa: '.$data['titulo'];
                 }
                 $documento->despachado_por_id = $actor->id;
                 $documento->data_despacho = now();
@@ -444,7 +449,7 @@ class DocumentoEntradaService
                 ]);
             }
 
-            event(new \App\Events\TaskAssigned($tarefa));
+            event(new TaskAssigned($tarefa));
 
             return $tarefa;
         });
@@ -555,7 +560,7 @@ class DocumentoEntradaService
      * Partilhada pelo DocumentoEntradaTarefaController e pelo quickAction — antes
      * só o primeiro a aplicava, pelo que o segundo aceitava qualquer utilizador.
      *
-     * @return string|null  mensagem de erro, ou null se o destinatário é válido.
+     * @return string|null mensagem de erro, ou null se o destinatário é válido.
      */
     public function validarDestinatarioTarefa(DocumentoEntrada $documento, User $destino, User $actor): ?string
     {
@@ -772,7 +777,7 @@ class DocumentoEntradaService
      * de destino. Idempotente: se o encaminhamento já foi recebido (corrida/duplo
      * clique), não repete a ação nem as notificações.
      *
-     * @return bool  true se recebeu agora; false se já estava recebido.
+     * @return bool true se recebeu agora; false se já estava recebido.
      */
     public function receiveDocument(DocumentoEntrada $documento, DocumentoEncaminhamento $encaminhamento, User $actor): bool
     {
@@ -995,12 +1000,12 @@ class DocumentoEntradaService
 
             // Sincroniza procedencia_id e texto da procedência
             if (! empty($data['procedencia_id'])) {
-                $pObj = \App\Models\Procedencia::find($data['procedencia_id']);
+                $pObj = Procedencia::find($data['procedencia_id']);
                 if ($pObj) {
                     $data['procedencia'] = $pObj->nome;
                 }
             } elseif (! empty($data['procedencia'])) {
-                $pObj = \App\Models\Procedencia::whereRaw('LOWER(TRIM(nome)) = ?', [mb_strtolower(trim($data['procedencia']))])->first();
+                $pObj = Procedencia::whereRaw('LOWER(TRIM(nome)) = ?', [mb_strtolower(trim($data['procedencia']))])->first();
                 if ($pObj) {
                     $data['procedencia_id'] = $pObj->id;
                 }
@@ -1016,7 +1021,7 @@ class DocumentoEntradaService
 
             if ($mainFile) {
                 if ($documento->arquivo_caminho) {
-                    \Illuminate\Support\Facades\Storage::disk(config('filesystems.docs_disk'))->delete($documento->arquivo_caminho);
+                    Storage::disk(config('filesystems.docs_disk'))->delete($documento->arquivo_caminho);
                 }
                 $dep = Departamento::find((int) $documento->departamento_id);
                 $gab = optional($dep)->gabinete;
@@ -1053,7 +1058,7 @@ class DocumentoEntradaService
                     ]);
 
                     if ($isOcr) {
-                        \App\Jobs\ProcessarOcrAnexo::dispatch($anexo->id);
+                        ProcessarOcrAnexo::dispatch($anexo->id);
                     }
                 }
             }
@@ -1082,6 +1087,71 @@ class DocumentoEntradaService
 
             return $documento;
         });
+    }
+
+    /**
+     * Despacha vários documentos com o mesmo texto e os mesmos destinos.
+     *
+     * O P3 restringe os destinos ao gabinete DE CADA documento, pelo que uma
+     * lista de destinos comum só é legítima dentro de um gabinete. Uma seleção
+     * que atravesse gabinetes é recusada em bloco — falhar em silêncio metade
+     * do lote seria pior do que recusar.
+     *
+     * @param  int[]  $documentoIds
+     * @param  int[]  $departamentosIds
+     * @return array{despachados:int, ignorados:int}
+     *
+     * @throws \RuntimeException quando a seleção é inválida como um todo.
+     */
+    public function despacharBatch(array $documentoIds, string $textoDespacho, array $departamentosIds, User $actor): array
+    {
+        $documentos = DocumentoEntrada::with('departamento')
+            ->whereIn('id', $documentoIds)
+            ->where('arquivado', false)
+            ->get();
+
+        if ($documentos->isEmpty()) {
+            throw new \RuntimeException('Nenhum documento elegível na seleção.');
+        }
+
+        $gabinetes = $documentos->map(fn ($d) => optional($d->departamento)->gabinete_id)->unique();
+        if ($gabinetes->count() > 1) {
+            throw new \RuntimeException(
+                'A seleção abrange documentos de gabinetes diferentes. '
+                .'Despache um gabinete de cada vez: os departamentos de destino não são os mesmos.'
+            );
+        }
+
+        // Os destinos têm de pertencer ao gabinete dos documentos.
+        $permitidos = $this->departamentosDestinoPermitidos($documentos->first())->pluck('id')->all();
+        $foraDoGabinete = array_diff($departamentosIds, $permitidos);
+        if ($foraDoGabinete) {
+            throw new \RuntimeException('Só é possível despachar para departamentos do gabinete destes documentos.');
+        }
+
+        $despachados = 0;
+        $ignorados = 0;
+
+        foreach ($documentos as $documento) {
+            if (! $this->permissionService->canDespachar($actor, $documento)) {
+                $ignorados++;
+
+                continue;
+            }
+
+            try {
+                $this->despacharDocumento($documento, $textoDespacho, $departamentosIds, $actor);
+                $despachados++;
+            } catch (\Throwable $e) {
+                $ignorados++;
+            }
+        }
+
+        if ($despachados === 0) {
+            throw new \RuntimeException('Nenhum documento pôde ser despachado. Verifique as permissões sobre o gabinete.');
+        }
+
+        return ['despachados' => $despachados, 'ignorados' => $ignorados];
     }
 
     public function encaminharDocumentoTratado(DocumentoEntrada $documento, User $actor): DocumentoEntrada
@@ -1191,7 +1261,7 @@ class DocumentoEntradaService
                 if ($user) {
                     $query->whereHas('tarefas', function ($t) use ($user) {
                         $t->where('assigned_to_user_id', $user->id)
-                          ->whereIn('status', ['pendente', 'em_andamento']);
+                            ->whereIn('status', ['pendente', 'em_andamento']);
                     });
                 }
                 break;
@@ -1223,7 +1293,7 @@ class DocumentoEntradaService
         }
     }
 
-    private function applySpecialViewFilters(\Illuminate\Database\Eloquent\Builder $query, Request $request, ?User $user): void
+    private function applySpecialViewFilters(Builder $query, Request $request, ?User $user): void
     {
         if ($user && $meus = $request->input('meus')) {
             $deps = $this->permissionService->getUserDepartments($user);
@@ -1335,7 +1405,7 @@ class DocumentoEntradaService
             $badgeClass = match ($cfg['badge_type']) {
                 'warning' => $count > 0 ? 'tab-badge-warning' : 'tab-badge-neutral opacity-50',
                 'info' => $count > 0 ? 'tab-badge-info' : 'tab-badge-neutral opacity-50',
-                default => 'tab-badge-neutral' . ($count == 0 ? ' opacity-50' : ''),
+                default => 'tab-badge-neutral'.($count == 0 ? ' opacity-50' : ''),
             };
 
             $tabs[] = [

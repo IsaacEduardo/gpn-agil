@@ -101,6 +101,48 @@ class DocumentoEntradaEncaminhamentoController extends Controller
         return $result['success'] > 0 ? back()->with('success', $message) : back()->with('error', $message);
     }
 
+    /**
+     * Despacho em lote: mesmo texto e mesmos destinos para vários documentos.
+     * A validação por gabinete vive no serviço — ver despacharBatch().
+     */
+    public function batchDespachar(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'json'],
+            'texto_despacho' => ['required', 'string'],
+            'departamentos_ids' => ['required', 'array', 'min:1'],
+            'departamentos_ids.*' => ['integer', 'exists:departamentos,id'],
+        ], [
+            'texto_despacho.required' => 'O texto do despacho é obrigatório.',
+            'departamentos_ids.required' => 'Selecione pelo menos um departamento de destino.',
+        ]);
+
+        $ids = $this->idsDoLote($validated['ids']);
+        if ($ids === null) {
+            return $this->recusarLote($request);
+        }
+
+        try {
+            $resultado = $this->documentoService->despacharBatch(
+                $ids,
+                $validated['texto_despacho'],
+                array_map('intval', $validated['departamentos_ids']),
+                Auth::user(),
+            );
+        } catch (\RuntimeException $e) {
+            return $request->wantsJson()
+                ? response()->json(['success' => false, 'message' => $e->getMessage()], 422)
+                : back()->with('error', $e->getMessage());
+        }
+
+        $mensagem = $resultado['despachados'].' documento(s) despachado(s) com sucesso.'
+            .($resultado['ignorados'] > 0 ? ' ('.$resultado['ignorados'].' ignorado(s) por falta de permissão.)' : '');
+
+        return $request->wantsJson()
+            ? response()->json(['success' => true, 'message' => $mensagem] + $resultado)
+            : back()->with('success', $mensagem);
+    }
+
     public function batchReceber(Request $request)
     {
         $validated = $request->validate([
@@ -225,7 +267,7 @@ class DocumentoEntradaEncaminhamentoController extends Controller
      * com queries e notificações por documento — um lote arbitrariamente grande
      * bloqueava o pedido.
      *
-     * @return int[]|null  null quando a lista é inválida, vazia ou excede o limite.
+     * @return int[]|null null quando a lista é inválida, vazia ou excede o limite.
      */
     private function idsDoLote(string $json): ?array
     {
