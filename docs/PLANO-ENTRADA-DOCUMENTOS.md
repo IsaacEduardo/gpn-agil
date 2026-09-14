@@ -351,6 +351,45 @@ a aba de auditoria, que estavam por commitar na árvore de trabalho e vivem nos
 mesmos ficheiros que estas correções — não eram separáveis sem *staging*
 interativo.
 
+## Reorganização da UI de detalhe
+
+Com o percurso finalmente visível, o ecrã de detalhe ficou denso demais: 1895
+linhas num só Blade, 6 abas, 8 ações sem hierarquia, o estado repetido em três
+sítios e o documento reduzido a um link. Reorganizado em `9774f5b`.
+
+| | Antes | Depois |
+|---|---|---|
+| Maior ficheiro | 1895 linhas | 420 (o `<script>`); a `show` tem 156 |
+| Abas | 6 | 6 **chips** de filtro sobre a mesma lista |
+| Ações no cabeçalho | 8 sem hierarquia | 1 primária contextual + menu `⋯` |
+| Altura por evento | ~130px | ~44px, expande ao clicar |
+| Sítios com o Arquivo Principal | 2 | 1 |
+| Regras CSS órfãs | — | 25 removidas |
+
+**O documento passou a ser o centro do ecrã** — visualizador embutido a 70vh, com
+fallback para navegadores sem leitor de PDF e estado vazio explícito. O cabeçalho
+ganhou o badge de prazo/SLA, que só existia na listagem.
+
+**Decisões que convém não desfazer:**
+
+- **Quatro das seis abas eram subconjuntos da linha do tempo**, que já agrega 9
+  fontes. Passaram a filtros — mas as tabelas detalhadas continuam acessíveis em
+  "ver em tabela", com todas as colunas e **todas as ações** (Receber,
+  concluir/cancelar tarefas). Foram verificadas uma a uma.
+- **A view continua a não decidir autorizações:** consome `$canDespachar`,
+  `$canEncaminharTratado`, `$canVisto`, `$canVistoGabinete`, `$canAssignTask`,
+  `$canVerAuditoria`, ou `@can`.
+- **Os IDs de que o JS depende foram preservados** (`btnVistoDepartamentoAprovar`,
+  `visto-dep-aprovar-form`, `btn-ver-tarefa-show`, os do modal de OCR).
+- **Quatro asserções de `DocumentoEntradaWorkflowViewTest` passaram de
+  `assertSee('X & Y', false)` para `assertSee('X & Y')`.** A string esperada é a
+  mesma e o texto visível não muda: os rótulos do pipeline passaram a ser
+  emitidos por `{{ }}`, que escapa o `&`, pelo que procurar o `&` cru deixou de
+  estar certo. É uma asserção mais rigorosa, não mais fraca.
+
+**Por validar com utilizadores:** a troca de abas por chips é a mudança que mais
+mexe com hábitos de quem já usa o sistema.
+
 ## Registo de execução
 
 | Fase | Estado | Branch | Notas |
