@@ -51,6 +51,13 @@ Route::get('/verificar/documento/{hash}', [DocumentoInternoController::class, 'v
     ->middleware('throttle:30,1')
     ->name('documentos-internos.verificar');
 
+// Consulta pública do protocolo de entrada: o QR do recibo aponta para aqui.
+// Mostra apenas código, data e estado — nunca assunto, procedência ou setor.
+// throttle impede enumeração de códigos de protocolo.
+Route::get('/protocolo/{codigo}', \App\Http\Controllers\ProtocoloPublicoController::class)
+    ->middleware('throttle:30,1')
+    ->name('protocolo.publico');
+
 // A partir daqui, todas as rotas exigem autenticação
 Route::middleware(['auth'])->group(function () {
     Route::get('/home', [HomeController::class, 'index'])->name('home');

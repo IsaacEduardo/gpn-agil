@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
@@ -183,7 +184,7 @@ class DocumentoEntradaProtocoloController extends Controller
      * extra, o pedido excede o limite e é recusado. Uma só query — contar e
      * depois colher percorreria o filtro duas vezes.
      *
-     * @return \Illuminate\Support\Collection|null  null quando excede o limite.
+     * @return Collection|null null quando excede o limite.
      */
     private function colherAteAoLimite($query)
     {
@@ -214,7 +215,7 @@ class DocumentoEntradaProtocoloController extends Controller
         }
 
         $codigo = sprintf('PRT-%d-%03d-%s', $documento->ano_referencia, $documento->numero_sequencial, strtoupper(Str::random(6)));
-        $consultaUrl = route('documentos-entradas.protocolo', $documento);
+        $consultaUrl = route('protocolo.publico', ['codigo' => $codigo]);
         $protocolo = DocumentoProtocolo::create([
             'documento_entrada_id' => $documento->id,
             'codigo' => $codigo,

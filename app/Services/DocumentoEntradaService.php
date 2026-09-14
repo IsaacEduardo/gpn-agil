@@ -353,7 +353,7 @@ class DocumentoEntradaService
         }
 
         $codigoProt = sprintf('PRT-%d-%03d-%s', $ano, $seq, strtoupper(Str::random(6)));
-        $urlConsulta = route('documentos-entradas.protocolo', ['documento' => $doc->id]);
+        $urlConsulta = route('protocolo.publico', ['codigo' => $codigoProt]);
         DocumentoProtocolo::create([
             'documento_entrada_id' => $doc->id,
             'codigo' => $codigoProt,
