@@ -29,11 +29,18 @@ php artisan route:cache
 php artisan view:cache
 php artisan event:cache
 
-# 6. Links Simbólicos
+# 6. Fila de Notificações
+# O worker (systemd: gpn-queue.service) mantém o código antigo em memória
+# depois de um pull. Sem este restart, as notificações passam a ser
+# processadas por código desatualizado até o --max-time reciclar o processo.
+echo "Reiniciando worker da fila..."
+php artisan queue:restart
+
+# 7. Links Simbólicos
 echo "Verificando links simbólicos..."
 php artisan storage:link
 
-# 7. Permissões (Ajuste conforme seu usuário de servidor web, ex: www-data)
+# 8. Permissões (Ajuste conforme seu usuário de servidor web, ex: www-data)
 # chown -R www-data:www-data storage bootstrap/cache
 
 echo "Deploy concluído com sucesso!"
