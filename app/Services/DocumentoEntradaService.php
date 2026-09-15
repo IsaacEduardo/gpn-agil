@@ -423,10 +423,11 @@ class DocumentoEntradaService
                 'grupo_tarefa_uuid' => $data['grupo_tarefa_uuid'] ?? null,
             ]);
 
-            // Regra de Negócio Específica (Documentos Externos):
-            // Quando a chefia delega uma tarefa, o documento externo é automaticamente aprovado/marcado como TRATADO
+            // Regra de negócio (documentos externos): ao delegar, a chefia dá
+            // o visto do departamento. O documento NÃO fica tratado aqui — o
+            // trabalho ainda nem começou; fica-o quando a última tarefa é
+            // concluída (ver fecharSeSemTarefasPendentes).
             if ($this->permissionService->canManageTasks($actor, $documento) || $this->permissionService->isAdmin($actor)) {
-                $documento->status = DocumentoStatus::TRATADO->value;
                 if (empty($documento->texto_despacho)) {
                     $documento->texto_despacho = 'Documento aprovado via delegação de tarefa: '.$data['titulo'];
                 }
@@ -671,7 +672,18 @@ class DocumentoEntradaService
         return $pertence ? null : 'Selecione usuário do seu departamento.';
     }
 
-    public function completeTask(DocumentoTarefa $tarefa, User $actor, ?int $responsavelId = null)
+    /**
+     * Conclui uma tarefa e guarda o parecer do técnico.
+     *
+     * O parecer é a razão de ser da tarefa. Havia dois caminhos para concluir e
+     * só um o gravava: o modal da listagem pedia o texto como obrigatório e
+     * deitava-o fora, porque nem o controlador o lia nem este método o
+     * escrevia. Passa a existir uma só implementação, e é esta.
+     *
+     * @param  string|null  $resposta  Parecer do técnico; um valor vazio não
+     *                                 apaga um parecer já registado.
+     */
+    public function completeTask(DocumentoTarefa $tarefa, User $actor, ?int $responsavelId = null, ?string $resposta = null)
     {
         if ($tarefa->assigned_to_departamento_id) {
             if ($responsavelId) {
@@ -680,6 +692,11 @@ class DocumentoEntradaService
                 $tarefa->responsavel_user_id = $actor->id;
             }
         }
+
+        if (filled($resposta)) {
+            $tarefa->resposta = trim($resposta);
+        }
+
         $tarefa->status = 'concluida';
         // A linha do tempo precisa da data real de conclusão: o updated_at
         // deslocar-se-ia com qualquer alteração posterior à tarefa.
@@ -687,6 +704,11 @@ class DocumentoEntradaService
         $tarefa->save();
 
         $documento = $tarefa->documento;
+
+        // Feita a última tarefa, o documento está tratado pelo departamento.
+        // Antes esta marca era posta na delegação, o que dava por concluído o
+        // que ainda não tinha começado.
+        $this->fecharSeSemTarefasPendentes($documento, $actor);
         $numero = sprintf('%03d/%d', $documento->numero_sequencial, $documento->ano_referencia);
         $url = route('documentos-entradas.show', $documento->id);
         $title = 'Tarefa concluída no documento '.$numero;
@@ -713,6 +735,34 @@ class DocumentoEntradaService
         }
 
         return $tarefa;
+    }
+
+    /**
+     * Marca o documento como TRATADO quando já não há tarefas por fazer.
+     *
+     * Não mexe em documentos arquivados nem faz recuar estados posteriores:
+     * limita-se a fechar o ciclo do departamento.
+     */
+    private function fecharSeSemTarefasPendentes(?DocumentoEntrada $documento, User $actor): void
+    {
+        if (! $documento || $documento->arquivado) {
+            return;
+        }
+
+        $aindaPendentes = DocumentoTarefa::where('documento_entrada_id', $documento->id)
+            ->where('status', 'pendente')
+            ->exists();
+
+        if ($aindaPendentes || $documento->status === DocumentoStatus::TRATADO->value) {
+            return;
+        }
+
+        $documento->status = DocumentoStatus::TRATADO->value;
+        $documento->save();
+
+        $this->audit('documento.tratado_pelo_departamento', $documento, $actor, [
+            'origem' => 'conclusao_de_tarefas',
+        ]);
     }
 
     public function cancelTask(DocumentoTarefa $tarefa, User $actor)
@@ -792,7 +842,24 @@ class DocumentoEntradaService
             return $e;
         });
 
-        // Notify
+        $this->notificarDestino($documento, $enc, $actor);
+
+        return $enc;
+    }
+
+    /**
+     * Avisa o departamento de destino de que recebeu um documento.
+     *
+     * Partilhado pelo encaminhamento avulso (forwardDocument) e pelo despacho
+     * (despacharDocumento): desde que o despacho passou a entregar o documento
+     * de imediato, é ele o momento em que o departamento tem de ser avisado.
+     * Chamar sempre FORA da transação — uma falha de notificação não pode
+     * desfazer um encaminhamento já consumado.
+     */
+    private function notificarDestino(DocumentoEntrada $documento, DocumentoEncaminhamento $enc, User $actor): void
+    {
+        $targetDepId = (int) $enc->destino_departamento_id;
+
         $usuariosDestino = User::where('id', '!=', $actor->id)
             ->where(function ($q) use ($targetDepId) {
                 $q->where('departamento_id', $targetDepId)
@@ -811,8 +878,6 @@ class DocumentoEntradaService
         if ($usuariosDestino->count()) {
             Notification::send($usuariosDestino, new DocumentoEncaminhadoDepartamento($documento, $enc, $actor));
         }
-
-        return $enc;
     }
 
     public function cancelForwarding(DocumentoEncaminhamento $encaminhamento, User $actor)
@@ -1145,24 +1210,82 @@ class DocumentoEntradaService
         });
     }
 
+    /**
+     * Despacha o documento e entrega-o, no mesmo ato, aos departamentos indicados.
+     *
+     * Regra de negócio: não há duas fases. Antes o despacho parava em TRATADO e
+     * a distribuição ficava a cargo do expediente, num segundo gesto manual —
+     * com o efeito de documentos que já tinham saído continuarem a figurar como
+     * "prontos a encaminhar". Quem despacha escolhe os destinos, logo o
+     * encaminhamento é parte do mesmo ato e o documento fica ENCAMINHADO.
+     *
+     * Esta é a fonte única do despacho: usada pelo modal do detalhe, pelo painel
+     * rápido da gaveta e pelo despacho em lote.
+     */
     public function despacharDocumento(DocumentoEntrada $documento, string $textoDespacho, array $departamentosIds, User $actor): DocumentoEntrada
     {
-        return DB::transaction(function () use ($documento, $textoDespacho, $departamentosIds, $actor) {
-            $documento->texto_despacho = trim($textoDespacho);
+        $destinos = array_values(array_unique(array_map('intval', $departamentosIds)));
+
+        $encaminhamentos = DB::transaction(function () use ($documento, $textoDespacho, $destinos, $actor) {
+            $texto = trim($textoDespacho);
+            $agora = now();
+
+            $documento->texto_despacho = $texto;
             $documento->despachado_por_id = $actor->id;
-            $documento->data_despacho = now();
-            $documento->status = DocumentoStatus::TRATADO->value;
+            $documento->data_despacho = $agora;
+
+            // Quem despacha viu e aprovou: o visto do gabinete faz parte do ato.
+            // Ficava por gravar nesta via, embora a delegação já o fizesse.
+            $documento->visto_gabinete_status = 'aprovado';
+            $documento->visto_gabinete_por = $actor->id;
+            $documento->visto_gabinete_data = $agora;
+
+            $documento->status = DocumentoStatus::ENCAMINHADO->value;
+            $documento->encaminhamento_data = $agora;
             $documento->save();
 
-            $documento->departamentosDestino()->sync($departamentosIds);
+            $documento->departamentosDestino()->sync($destinos);
+
+            // Destinos que ainda têm um encaminhamento por receber não levam
+            // outro: um segundo despacho para o mesmo sítio antes da receção
+            // duplicaria a entrega, que foi exatamente o defeito corrigido aqui.
+            $porReceber = DocumentoEncaminhamento::where('documento_entrada_id', $documento->id)
+                ->whereNull('recebido_em')
+                ->pluck('destino_departamento_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $criados = [];
+            foreach ($destinos as $destinoId) {
+                if (in_array($destinoId, $porReceber, true)) {
+                    continue;
+                }
+
+                $criados[] = DocumentoEncaminhamento::create([
+                    'documento_entrada_id' => $documento->id,
+                    'origem_departamento_id' => $documento->departamento_id,
+                    'destino_departamento_id' => $destinoId,
+                    'usuario_id' => $actor->id,
+                    'encaminhado_em' => $agora,
+                    'status' => DocumentoStatus::ENCAMINHADO->value,
+                    'observacao' => $texto,
+                ]);
+            }
 
             $this->audit('documento.despachado', $documento, $actor, [
-                'despacho' => $textoDespacho,
-                'departamentos_destino' => $departamentosIds,
+                'despacho' => $texto,
+                'departamentos_destino' => $destinos,
+                'encaminhamentos_criados' => count($criados),
             ]);
 
-            return $documento;
+            return $criados;
         });
+
+        foreach ($encaminhamentos as $enc) {
+            $this->notificarDestino($documento, $enc, $actor);
+        }
+
+        return $documento;
     }
 
     /**
@@ -1230,41 +1353,6 @@ class DocumentoEntradaService
         return ['despachados' => $despachados, 'ignorados' => $ignorados];
     }
 
-    public function encaminharDocumentoTratado(DocumentoEntrada $documento, User $actor): DocumentoEntrada
-    {
-        return DB::transaction(function () use ($documento, $actor) {
-            $destinos = $documento->departamentosDestino;
-            $destinosIds = $destinos->pluck('id')->all();
-
-            if (empty($destinosIds) && $documento->departamento_id) {
-                $destinosIds = [(int) $documento->departamento_id];
-            }
-
-            $origemDepId = $actor->departamento_id ?? $documento->departamento_id;
-
-            foreach ($destinosIds as $targetDepId) {
-                DocumentoEncaminhamento::create([
-                    'documento_entrada_id' => $documento->id,
-                    'origem_departamento_id' => $origemDepId,
-                    'destino_departamento_id' => $targetDepId,
-                    'usuario_id' => $actor->id,
-                    'encaminhado_em' => now(),
-                    'observacao' => $documento->texto_despacho,
-                ]);
-            }
-
-            $documento->status = DocumentoStatus::ENCAMINHADO->value;
-            $documento->encaminhamento_data = now();
-            $documento->save();
-
-            $this->audit('documento.encaminhado_massa', $documento, $actor, [
-                'destinos' => $destinosIds,
-            ]);
-
-            return $documento;
-        });
-    }
-
     /**
      * Regista uma ação do fluxo de encaminhamento na trilha de auditoria central
      * (audit_logs), reutilizando o mesmo padrão do ArchiveService. Nunca bloqueia
@@ -1297,7 +1385,10 @@ class DocumentoEntradaService
     {
         return match ($profile) {
             'gabinete' => 'carecer_tratamento',
-            'expediente' => 'tratados',
+            // O expediente já não distribui documentos (o despacho entrega-os
+            // logo), por isso 'tratados' abria sempre numa lista vazia. O seu
+            // trabalho é o registo e o que aguarda despacho.
+            'expediente' => 'carecer_tratamento',
             'chefe_departamento' => 'novos_departamento',
             'tecnico' => 'atribuidos_mim',
             default => 'todos',
@@ -1333,24 +1424,32 @@ class DocumentoEntradaService
                     $t->where('status', 'pendente');
                 });
                 break;
+            // 'em_andamento' saiu dos filtros: nada no sistema escreve esse
+            // estado (as tarefas vão de 'pendente' a 'concluida'), e concluir()
+            // recusa tudo o que não esteja em 'pendente'. Ficaria um separador
+            // a prometer uma fase que não existe.
             case 'atribuidos_mim':
                 if ($user) {
                     $query->whereHas('tarefas', function ($t) use ($user) {
                         $t->where('assigned_to_user_id', $user->id)
-                            ->whereIn('status', ['pendente', 'em_andamento']);
+                            ->where('status', 'pendente');
                     });
                 }
                 break;
             case 'em_execucao':
-                if ($user) {
-                    $query->whereHas('tarefas', function ($t) use ($user, $userDeps) {
-                        $t->where(function ($q2) use ($user, $userDeps) {
-                            $q2->where('assigned_to_user_id', $user->id);
-                            if (count($userDeps)) {
-                                $q2->orWhereIn('assigned_to_departamento_id', $userDeps);
-                            }
-                        })->where('status', 'pendente');
+                // "Do Meu Setor": o que o técnico pode assumir — tarefas do seu
+                // departamento ainda sem dono. Antes este separador incluía
+                // também as próprias tarefas, pelo que era um superconjunto de
+                // "Atribuídos a Mim" e os dois contadores diziam o mesmo.
+                if ($user && count($userDeps)) {
+                    $query->whereHas('tarefas', function ($t) use ($userDeps) {
+                        $t->whereIn('assigned_to_departamento_id', $userDeps)
+                            ->whereNull('assigned_to_user_id')
+                            ->where('status', 'pendente');
                     });
+                } elseif ($user) {
+                    // Sem departamento não há fila de setor para mostrar.
+                    $query->whereRaw('1 = 0');
                 }
                 break;
             case 'concluidos':
@@ -1446,14 +1545,17 @@ class DocumentoEntradaService
         $tabsConfig = match ($profile) {
             'gabinete' => [
                 ['key' => 'carecer_tratamento', 'label' => 'A Carecer de Tratamento', 'icon' => 'far fa-clock', 'badge_type' => 'warning'],
-                ['key' => 'tratados', 'label' => 'Tratados / Prontos p/ Encaminhar', 'icon' => 'far fa-check-circle', 'badge_type' => 'info'],
+                // TRATADO deixou de significar "pronto a encaminhar": o despacho
+                // já entrega o documento. Agora só lá chegam os documentos que a
+                // chefia do departamento tratou (ver criarTarefa).
+                ['key' => 'tratados', 'label' => 'Tratados pelos Departamentos', 'icon' => 'far fa-check-circle', 'badge_type' => 'info'],
                 ['key' => 'encaminhados', 'label' => 'Encaminhados', 'icon' => 'far fa-paper-plane', 'badge_type' => 'neutral'],
                 ['key' => 'todos', 'label' => 'Todos do Gabinete', 'icon' => 'fas fa-layer-group', 'badge_type' => 'neutral'],
             ],
             'expediente' => [
-                ['key' => 'tratados', 'label' => 'Prontos a Encaminhar', 'icon' => 'far fa-check-circle', 'badge_type' => 'info'],
                 ['key' => 'carecer_tratamento', 'label' => 'Aguardando Despacho', 'icon' => 'far fa-clock', 'badge_type' => 'warning'],
                 ['key' => 'encaminhados', 'label' => 'Encaminhados / Distribuídos', 'icon' => 'far fa-paper-plane', 'badge_type' => 'neutral'],
+                ['key' => 'tratados', 'label' => 'Tratados pelos Departamentos', 'icon' => 'far fa-check-circle', 'badge_type' => 'info'],
                 ['key' => 'todos', 'label' => 'Todos Registrados', 'icon' => 'fas fa-layer-group', 'badge_type' => 'neutral'],
             ],
             'chefe_departamento' => [
@@ -1464,7 +1566,7 @@ class DocumentoEntradaService
             ],
             'tecnico' => [
                 ['key' => 'atribuidos_mim', 'label' => 'Atribuídos a Mim', 'icon' => 'fas fa-user-check', 'badge_type' => 'warning'],
-                ['key' => 'em_execucao', 'label' => 'Em Execução', 'icon' => 'fas fa-spinner', 'badge_type' => 'info'],
+                ['key' => 'em_execucao', 'label' => 'Do Meu Setor', 'icon' => 'fas fa-users', 'badge_type' => 'info'],
                 ['key' => 'concluidos', 'label' => 'Concluídos', 'icon' => 'far fa-check-circle', 'badge_type' => 'neutral'],
             ],
             default => [

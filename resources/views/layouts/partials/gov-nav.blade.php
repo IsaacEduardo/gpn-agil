@@ -72,6 +72,17 @@
             </a>
         </li>
 
+        {{-- 5.5 RELATÓRIOS & ANALYTICS --}}
+        @if (Auth::user()->isAdmin() || Auth::user()->isChefeGabinete() || Auth::user()->isSuperChefeGabinete() || Auth::user()->isChefeDepartamento() || Auth::user()->can('relatorios.view'))
+            <li class="gov-nav__item">
+                <a href="{{ route('relatorios.index') }}" 
+                   class="gov-nav__link {{ request()->routeIs('relatorios.*') ? 'gov-nav__link--active' : '' }}" 
+                   title="Módulo de Relatórios, BI e Analytics EDMS">
+                    <i class="fas fa-chart-line"></i> Relatórios
+                </a>
+            </li>
+        @endif
+
         {{-- 6. SERVIÇOS & FROTA (DROPDOWN) --}}
         @php
             $servicosActive = request()->routeIs('viaturas.*') || request()->routeIs('credenciais.*');

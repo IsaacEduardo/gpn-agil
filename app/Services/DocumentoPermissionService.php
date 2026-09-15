@@ -142,18 +142,6 @@ class DocumentoPermissionService
         return false;
     }
 
-    /**
-     * Verifica se o usuário tem permissão para encaminhar documento tratado (Chefe de Gabinete ou Expediente).
-     */
-    public function canEncaminharTratado(User $user, DocumentoEntrada $documento): bool
-    {
-        if ($this->canDespachar($user, $documento)) {
-            return true;
-        }
-
-        return $this->isUserInAreaExpediente($user);
-    }
-
     public function canReceiveInDepartment(User $user, int $targetDepartamentoId): bool
     {
         if ($this->isAdmin($user)) {

@@ -34,6 +34,7 @@ use App\Http\Controllers\AnaliseTecnicaController;
 use App\Http\Controllers\LoteController;
 use App\Http\Controllers\RequerenteController;
 use App\Http\Controllers\SolicitacaoAtribuicaoController;
+use App\Http\Controllers\RelatorioController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
@@ -72,6 +73,13 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('viaturas', ViaturaController::class);
     Route::get('viaturas-export/pdf', [ViaturaReportController::class, 'exportPDF'])->middleware('throttle:heavy-exports')->name('viaturas.export.pdf');
     Route::get('viaturas-export/excel', [ViaturaReportController::class, 'exportExcel'])->middleware('throttle:heavy-exports')->name('viaturas.export.excel');
+
+    // Rotas do Módulo de Relatórios e Analytics EDMS
+    Route::get('relatorios', [RelatorioController::class, 'index'])->name('relatorios.index');
+    Route::match(['get', 'post'], 'relatorios/export/pdf', [RelatorioController::class, 'exportPdf'])->middleware('throttle:heavy-exports')->name('relatorios.export.pdf');
+    Route::match(['get', 'post'], 'relatorios/export/excel', [RelatorioController::class, 'exportExcel'])->middleware('throttle:heavy-exports')->name('relatorios.export.excel');
+    Route::match(['get', 'post'], 'relatorios/export/csv', [RelatorioController::class, 'exportCsv'])->middleware('throttle:heavy-exports')->name('relatorios.export.csv');
+    Route::match(['get', 'post'], 'relatorios/export/xml', [RelatorioController::class, 'exportXml'])->middleware('throttle:heavy-exports')->name('relatorios.export.xml');
 
     // Rotas para o módulo de Empresas
     Route::resource('empresas', EmpresaController::class);
@@ -113,8 +121,6 @@ Route::middleware(['auth'])->group(function () {
         ->name('documentos-entradas.quick-action');
     Route::post('documentos-entradas/{documento}/despachar', [DocumentoEntradaController::class, 'despachar'])
         ->name('documentos-entradas.despachar');
-    Route::post('documentos-entradas/{documento}/encaminhar-tratado', [DocumentoEntradaController::class, 'encaminhar'])
-        ->name('documentos-entradas.encaminhar-tratado');
     Route::get('documentos-entradas/{documento}/protocolo', [DocumentoEntradaProtocoloController::class, 'protocolo'])
         ->name('documentos-entradas.protocolo');
     Route::get('documentos-entradas/{documento}/protocolo/pdf', [DocumentoEntradaProtocoloController::class, 'protocoloPdf'])

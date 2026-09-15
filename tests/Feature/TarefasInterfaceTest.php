@@ -151,9 +151,10 @@ class TarefasInterfaceTest extends TestCase
             'status' => 'pendente',
         ]);
 
+        // Concluir exige o parecer: é o produto da tarefa e era descartado.
         $response = $this->actingAs($this->user)->patchJson(
             route('documentos-entradas.tarefas.concluir', [$doc->id, $tarefa->id]),
-            []
+            ['observacao' => 'Demanda executada conforme solicitado.']
         );
 
         $response->assertStatus(200)
@@ -162,6 +163,7 @@ class TarefasInterfaceTest extends TestCase
         $this->assertDatabaseHas('documento_tarefas', [
             'id' => $tarefa->id,
             'status' => 'concluida',
+            'resposta' => 'Demanda executada conforme solicitado.',
         ]);
     }
 

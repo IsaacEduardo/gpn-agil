@@ -314,8 +314,10 @@ class DocumentoEntradaRoutesAuthorizationTest extends TestCase
             ->assertJson(['success' => true]);
 
         $doc->refresh();
-        $this->assertSame('tratado', $doc->status);
+        // Despachar é entregar: o documento segue para o destino no mesmo ato.
+        $this->assertSame('encaminhado', $doc->status);
         $this->assertSame('aprovado', $doc->visto_gabinete_status);
+        $this->assertSame([$depDestino->id], $doc->encaminhamentos()->pluck('destino_departamento_id')->all());
     }
 
     /**
@@ -441,9 +443,10 @@ class DocumentoEntradaRoutesAuthorizationTest extends TestCase
             ->assertRedirect();
 
         $doc->refresh();
-        $this->assertSame('tratado', $doc->status);
+        $this->assertSame('encaminhado', $doc->status);
         $this->assertSame('Para tratamento do departamento destino', $doc->texto_despacho);
         $this->assertSame([$depDestino->id], $doc->departamentosDestino()->pluck('departamentos.id')->all());
+        $this->assertSame([$depDestino->id], $doc->encaminhamentos()->pluck('destino_departamento_id')->all());
     }
 
     /**

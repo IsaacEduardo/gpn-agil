@@ -677,16 +677,6 @@ tr.keyboard-selected {
                                                         </button>
                                                     </li>
                                                 @endif
-                                                @if ($doc->can_encaminhar_tratado && $doc->status === 'tratado')
-                                                    <li>
-                                                        <form action="{{ route('documentos-entradas.encaminhar-tratado', $doc) }}" method="POST">
-                                                            @csrf
-                                                            <button type="submit" class="dropdown-item text-success fw-bold" onclick="return confirm('Confirma o encaminhamento deste documento tratado para os departamentos selecionados?')">
-                                                                <i class="fas fa-paper-plane me-2 w-20"></i>Encaminhar para Destinos
-                                                            </button>
-                                                        </form>
-                                                    </li>
-                                                @endif
                                                 @if ($doc->can_forward)
                                                     <li>
                                                         <button type="button" class="dropdown-item text-primary fw-medium"

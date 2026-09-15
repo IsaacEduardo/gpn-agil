@@ -55,6 +55,13 @@
                         <div class="p-3 bg-light rounded border-start border-4 border-primary" id="modalShowTarefaDescricao" style="white-space: pre-line;"></div>
                     </div>
 
+                    {{-- Parecer do técnico: o resultado da tarefa, que antes ficava
+                         guardado sem chegar a quem a pediu. --}}
+                    <div class="mb-3 d-none" id="modalShowTarefaParecerBloco">
+                        <label class="text-muted small text-uppercase fw-semibold d-block mb-1">Parecer do técnico</label>
+                        <div class="p-3 bg-success-subtle rounded border-start border-4 border-success" id="modalShowTarefaParecer" style="white-space: pre-line;"></div>
+                    </div>
+
                     <div class="row g-3">
                         <div class="col-sm-6">
                             <label class="text-muted small text-uppercase fw-semibold d-block mb-1">Solicitado por</label>

@@ -77,17 +77,22 @@ class DocumentoEntradaDespachoLoteTest extends TestCase
 
         foreach ($docs as $d) {
             $d->refresh();
-            $this->assertSame('tratado', $d->status);
+
+            // Despachar é entregar: o lote reutiliza despacharDocumento(), que
+            // encaminha os documentos aos destinos no mesmo ato.
+            $this->assertSame('encaminhado', $d->status);
             $this->assertSame('Para tratamento urgente do departamento de destino.', $d->texto_despacho);
             $this->assertSame($this->respA->id, $d->despachado_por_id);
             $this->assertNotNull($d->data_despacho);
             $this->assertSame([$this->destinoA->id], $d->departamentosDestino()->pluck('departamentos.id')->all());
+            $this->assertSame(
+                [$this->destinoA->id],
+                $d->encaminhamentos()->pluck('destino_departamento_id')->all()
+            );
 
-            // O lote reutiliza despacharDocumento(), o mesmo do endpoint de um
-            // documento só — e esse NÃO marca o visto do gabinete, ao contrário
-            // do quickAction. Divergência pré-existente entre os dois caminhos,
-            // deliberadamente não alterada aqui.
-            $this->assertNull($d->visto_gabinete_status);
+            // As três vias de despacho convergiram: o visto do gabinete faz
+            // parte do ato em todas elas.
+            $this->assertSame('aprovado', $d->visto_gabinete_status);
         }
     }
 

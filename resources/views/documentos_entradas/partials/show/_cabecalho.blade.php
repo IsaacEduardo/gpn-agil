@@ -14,7 +14,6 @@
     };
 
     $podeDespachar = ($canDespachar ?? false) && in_array($doc->status, ['pendente_tratamento', 'registrado'], true);
-    $podeEncaminharTratado = ($canEncaminharTratado ?? false) && $doc->status === 'tratado';
     $urlResposta = route('documentos-internos.create', ['documento_entrada_id' => $doc->id, 'tipo_relacao' => 'RESPOSTA']);
 
     $sla = $doc->sla_status;
@@ -61,14 +60,6 @@
             <button class="btn btn-primary btn-sm fw-semibold" data-bs-toggle="modal" data-bs-target="#modalDespacho{{ $doc->id }}">
                 <i class="fas fa-file-signature me-1"></i> Despachar
             </button>
-        @elseif ($podeEncaminharTratado)
-            <form action="{{ route('documentos-entradas.encaminhar-tratado', $doc) }}" method="POST" class="d-inline">
-                @csrf
-                <button type="submit" class="btn btn-primary btn-sm fw-semibold"
-                        onclick="return confirm('Confirma o encaminhamento deste documento tratado para os departamentos selecionados?')">
-                    <i class="fas fa-paper-plane me-1"></i> Encaminhar p/ Destinos
-                </button>
-            </form>
         @else
             <a href="{{ $urlResposta }}" class="btn btn-outline-primary btn-sm fw-semibold">
                 <i class="fas fa-reply me-1"></i> Elaborar Resposta / Parecer
@@ -90,7 +81,7 @@
                     </li>
                 @endcan
 
-                @if ($podeDespachar || $podeEncaminharTratado)
+                @if ($podeDespachar)
                     <li>
                         <a href="{{ $urlResposta }}" class="dropdown-item py-2">
                             <i class="fas fa-reply me-2 text-secondary"></i> Elaborar Resposta / Parecer

@@ -133,6 +133,14 @@ class DocumentoEntradaTarefaController extends Controller
             return back()->with('danger', 'Sem permissão para concluir esta tarefa.');
         }
 
+        // O parecer é o produto da tarefa. Era exigido apenas no HTML, pelo que
+        // um pedido direto concluía a demanda sem deixar registo nenhum.
+        $validado = $request->validate([
+            'observacao' => ['required', 'string'],
+        ], [
+            'observacao.required' => 'Descreva o parecer emitido antes de concluir a demanda.',
+        ]);
+
         $responsavelId = null;
         if ($tarefa->assigned_to_departamento_id) {
             $respId = $request->input('responsavel_user_id');
@@ -155,7 +163,7 @@ class DocumentoEntradaTarefaController extends Controller
             }
         }
 
-        $this->documentoService->completeTask($tarefa, $actor, $responsavelId);
+        $this->documentoService->completeTask($tarefa, $actor, $responsavelId, $validado['observacao']);
 
         if ($request->wantsJson()) {
             return response()->json(['message' => 'Tarefa marcada como concluída.']);

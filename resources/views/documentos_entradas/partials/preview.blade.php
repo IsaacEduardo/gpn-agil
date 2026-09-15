@@ -1,3 +1,24 @@
+@php
+    // Fonte única dos rótulos da gaveta. A decisão de QUEM pode agir vem do
+    // controlador ($acaoRapida); aqui trata-se apenas de como se apresenta.
+    $rotuloPerfil = [
+        'gabinete' => 'Gabinete Executivo',
+        'chefe_departamento' => 'Chefia de Departamento',
+        'expediente' => 'Área de Expediente',
+        'tecnico' => 'Técnico Operacional',
+    ][$userProfile] ?? 'Consulta';
+
+    $acoes = [
+        'despachar' => ['rotulo' => 'Despachar', 'icone' => 'fa-file-signature', 'classe' => 'btn-success'],
+        'delegar' => ['rotulo' => 'Delegar tarefa', 'icone' => 'fa-user-check', 'classe' => 'btn-success'],
+        'parecer' => ['rotulo' => 'Registar parecer', 'icone' => 'fa-clipboard-check', 'classe' => 'btn-primary'],
+    ];
+
+    // Normalizado uma vez: os ramos do formulário e o rodapé leem sempre daqui.
+    $acaoRapida = $acaoRapida ?? null;
+    $acao = $acoes[$acaoRapida] ?? null;
+@endphp
+
 <div class="preview-header border-bottom p-3 d-flex justify-content-between align-items-center bg-light">
     <div>
         <h5 class="fw-bold text-dark mb-0">Documento #{{ $doc->numero_sequencial }}/{{ $doc->ano_referencia }}</h5>
@@ -88,17 +109,17 @@
     <div class="card border-primary border-opacity-50 shadow-sm rounded-3 mb-3">
         <div class="card-header bg-primary text-white py-2 px-3 d-flex justify-content-between align-items-center">
             <h6 class="mb-0 fw-bold small text-uppercase">
-                <i class="fas fa-pen-nib me-1"></i> Ação Rápida de Despacho / Delegar
+                <i class="fas fa-pen-nib me-1"></i> {{ $acao ? 'Ação rápida: '.$acao['rotulo'] : 'Ação rápida' }}
             </h6>
             <span class="badge bg-white text-primary small fw-bold text-uppercase" style="font-size: 0.65rem;">
-                {{ $userProfile === 'gabinete' ? 'Gabinete Executivo' : ($userProfile === 'chefe_departamento' ? 'Chefia de Departamento' : 'Técnico Operacional') }}
+                {{ $rotuloPerfil }}
             </span>
         </div>
         <div class="card-body p-3 bg-white">
             <form id="formDrawerQuickAction" action="{{ route('documentos-entradas.quick-action', $doc) }}" method="POST" onsubmit="event.preventDefault(); submitDrawerQuickAction(this);">
                 @csrf
 
-                @if($userProfile === 'gabinete')
+                @if($acaoRapida === 'despachar')
                     {{-- Form para Chefe de Gabinete --}}
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-uppercase text-muted">
@@ -133,7 +154,7 @@
                         <textarea name="texto_despacho" class="form-control form-control-sm" rows="3" placeholder="Digite a ordem executiva / orientação para os departamentos..." required></textarea>
                     </div>
 
-                @elseif($userProfile === 'chefe_departamento')
+                @elseif($acaoRapida === 'delegar')
                     {{-- Form para Chefe de Departamento --}}
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-uppercase text-muted">
@@ -161,31 +182,39 @@
                         <textarea name="descricao" class="form-control form-control-sm" rows="3" placeholder="Descreva os procedimentos técnicos exigidos nesta demanda..." required></textarea>
                     </div>
 
-                @elseif($userProfile === 'tecnico')
-                    {{-- Form/View para Técnico --}}
-                    @if($minhaTarefa)
-                        <input type="hidden" name="tarefa_id" value="{{ $minhaTarefa->id }}">
-                        <div class="p-2.5 bg-warning-subtle border border-warning-subtle rounded-3 mb-3 small">
-                            <div class="fw-bold text-warning-emphasis mb-1">
-                                <i class="fas fa-tasks me-1"></i> Demanda Atribuída: {{ $minhaTarefa->titulo }}
-                            </div>
-                            <div class="text-dark fst-italic mb-1">{{ $minhaTarefa->descricao }}</div>
-                            <div class="text-muted" style="font-size: 0.72rem;">
-                                Prazo: <strong>{{ optional($minhaTarefa->prazo_at)->format('d/m/Y') ?? 'S/D' }}</strong>
-                            </div>
+                @elseif($acaoRapida === 'parecer')
+                    {{-- Técnico com demanda ativa: $acaoRapida só é 'parecer' se existir tarefa. --}}
+                    <input type="hidden" name="tarefa_id" value="{{ $minhaTarefa->id }}">
+                    <div class="p-2.5 bg-warning-subtle border border-warning-subtle rounded-3 mb-3 small">
+                        <div class="fw-bold text-warning-emphasis mb-1">
+                            <i class="fas fa-tasks me-1"></i> Demanda Atribuída: {{ $minhaTarefa->titulo }}
                         </div>
+                        <div class="text-dark fst-italic mb-1">{{ $minhaTarefa->descricao }}</div>
+                        <div class="text-muted" style="font-size: 0.72rem;">
+                            Prazo: <strong>{{ optional($minhaTarefa->prazo_at)->format('d/m/Y') ?? 'S/D' }}</strong>
+                        </div>
+                    </div>
 
-                        <div class="mb-3">
-                            <label class="form-label fw-bold small text-uppercase text-muted">
-                                Parecer / Resposta do Técnico <span class="text-danger">*</span>
-                            </label>
-                            <textarea name="observacao" class="form-control form-control-sm" rows="3" placeholder="Descreva o parecer emitido ou a conclusão técnica desta solicitação..." required></textarea>
-                        </div>
-                    @else
-                        <div class="p-3 text-center text-muted small bg-light rounded border">
-                            <i class="fas fa-info-circle me-1"></i> Não há demandas diretas sob sua atribuição ativa para este documento.
-                        </div>
-                    @endif
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-uppercase text-muted">
+                            Parecer / Resposta do Técnico <span class="text-danger">*</span>
+                        </label>
+                        <textarea name="observacao" class="form-control form-control-sm" rows="3" placeholder="Descreva o parecer emitido ou a conclusão técnica desta solicitação..." required></textarea>
+                    </div>
+
+                @else
+                    {{-- Sem ação submetível: diz-se porquê, em vez de oferecer um
+                         formulário vazio e um botão que o servidor recusaria. --}}
+                    <div class="p-3 text-center text-muted small bg-light rounded border">
+                        <i class="fas fa-info-circle me-1"></i>
+                        @if($userProfile === 'tecnico')
+                            Não há demandas sob a sua atribuição ativa para este documento.
+                        @elseif($userProfile === 'gabinete')
+                            Este documento pertence a outro gabinete: só o gabinete responsável o pode despachar.
+                        @else
+                            O seu perfil não tem ação rápida sobre este documento. Consulte os detalhes para as operações disponíveis.
+                        @endif
+                    </div>
                 @endif
             </form>
         </div>
@@ -205,6 +234,14 @@
                             </span>
                         </div>
                         <div class="text-muted fst-italic mt-1" style="font-size: 0.78rem;">{{ $t->descricao }}</div>
+                        {{-- A chefia lê aqui a resposta do técnico, sem abrir o documento. --}}
+                        @if (filled($t->resposta))
+                            <div class="mt-1 p-2 bg-success-subtle border border-success-subtle rounded-2 text-dark" style="font-size: 0.75rem; white-space: pre-line;">
+                                <span class="fw-bold text-success-emphasis d-block mb-1">
+                                    <i class="fas fa-comment-dots me-1"></i>Parecer do técnico
+                                </span>{{ $t->resposta }}
+                            </div>
+                        @endif
                         <div class="d-flex justify-content-between text-muted border-top pt-1 mt-1" style="font-size: 0.7rem;">
                             <span>Para: <strong>{{ optional($t->assignedToUser)->name ?? '—' }}</strong></span>
                             <span>Prazo: <strong>{{ optional($t->prazo_at)->format('d/m/Y') ?? '—' }}</strong></span>
@@ -218,9 +255,18 @@
 
 {{-- Rodapé de Ação Rápida Unificado --}}
 <div class="preview-footer border-top p-3 bg-light d-flex gap-2 align-items-center">
-    <button type="submit" form="formDrawerQuickAction" id="btnSubmitDrawerQuickAction" class="btn btn-success fw-bold flex-grow-1 py-2 shadow-sm d-flex align-items-center justify-content-center">
-        <i class="fas fa-paper-plane me-1.5"></i> Despachar / Delegar
-    </button>
+    {{-- O botão só existe quando há ação submetível, e diz o que faz de facto:
+         "Despachar / Delegar" era mostrado até a quem o servidor recusaria. --}}
+    @if($acao)
+        <button type="submit" form="formDrawerQuickAction" id="btnSubmitDrawerQuickAction"
+                class="btn {{ $acao['classe'] }} fw-bold flex-grow-1 py-2 shadow-sm d-flex align-items-center justify-content-center">
+            <i class="fas {{ $acao['icone'] }} me-1.5"></i> {{ $acao['rotulo'] }}
+        </button>
+    @else
+        <span class="flex-grow-1 text-muted small fst-italic">
+            <i class="fas fa-lock me-1"></i> Sem ação rápida disponível para o seu perfil.
+        </span>
+    @endif
 
     <a href="{{ route('documentos-entradas.protocolo.etiqueta', [$doc, 'auto_print' => 1]) }}" target="_blank" class="btn btn-outline-dark fw-semibold py-2" title="Imprimir Etiqueta Adesiva (100x50mm)">
         <i class="fas fa-barcode"></i>
@@ -359,7 +405,10 @@ if (typeof window.gerarResumoIaDrawer === 'undefined') {
 }
 </script>
 
+@if($acaoRapida === 'despachar')
 <script>
+    // Só faz sentido com o formulário de despacho no DOM: os seletores de
+    // modelo pertencem a esse ramo e a mais nenhum.
     // O drawer e injetado por AJAX: liga-se no momento em que este HTML entra no DOM.
     (function () {
         document.querySelectorAll('.js-modelo-despacho').forEach(function (seletor) {
@@ -377,3 +426,4 @@ if (typeof window.gerarResumoIaDrawer === 'undefined') {
         });
     })();
 </script>
+@endif

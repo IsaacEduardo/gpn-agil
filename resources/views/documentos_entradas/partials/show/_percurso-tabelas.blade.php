@@ -128,12 +128,19 @@
                                                                 data-solicitante="{{ optional($t->assignedBy)->name ?? '—' }}"
                                                                 data-destino="{{ $t->assignedToUser ? optional($t->assignedToUser)->name : (optional($t->assignedToDepartamento)->nome ?? '—') }}"
                                                                 data-destino-tipo="{{ $t->assignedToUser ? 'user' : ($t->assignedToDepartamento ? 'dep' : '') }}"
+                                                                data-parecer="{{ e($t->resposta) }}"
                                                                 data-criado="{{ $t->created_at->format('d/m/Y H:i') }}">
                                                                 <span class="fw-semibold text-dark">{{ $t->titulo }}</span>
                                                                 @if($t->descricao)
                                                                     <div class="small text-muted text-truncate" style="max-width: 250px;">{{ $t->descricao }}</div>
                                                                 @endif
                                                             </a>
+                                                            {{-- O parecer é o produto da tarefa: deixa de ficar só na base. --}}
+                                                            @if (filled($t->resposta))
+                                                                <div class="small text-success-emphasis mt-1" style="max-width: 250px;">
+                                                                    <i class="fas fa-comment-dots me-1"></i>{{ Str::limit($t->resposta, 90) }}
+                                                                </div>
+                                                            @endif
                                                         </td>
                                                         <td>
                                                             <div class="d-flex align-items-center">
@@ -153,7 +160,7 @@
                                                             @endif
                                                         </td>
                                                         <td>{{ optional($t->prazo_at)->format('d/m/Y') ?? '—' }}</td>
-                                                        <td><span class="badge text-bg-{{ $t->status === 'concluido' ? 'success' : 'secondary' }}">{{ ucfirst($t->status) }}</span></td>
+                                                        <td><span class="badge text-bg-{{ $t->status === 'concluida' ? 'success' : ($t->status === 'cancelada' ? 'danger' : 'secondary') }}">{{ ucfirst($t->status) }}</span></td>
                                                         <td>
                                                             @if ($t->assignedToDepartamento)
                                                                 {{ optional($t->responsavelAtual)->name ?? '—' }}
@@ -179,6 +186,9 @@
                                                                             @endforeach
                                                                         </select>
                                                                     @endif
+                                                                    <input type="text" name="observacao" class="form-control form-control-sm d-inline-block w-auto me-1"
+                                                                           style="min-width: 160px; max-width: 220px;" required
+                                                                           placeholder="Parecer / conclusão…" aria-label="Parecer do técnico">
                                                                     <button class="btn btn-success btn-sm" title="Concluir"><i class="fas fa-check"></i></button>
                                                                 </form>
                                                             @endif

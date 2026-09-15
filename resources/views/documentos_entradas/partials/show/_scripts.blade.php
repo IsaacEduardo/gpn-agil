@@ -242,6 +242,15 @@
                 statusEl.className = 'badge rounded-pill ' + st.bg;
                 statusEl.textContent = st.label;
 
+                // Parecer (só existe em tarefas concluídas)
+                const parecerBloco = document.getElementById('modalShowTarefaParecerBloco');
+                const parecerEl = document.getElementById('modalShowTarefaParecer');
+                if (parecerBloco && parecerEl) {
+                    const parecer = (d.parecer || '').trim();
+                    parecerEl.textContent = parecer;
+                    parecerBloco.classList.toggle('d-none', parecer === '');
+                }
+
                 // Prazo
                 const prazoEl = document.getElementById('modalShowTarefaPrazo');
                 prazoEl.innerHTML = '<i class="far fa-calendar-alt me-1"></i> Prazo: ' + (d.prazo || '—');

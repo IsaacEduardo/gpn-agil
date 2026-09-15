@@ -374,10 +374,19 @@ class DashboardService
         $anoAtual = (int) date('Y');
 
         // 1. Contagens agregadas de governança
+        //
+        // carecer_despacho media-se pelo estado, como o separador homónimo da
+        // listagem. A fórmula anterior usava "saida_gabinete_data IS NULL", campo
+        // que só a saída para OUTRO gabinete preenche, pelo que contava quase
+        // todo o acervo (6031 de 6043 documentos na base de desenvolvimento).
+        //
+        // TRATADO deixou de ser "pronto a expedir" — o despacho já entrega o
+        // documento aos departamentos —, e passou a significar que o
+        // departamento o tratou. O indicador acompanha esse sentido.
         $entradasAgg = DocumentoEntrada::query()
             ->selectRaw("
-                COUNT(CASE WHEN (status = 'pendente_tratamento' OR saida_gabinete_data IS NULL) AND arquivado = 0 THEN 1 END) as carecer_despacho,
-                COUNT(CASE WHEN status = 'tratado' AND arquivado = 0 THEN 1 END) as expedicoes_pendentes,
+                COUNT(CASE WHEN status IN ('registrado', 'pendente_tratamento') AND arquivado = 0 THEN 1 END) as carecer_despacho,
+                COUNT(CASE WHEN status = 'tratado' AND arquivado = 0 THEN 1 END) as tratados_departamentos,
                 COUNT(CASE WHEN ano_referencia = ? THEN 1 END) as total_ano
             ", [$anoAtual])
             ->first();
@@ -392,7 +401,7 @@ class DashboardService
             ->first();
 
         $carecerDespacho = (int) ($entradasAgg->carecer_despacho ?? 0);
-        $expedicoesPendentes = (int) ($entradasAgg->expedicoes_pendentes ?? 0);
+        $tratadosDepartamentos = (int) ($entradasAgg->tratados_departamentos ?? 0);
         $documentosEmAnalise = (int) ($internosAgg->em_analise_total ?? 0);
         $totalGeralAno = (int) ($entradasAgg->total_ano ?? 0);
 
@@ -462,12 +471,12 @@ class DashboardService
                     'link' => route('documentos-entradas.index', ['status' => 'pendente_tratamento']),
                 ],
                 [
-                    'id' => 'expedicoes_pendentes',
-                    'label' => 'Expedições Pendentes (Protocolo)',
-                    'valor' => $expedicoesPendentes,
-                    'alerta' => 'Prontos para envio',
-                    'icone' => 'fas fa-shipping-fast',
-                    'cor' => 'warning',
+                    'id' => 'tratados_departamentos',
+                    'label' => 'Tratados pelos Departamentos',
+                    'valor' => $tratadosDepartamentos,
+                    'alerta' => 'Concluídos na origem',
+                    'icone' => 'fas fa-clipboard-check',
+                    'cor' => 'success',
                     'link' => route('documentos-entradas.index', ['status' => 'tratado']),
                 ],
                 [

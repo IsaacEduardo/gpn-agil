@@ -172,7 +172,7 @@ class DocumentoEntradaController extends Controller
             $minhasTarefas = count($docIds) ? DocumentoTarefa::with(['assignedBy:id,name'])
                 ->whereIn('documento_entrada_id', $docIds)
                 ->where('assigned_to_user_id', $actor->id)
-                ->whereIn('status', ['pendente', 'em_andamento'])
+                ->where('status', 'pendente')
                 ->orderByDesc('created_at')
                 ->get()
                 ->groupBy('documento_entrada_id') : collect();
@@ -199,7 +199,6 @@ class DocumentoEntradaController extends Controller
                         ? ($depsPorGabinete->get(optional($doc->departamento)->gabinete_id) ?? collect())
                         : collect()
                 );
-                $doc->setAttribute('can_encaminhar_tratado', $this->permissionService->canEncaminharTratado($actor, $doc));
             }
         }
 
@@ -423,7 +422,6 @@ class DocumentoEntradaController extends Controller
         }
 
         $canDespachar = $this->permissionService->canDespachar($actor, $doc);
-        $canEncaminharTratado = $actor->can('encaminhar', $doc) && $doc->status === 'tratado';
         // A auditoria expõe IPs e o antes/depois de cada alteração: fica na
         // chefia, não em quem apenas consegue ver o documento.
         $canVerAuditoria = $actor->can('verAuditoria', $doc);
@@ -438,7 +436,7 @@ class DocumentoEntradaController extends Controller
         return view('documentos_entradas.show', compact(
             'doc', 'departamentos', 'gabinetes', 'gabUsuarios', 'gabDepartamentos', 'depUsuarios',
             'hasPendente', 'deps', 'pastas', 'modelosDespacho', 'relacionados', 'canAssignTask',
-            'canVisto', 'canVistoGabinete', 'canDespachar', 'canEncaminharTratado', 'audits',
+            'canVisto', 'canVistoGabinete', 'canDespachar', 'audits',
             'auditsTotal', 'canVerAuditoria', 'timelineEvents'
         ));
     }
@@ -582,13 +580,23 @@ class DocumentoEntradaController extends Controller
 
             if ($t->status === 'concluida' || $t->status === 'concluido') {
                 $executor = optional($t->responsavelAtual)->name ?? (optional($t->assignedToUser)->name ?? 'Técnico');
+                // O parecer é o resultado da tarefa: a linha do tempo dizia
+                // apenas quem concluiu, e o trabalho do técnico não chegava a
+                // quem o pediu.
+                $descricao = "Demanda executada e finalizada por {$executor}.";
+                if (filled($t->resposta)) {
+                    $descricao .= "
+
+Parecer: {$t->resposta}";
+                }
+
                 $events->push([
                     'tipo' => 'tarefa_concluida',
                     // concluida_em e a data do facto; updated_at desloca-se com
                     // qualquer alteracao posterior a tarefa.
                     'data' => $t->concluida_em ?? $t->updated_at,
                     'titulo' => "Tarefa Concluída: {$t->titulo}",
-                    'descricao' => "Demanda executada e finalizada por {$executor}.",
+                    'descricao' => $descricao,
                     'autor' => $executor,
                     'setor' => optional($t->assignedToDepartamento)->nome,
                     'icone' => 'fas fa-check-double',
@@ -683,7 +691,11 @@ class DocumentoEntradaController extends Controller
         }
 
         $doc = DocumentoEntrada::with([
-            'departamento:id,nome',
+            // gabinete_id é indispensável: canDespachar(), canManageTasks(),
+            // canForward e departamentosDestinoPermitidos() resolvem o gabinete
+            // por esta relação. Sem a coluna, liam null e negavam/alargavam
+            // silenciosamente.
+            'departamento:id,nome,gabinete_id',
             'usuario:id,name',
             'anexos',
             'encaminhamentos' => fn ($q) => $q->orderBy('encaminhado_em', 'desc'),
@@ -727,13 +739,31 @@ class DocumentoEntradaController extends Controller
 
         $minhaTarefa = DocumentoTarefa::where('documento_entrada_id', $doc->id)
             ->where('assigned_to_user_id', $actor->id)
-            ->whereIn('status', ['pendente', 'em_andamento'])
+            ->where('status', 'pendente')
             ->first();
 
         $tarefas = DocumentoTarefa::with(['assignedToUser:id,name', 'assignedBy:id,name'])
             ->where('documento_entrada_id', $doc->id)
             ->orderByDesc('created_at')
             ->get();
+
+        // Autorização resolvida aqui, e não inferida do perfil dentro do Blade:
+        // pertencer ao perfil 'gabinete' não é o mesmo que poder despachar ESTE
+        // documento (tem de ser o gabinete dele). São as mesmas regras que o
+        // quickAction() aplica — aqui apenas decidem o que se mostra.
+        $canDespachar = $this->permissionService->canDespachar($actor, $doc);
+        $canDelegar = $this->permissionService->canManageTasks($actor, $doc);
+
+        // Qual a ação rápida submetível, se alguma. O rodapé e o formulário
+        // leem daqui, para não poderem divergir: antes o botão era desenhado
+        // sempre, e o perfil 'expediente' — que não tem ramo no formulário —
+        // submetia um pedido vazio que o servidor só podia recusar.
+        $acaoRapida = match (true) {
+            $userProfile === 'gabinete' && $canDespachar => 'despachar',
+            $userProfile === 'chefe_departamento' && $canDelegar => 'delegar',
+            $userProfile === 'tecnico' && $minhaTarefa !== null => 'parecer',
+            default => null,
+        };
 
         // O painel de acao rapida e onde o gabinete despacha com mais frequencia:
         // os modelos de texto tem de estar aqui, nao so no modal do detalhe.
@@ -752,7 +782,10 @@ class DocumentoEntradaController extends Controller
             'departamentos',
             'depUsuarios',
             'minhaTarefa',
-            'tarefas'
+            'tarefas',
+            'canDespachar',
+            'canDelegar',
+            'acaoRapida'
         ));
     }
 
@@ -786,33 +819,18 @@ class DocumentoEntradaController extends Controller
                 'destino_departamento_ids.*.in' => 'Só é possível despachar para departamentos do gabinete deste documento.',
             ]);
 
-            // Despachar do Gabinete e encaminhar para os destinos selecionados
-            $documento->saida_gabinete_data = now();
-            $documento->despachado_por_id = $actor->id;
-            $documento->data_despacho = now();
-            $documento->texto_despacho = $validated['texto_despacho'];
-            $documento->visto_gabinete_status = 'aprovado';
-            $documento->visto_gabinete_por = $actor->id;
-            $documento->visto_gabinete_data = now();
-            $documento->status = DocumentoStatus::TRATADO->value;
-            $documento->save();
+            // Fonte única do despacho: grava, entrega aos destinos e notifica-os.
+            // Este ramo tinha uma cópia manuscrita da lógica que já divergira —
+            // criava os encaminhamentos mas deixava o documento em TRATADO, e
+            // gravava a instrução numa chave inexistente, perdendo-a.
+            $this->documentoService->despacharDocumento(
+                $documento,
+                $validated['texto_despacho'],
+                $validated['destino_departamento_ids'],
+                $actor
+            );
 
-            // Sincronizar departamentos de destino
-            $documento->departamentosDestino()->sync($validated['destino_departamento_ids']);
-
-            // Criar registo de encaminhamento primário
-            foreach ($validated['destino_departamento_ids'] as $destId) {
-                DocumentoEncaminhamento::create([
-                    'documento_entrada_id' => $documento->id,
-                    'origem_departamento_id' => $documento->departamento_id,
-                    'destino_departamento_id' => $destId,
-                    'usuario_id' => $actor->id,
-                    'encaminhado_em' => now(),
-                    'despacho_instrucao' => $validated['texto_despacho'],
-                ]);
-            }
-
-            $message = 'Despacho executivo emitido e documento encaminhado com sucesso!';
+            $message = 'Despacho emitido e documento encaminhado aos departamentos de destino!';
         } elseif ($profile === 'chefe_departamento') {
             // Mesma exigência do DocumentoEntradaTarefaController::store.
             if (! $this->permissionService->canManageTasks($actor, $documento)) {
@@ -873,10 +891,9 @@ class DocumentoEntradaController extends Controller
                 ->where('assigned_to_user_id', $actor->id)
                 ->firstOrFail();
 
-            $tarefa->status = 'concluida';
-            $tarefa->resposta = $validated['observacao'];
-            $tarefa->concluida_em = now();
-            $tarefa->save();
+            // Uma só implementação de "concluir tarefa": esta via tinha a sua
+            // cópia inline, e era a única que chegava a gravar o parecer.
+            $this->documentoService->completeTask($tarefa, $actor, null, $validated['observacao']);
 
             $message = 'Parecer/Resposta técnica registrada e demanda concluída!';
         } else {
@@ -1343,19 +1360,4 @@ class DocumentoEntradaController extends Controller
         return back()->with('success', 'Documento despachado com sucesso para os departamentos selecionados.');
     }
 
-    public function encaminhar(Request $request, DocumentoEntrada $documento)
-    {
-        $actor = Auth::user();
-        if (! $this->permissionService->canEncaminharTratado($actor, $documento)) {
-            abort(403, 'Você não tem permissão para encaminhar este documento.');
-        }
-
-        try {
-            $this->documentoService->encaminharDocumentoTratado($documento, $actor);
-
-            return back()->with('success', 'Documento encaminhado com sucesso para os departamentos destinatários.');
-        } catch (\Throwable $e) {
-            return back()->with('danger', $e->getMessage());
-        }
-    }
 }
