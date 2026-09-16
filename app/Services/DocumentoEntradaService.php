@@ -116,6 +116,14 @@ class DocumentoEntradaService
             'visto_gabinete_status',
             'arquivo_caminho',
             'arquivado',
+            // Colunas que a policy de edição lê. Sem elas o Eloquent devolvia
+            // null em silêncio e o @can('update') da listagem decidia com dados
+            // em falta: o botão Editar aparecia em documentos já despachados e o
+            // teste de autoria falhava sempre ((int) null === 0).
+            'user_id',
+            'data_despacho',
+            'visto_departamento_data',
+            'visto_gabinete_data',
         ]);
 
         // Exclude archived documents by default
@@ -250,7 +258,11 @@ class DocumentoEntradaService
                 'ultimoEncaminhamento',
                 'ultimoEncaminhamento.origemDepartamento:id,nome',
                 'ultimoEncaminhamento.destinoDepartamento:id,nome',
-            ]);
+            ])
+            // A policy de edição precisa de saber se há tramitação ou trabalho
+            // delegado. Contado aqui de uma vez: a alternativa era um exists()
+            // por linha, e a página mostra até cem.
+            ->withCount(['encaminhamentos', 'tarefas']);
 
         // Paginate
         $perPage = (int) $request->input('per_page', 10);

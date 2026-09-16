@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use App\Enums\DocumentoStatus;
+use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class DocumentoEntrada extends Model
 {
-    use \App\Traits\Auditable, HasFactory, SoftDeletes;
+    use Auditable, HasFactory, SoftDeletes;
 
     protected $table = 'documentos_entradas';
 
@@ -63,6 +65,80 @@ class DocumentoEntrada extends Model
         'data_despacho' => 'datetime',
     ];
 
+    /**
+     * Motivo pelo qual o registo já não é corrigível, ou null enquanto a janela
+     * de correção estiver aberta.
+     *
+     * A gralha de digitação apanhada ao balcão tem de poder ser corrigida; a
+     * partir do momento em que uma chefia trata o documento, não. O que era
+     * "tratamento" estava incompleto: a regra só conhecia o despacho, o
+     * encaminhamento e o arquivamento, pelo que um documento já visto pelo chefe
+     * — ou com tarefa delegada, ou já saído do gabinete — continuava a poder ver
+     * o assunto e a procedência reescritos. O visto passava a cobrir um registo
+     * diferente daquele que foi visto.
+     *
+     * Definição única, para não voltar a haver duas noções de "tratado" no
+     * sistema. Os vistos leem-se pela data e não pelo status: a coluna de status
+     * admite 'pendente' como valor de partida, que não é tratamento nenhum.
+     */
+    public function motivoDoCongelamento(): ?string
+    {
+        if ($this->arquivado) {
+            return 'Documento arquivado: para o alterar é preciso desarquivá-lo primeiro.';
+        }
+
+        if ($this->data_despacho !== null) {
+            return 'Documento já despachado: os dados do registo não podem ser alterados.';
+        }
+
+        if ($this->visto_departamento_data !== null) {
+            return 'A chefia do departamento já deu visto: o registo deixou de ser corrigível.';
+        }
+
+        if ($this->visto_gabinete_data !== null) {
+            return 'O gabinete já deu visto: o registo deixou de ser corrigível.';
+        }
+
+        if ($this->saida_gabinete_data !== null) {
+            return 'Documento já saiu do gabinete: o registo deixou de ser corrigível.';
+        }
+
+        if ($this->contarRelacaoDeTratamento('encaminhamentos') > 0) {
+            return 'Documento já em tramitação: os dados do registo não podem ser alterados.';
+        }
+
+        if ($this->contarRelacaoDeTratamento('tarefas') > 0) {
+            return 'Já há trabalho delegado sobre este documento: o registo deixou de ser corrigível.';
+        }
+
+        return null;
+    }
+
+    public function temTratamentoDeChefia(): bool
+    {
+        return $this->motivoDoCongelamento() !== null;
+    }
+
+    /**
+     * Conta uma relação sem cobrar uma query por documento quando a listagem já
+     * trouxe o valor: a policy é avaliada uma vez por linha e um exists() direto
+     * custava até cem queries por página.
+     */
+    private function contarRelacaoDeTratamento(string $relacao): int
+    {
+        $contagem = $this->getAttribute($relacao.'_count');
+
+        if ($contagem !== null) {
+            return (int) $contagem;
+        }
+
+        if ($this->relationLoaded($relacao)) {
+            return $this->getRelation($relacao)->count();
+        }
+
+        return $this->{$relacao}()->count();
+    }
+
     public function scopeArquivados($query)
     {
         return $query->where('arquivado', true);
@@ -115,25 +191,25 @@ class DocumentoEntrada extends Model
 
     public function encaminhamentos()
     {
-        return $this->hasMany(\App\Models\DocumentoEncaminhamento::class, 'documento_entrada_id')
+        return $this->hasMany(DocumentoEncaminhamento::class, 'documento_entrada_id')
             ->orderBy('encaminhado_em');
     }
 
     public function ultimoEncaminhamento()
     {
-        return $this->hasOne(\App\Models\DocumentoEncaminhamento::class, 'documento_entrada_id')
+        return $this->hasOne(DocumentoEncaminhamento::class, 'documento_entrada_id')
             ->latestOfMany('encaminhado_em');
     }
 
     public function encaminhamentosExternos()
     {
-        return $this->hasMany(\App\Models\DocumentoEncaminhamentoExterno::class, 'documento_entrada_id')
+        return $this->hasMany(DocumentoEncaminhamentoExterno::class, 'documento_entrada_id')
             ->orderBy('enviado_em');
     }
 
     public function protocolo()
     {
-        return $this->hasOne(\App\Models\DocumentoProtocolo::class, 'documento_entrada_id');
+        return $this->hasOne(DocumentoProtocolo::class, 'documento_entrada_id');
     }
 
     public function vistoDepartamentoPor()
@@ -148,7 +224,7 @@ class DocumentoEntrada extends Model
 
     public function tarefas()
     {
-        return $this->hasMany(\App\Models\DocumentoTarefa::class, 'documento_entrada_id')->orderByDesc('created_at');
+        return $this->hasMany(DocumentoTarefa::class, 'documento_entrada_id')->orderByDesc('created_at');
     }
 
     public function tags()
@@ -205,8 +281,8 @@ class DocumentoEntrada extends Model
         // Estados terminais não têm SLA. A lista anterior incluía 'cancelado',
         // que não existe em DocumentoStatus — não filtrava nada.
         $terminais = [
-            \App\Enums\DocumentoStatus::ARQUIVADO->value,
-            \App\Enums\DocumentoStatus::FINALIZADO->value,
+            DocumentoStatus::ARQUIVADO->value,
+            DocumentoStatus::FINALIZADO->value,
         ];
 
         if ($this->arquivado || in_array($this->status, $terminais, true)) {
@@ -252,7 +328,7 @@ class DocumentoEntrada extends Model
             return $global;
         }
 
-        $prazos = \App\Models\DocumentoEspecie::prazosPorNome();
+        $prazos = DocumentoEspecie::prazosPorNome();
 
         return $prazos[$this->classificacao_especie] ?? $global;
     }

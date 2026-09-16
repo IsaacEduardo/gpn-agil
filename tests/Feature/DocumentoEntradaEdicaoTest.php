@@ -5,12 +5,16 @@ namespace Tests\Feature;
 use App\Models\Departamento;
 use App\Models\DocumentoEntrada;
 use App\Models\DocumentoEspecie;
+use App\Models\DocumentoTarefa;
 use App\Models\Gabinete;
 use App\Models\Role;
 use App\Models\Tag;
 use App\Models\User;
+use App\Services\DocumentoEntradaService;
 use Database\Seeders\PermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -172,5 +176,169 @@ class DocumentoEntradaEdicaoTest extends TestCase
             ->assertRedirect();
 
         $this->assertSame('Pedido de parecer', $doc->fresh()->assunto);
+    }
+
+    // ── A janela fecha-se ao primeiro tratamento de chefia ──────────────────
+    //
+    // O despacho, o encaminhamento e o arquivamento já congelavam o registo
+    // (ver DocumentoEntradaPolicyTest). Faltavam estes quatro: um documento já
+    // visto, com tarefa delegada ou já saído do gabinete continuava a poder ver
+    // o assunto reescrito por baixo de quem o tratou.
+
+    public function test_visto_do_chefe_de_departamento_congela_o_registo(): void
+    {
+        $doc = $this->documento([
+            'visto_departamento_status' => 'aprovado',
+            'visto_departamento_data' => now(),
+        ]);
+
+        $this->assertSame('Pedido de parecer', $this->tentarCorrigir($doc)->assunto);
+    }
+
+    public function test_visto_do_gabinete_congela_o_registo(): void
+    {
+        $doc = $this->documento([
+            'visto_gabinete_status' => 'aprovado',
+            'visto_gabinete_data' => now(),
+        ]);
+
+        $this->assertSame('Pedido de parecer', $this->tentarCorrigir($doc)->assunto);
+    }
+
+    public function test_saida_de_gabinete_congela_o_registo(): void
+    {
+        $doc = $this->documento(['saida_gabinete_data' => now()->subDay()]);
+
+        $this->assertSame('Pedido de parecer', $this->tentarCorrigir($doc)->assunto);
+    }
+
+    public function test_tarefa_delegada_congela_o_registo(): void
+    {
+        $doc = $this->documento();
+
+        DocumentoTarefa::create([
+            'documento_entrada_id' => $doc->id,
+            'assigned_by_id' => $this->autor->id,
+            'assigned_to_user_id' => $this->autor->id,
+            'titulo' => 'Analisar',
+            'descricao' => 'Analisar e responder',
+            'prazo_at' => now()->addWeek(),
+            'status' => 'pendente',
+        ]);
+
+        $this->assertSame('Pedido de parecer', $this->tentarCorrigir($doc)->assunto);
+    }
+
+    /**
+     * O status de partida do visto não é tratamento nenhum — é a coluna por
+     * preencher. Congelar por aí trancava o registo à nascença.
+     */
+    public function test_visto_por_registar_nao_congela_o_registo(): void
+    {
+        $doc = $this->documento(['visto_departamento_status' => 'pendente']);
+
+        $this->assertSame('Assunto corrigido', $this->tentarCorrigir($doc)->assunto);
+    }
+
+    /** O admin continua a ser a via de correção depois do congelamento. */
+    public function test_admin_corrige_registo_congelado(): void
+    {
+        $doc = $this->documento(['visto_departamento_data' => now()]);
+        $admin = User::factory()->create([
+            'role_id' => Role::where('name', 'admin')->firstOrFail()->id,
+            'departamento_id' => $this->dep->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'assunto' => 'Assunto corrigido',
+            ]))
+            ->assertRedirect();
+
+        $this->assertSame('Assunto corrigido', $doc->fresh()->assunto);
+    }
+
+    /**
+     * Corrigir a gralha é trabalho de quem registou. Qualquer membro do
+     * departamento podia reescrever o registo de um colega.
+     */
+    public function test_colega_do_mesmo_departamento_nao_corrige_registo_alheio(): void
+    {
+        $doc = $this->documento();
+        $colega = User::factory()->create([
+            'role_id' => Role::where('name', 'user')->firstOrFail()->id,
+            'departamento_id' => $this->dep->id,
+        ]);
+
+        $this->actingAs($colega)
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'assunto' => 'Assunto corrigido',
+            ]))
+            ->assertStatus(403);
+
+        $this->assertSame('Pedido de parecer', $doc->fresh()->assunto);
+    }
+
+    /**
+     * O botão da listagem e a policy têm de concordar.
+     *
+     * O @can('update') da listagem decide sobre o modelo tal como a query da
+     * listagem o traz, e essa query não selecionava data_despacho nem user_id.
+     * Sem strict mode o Eloquent devolve null em silêncio, pelo que o botão
+     * "Editar" aparecia em documentos despachados e desaparecia para o próprio
+     * autor. Por isso o teste avalia o Gate sobre o modelo vindo dessa query, e
+     * não sobre um modelo carregado de fresco — é aí que estava a diferença.
+     */
+    public function test_gate_da_listagem_permite_ao_autor_corrigir(): void
+    {
+        $doc = $this->documento();
+
+        $this->assertTrue(
+            Gate::forUser($this->autor)->allows('update', $this->documentoComoNaListagem($doc))
+        );
+    }
+
+    public function test_gate_da_listagem_recusa_documento_despachado(): void
+    {
+        $doc = $this->documento(['data_despacho' => now(), 'texto_despacho' => 'Ao departamento']);
+
+        $this->assertFalse(
+            Gate::forUser($this->autor)->allows('update', $this->documentoComoNaListagem($doc))
+        );
+    }
+
+    public function test_gate_da_listagem_recusa_documento_com_visto(): void
+    {
+        $doc = $this->documento(['visto_departamento_data' => now()]);
+
+        $this->assertFalse(
+            Gate::forUser($this->autor)->allows('update', $this->documentoComoNaListagem($doc))
+        );
+    }
+
+    /** Devolve o documento tal como a listagem o carrega (colunas e counts). */
+    private function documentoComoNaListagem(DocumentoEntrada $doc): DocumentoEntrada
+    {
+        $this->actingAs($this->autor);
+
+        $listados = app(DocumentoEntradaService::class)
+            ->getFilteredDocuments(Request::create('/documentos-entradas?tab=todos'), $this->autor);
+
+        return $listados->firstWhere('id', $doc->id)
+            ?? $this->fail('O documento não apareceu na listagem.');
+    }
+
+    /**
+     * Tenta corrigir o assunto como autor e devolve o documento recarregado,
+     * para que cada teste diga apenas o que espera encontrar lá.
+     */
+    private function tentarCorrigir(DocumentoEntrada $doc): DocumentoEntrada
+    {
+        $this->actingAs($this->autor)
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'assunto' => 'Assunto corrigido',
+            ]));
+
+        return $doc->fresh();
     }
 }

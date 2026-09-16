@@ -53,29 +53,43 @@ class DocumentoEntradaPolicy
     /**
      * Alterar os dados do registo (assunto, procedência, espécie, anexos).
      *
-     * A partir do momento em que o documento é despachado ou encaminhado, o
-     * registo deixa de ser corrigível: era possível a qualquer membro do
-     * departamento atual reescrever o assunto e a procedência — e até mudar o
-     * departamento_id, movendo o documento sem encaminhamento nem rasto de
-     * tramitação. O admin mantém-se como via de correção (ver before()).
+     * Duas perguntas, por esta ordem: a janela de correção ainda está aberta, e
+     * é esta a pessoa que a pode usar.
+     *
+     * A janela fecha-se ao primeiro tratamento de chefia — a lista completa está
+     * em DocumentoEntrada::motivoDoCongelamento(). Quanto ao quem: corrigir uma
+     * gralha própria é trabalho de quem registou, não de todo o departamento.
+     * Qualquer membro do setor podia reescrever o assunto e a procedência do
+     * registo de um colega sem ter de justificar nada. Fica no autor e no
+     * responsável do gabinete, que responde pelo processo. O admin mantém-se
+     * como via de correção depois do congelamento (ver before()).
      */
     public function update(User $user, DocumentoEntrada $documento): Response
     {
-        if ($documento->arquivado) {
-            return Response::deny('Documento arquivado: para o alterar é preciso desarquivá-lo primeiro.');
+        $motivo = $documento->motivoDoCongelamento();
+
+        if ($motivo !== null) {
+            return Response::deny($motivo.' Se for mesmo um erro de registo, peça a correção a um administrador.');
         }
 
-        if ($documento->data_despacho !== null) {
-            return Response::deny('Documento já despachado: os dados do registo não podem ser alterados. Corrija por despacho ou peça a um administrador.');
-        }
-
-        if ($documento->encaminhamentos()->exists()) {
-            return Response::deny('Documento já em tramitação: os dados do registo não podem ser alterados.');
-        }
-
-        return $this->podeMexerNoRegisto($user, $documento)
+        return $this->podeCorrigirORegisto($user, $documento)
             ? Response::allow()
-            : Response::deny('Sem permissão para alterar este documento.');
+            : Response::deny('Só quem registou o documento pode corrigir o registo.');
+    }
+
+    /**
+     * Quem corrige o registo: o autor ou o responsável pelo gabinete do
+     * documento. Mais estreito do que podeMexerNoRegisto(), de propósito.
+     */
+    private function podeCorrigirORegisto(User $user, DocumentoEntrada $documento): bool
+    {
+        if ((int) $documento->user_id === (int) $user->id) {
+            return true;
+        }
+
+        $gabId = optional($documento->departamento)->gabinete_id;
+
+        return $gabId && app(DocumentoPermissionService::class)->isGabineteResponsavel($user, $gabId);
     }
 
     /**
