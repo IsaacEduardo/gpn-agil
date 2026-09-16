@@ -357,8 +357,23 @@ tr.keyboard-selected {
 
             {{-- Alerts --}}
             @if (session('success'))
+                @php($idEtiqueta = session('etiqueta_para_imprimir'))
                 <div class="alert alert-success alert-dismissible fade show m-3 rounded-3" role="alert">
                     <i class="fas fa-check-circle me-2"></i>{{ session('success') }}
+
+                    @if ($idEtiqueta)
+                        {{-- A etiqueta segue sozinha para o diálogo de impressão (iframe
+                             abaixo). Esta ligação é a saída quando isso não acontece:
+                             bloqueadores, impressora offline, diálogo cancelado. --}}
+                        <span class="d-block small mt-1">
+                            A etiqueta foi enviada para impressão.
+                            <a href="{{ route('documentos-entradas.protocolo.etiqueta', [$idEtiqueta, 'auto_print' => 1]) }}"
+                               target="_blank" rel="noopener" class="fw-semibold text-success-emphasis">
+                                Não imprimiu? Imprimir novamente
+                            </a>
+                        </span>
+                    @endif
+
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             @endif
@@ -1233,5 +1248,22 @@ function showQuickToast(msg) {
     }
 }
 </script>
+
+@if (session('etiqueta_para_imprimir'))
+    {{--
+        Impressão automática da etiqueta acabada de registar.
+
+        Iframe oculto e NÃO window.open: um pop-up que não nasce de um clique do
+        utilizador é bloqueado por omissão em todos os navegadores. Dentro do
+        iframe, a própria página da etiqueta chama window.print() (?auto_print=1),
+        pelo que o diálogo abre sobre o conteúdo do iframe.
+
+        O flash é consumido uma vez — recarregar a listagem não reimprime.
+    --}}
+    <iframe src="{{ route('documentos-entradas.protocolo.etiqueta', [session('etiqueta_para_imprimir'), 'auto_print' => 1]) }}"
+            title="Impressão da etiqueta do protocolo"
+            aria-hidden="true"
+            style="position:absolute; width:0; height:0; border:0;"></iframe>
+@endif
 @endsection
 

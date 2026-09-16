@@ -6,6 +6,7 @@ use App\Application\DocumentManagement\Commands\CriarDocumentoEntradaCommand;
 use App\Application\DocumentManagement\DTOs\CriarDocumentoEntradaDTO;
 use App\Application\DocumentManagement\Handlers\CriarDocumentoEntradaHandler;
 use App\Enums\DocumentoStatus;
+use App\Enums\TipoRelacaoDocumento;
 use App\Http\Requests\StoreDocumentoEntradaRequest;
 use App\Jobs\ProcessarOcrAnexo;
 use App\Models\Anexo;
@@ -281,13 +282,19 @@ class DocumentoEntradaController extends Controller
         // encaminhamento por receber bloqueia o despacho, a saída de gabinete e
         // o botão de encaminhar da listagem — o documento ficaria congelado à
         // nascença. O destino é avisado por notificação.
-        $this->documentoService->createDocument(
+        $documento = $this->documentoService->createDocument(
             $validated,
             $request->file('arquivo'),
             $request->file('anexos')
         );
 
-        return redirect()->route('documentos-entradas.index')->with('success', 'Documento registrado com sucesso.');
+        // O balcão regista e passa ao seguinte: a etiqueta vai sozinha para
+        // impressão a partir da listagem, sem ter de abrir o documento. O
+        // destino do redirect não muda — só se sinaliza qual a etiqueta.
+        // O flash é consumido uma vez, pelo que recarregar não reimprime.
+        return redirect()->route('documentos-entradas.index')
+            ->with('success', 'Documento registrado com sucesso.')
+            ->with('etiqueta_para_imprimir', $documento->id);
     }
 
     public function show(DocumentoEntrada $documentos_entrada)
@@ -609,9 +616,9 @@ Parecer: {$t->resposta}";
         // 8. Vínculos e Dossiê (ex: respostas elaboradas, anexos, pareceres)
         if ($doc->relationLoaded('vinculosOrigem')) {
             foreach ($doc->vinculosOrigem as $v) {
-                $relacaoEnum = $v->tipo_relacao instanceof \App\Enums\TipoRelacaoDocumento
+                $relacaoEnum = $v->tipo_relacao instanceof TipoRelacaoDocumento
                     ? $v->tipo_relacao
-                    : (is_string($v->tipo_relacao) ? \App\Enums\TipoRelacaoDocumento::tryFrom($v->tipo_relacao) : null);
+                    : (is_string($v->tipo_relacao) ? TipoRelacaoDocumento::tryFrom($v->tipo_relacao) : null);
 
                 $relacaoLabel = $relacaoEnum ? $relacaoEnum->label() : (is_string($v->tipo_relacao) ? $v->tipo_relacao : 'Relacionado');
                 $icone = $relacaoEnum ? $relacaoEnum->icon() : 'fas fa-link';
@@ -638,9 +645,9 @@ Parecer: {$t->resposta}";
 
         if ($doc->relationLoaded('vinculosDestino')) {
             foreach ($doc->vinculosDestino as $v) {
-                $relacaoEnum = $v->tipo_relacao instanceof \App\Enums\TipoRelacaoDocumento
+                $relacaoEnum = $v->tipo_relacao instanceof TipoRelacaoDocumento
                     ? $v->tipo_relacao
-                    : (is_string($v->tipo_relacao) ? \App\Enums\TipoRelacaoDocumento::tryFrom($v->tipo_relacao) : null);
+                    : (is_string($v->tipo_relacao) ? TipoRelacaoDocumento::tryFrom($v->tipo_relacao) : null);
 
                 $relacaoLabel = $relacaoEnum ? $relacaoEnum->label() : (is_string($v->tipo_relacao) ? $v->tipo_relacao : 'Relacionado');
                 $icone = $relacaoEnum ? $relacaoEnum->icon() : 'fas fa-link';
@@ -1359,5 +1366,4 @@ Parecer: {$t->resposta}";
 
         return back()->with('success', 'Documento despachado com sucesso para os departamentos selecionados.');
     }
-
 }
