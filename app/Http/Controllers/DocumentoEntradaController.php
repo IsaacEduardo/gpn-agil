@@ -440,12 +440,13 @@ class DocumentoEntradaController extends Controller
             : collect();
 
         $timelineEvents = $this->buildTimelineEvents($doc);
+        $etiquetaDesatualizada = $this->etiquetaDesatualizada($doc, $timelineEvents);
 
         return view('documentos_entradas.show', compact(
             'doc', 'departamentos', 'gabinetes', 'gabUsuarios', 'gabDepartamentos', 'depUsuarios',
             'hasPendente', 'deps', 'pastas', 'modelosDespacho', 'relacionados', 'canAssignTask',
             'canVisto', 'canVistoGabinete', 'canDespachar', 'audits',
-            'auditsTotal', 'canVerAuditoria', 'timelineEvents'
+            'auditsTotal', 'canVerAuditoria', 'timelineEvents', 'etiquetaDesatualizada'
         ));
     }
 
@@ -768,6 +769,26 @@ Parecer: {$t->resposta}";
             })
             ->filter()
             ->values();
+    }
+
+    /**
+     * A etiqueta colada no papel já não corresponde ao registo.
+     *
+     * A etiqueta leva a procedência e o assunto e vai para impressão no próprio
+     * ato do registo. Se o registo for corrigido a seguir, o papel que segue com
+     * o documento passa a dizer outra coisa — e nada avisava disso.
+     */
+    private function etiquetaDesatualizada(DocumentoEntrada $doc, Collection $timelineEvents): bool
+    {
+        $impressoEm = optional($doc->protocolo)->impresso_em;
+
+        if (! $impressoEm) {
+            return false;
+        }
+
+        return $timelineEvents
+            ->where('tipo', 'correcao_registo')
+            ->contains(fn ($ev) => $ev['data'] && $ev['data']->greaterThan($impressoEm));
     }
 
     /**

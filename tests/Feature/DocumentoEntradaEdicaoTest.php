@@ -14,6 +14,7 @@ use App\Services\DocumentoEntradaService;
 use Database\Seeders\PermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
@@ -349,6 +350,88 @@ class DocumentoEntradaEdicaoTest extends TestCase
             ->viewData('timelineEvents');
 
         $this->assertNull(collect($percurso)->firstWhere('tipo', 'correcao_registo'));
+    }
+
+    /**
+     * Num documento externo o ficheiro principal é o original digitalizado que a
+     * instituição recebeu. Substituí-lo apagava-o do disco, sem versionamento —
+     * DocumentoVersao só serve os documentos internos.
+     */
+    public function test_ficheiro_principal_substituido_fica_guardado_como_anexo(): void
+    {
+        $disco = config('filesystems.docs_disk');
+        Storage::fake($disco);
+
+        $doc = $this->documento();
+        $original = UploadedFile::fake()->create('original.pdf', 40, 'application/pdf');
+        $doc->arquivo_caminho = $original->store('documentos_entradas/teste', $disco);
+        $doc->save();
+        $caminhoOriginal = $doc->arquivo_caminho;
+
+        $this->actingAs($this->autor)
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'arquivo' => UploadedFile::fake()->create('corrigido.pdf', 40, 'application/pdf'),
+            ]))
+            ->assertRedirect();
+
+        $doc = $doc->fresh();
+
+        $this->assertNotSame($caminhoOriginal, $doc->arquivo_caminho);
+        Storage::disk($disco)->assertExists($caminhoOriginal);
+
+        $anexo = $doc->anexos->firstWhere('caminho_arquivo', $caminhoOriginal);
+        $this->assertNotNull($anexo, 'O ficheiro substituído não foi guardado como anexo.');
+        $this->assertStringContainsString('substituído', $anexo->descricao);
+    }
+
+    /**
+     * A etiqueta leva a procedência e vai para impressão no ato do registo. Se o
+     * registo for corrigido a seguir, o papel colado no documento passa a dizer
+     * outra coisa — e nada avisava disso.
+     */
+    public function test_etiqueta_impressa_antes_da_correcao_e_assinalada(): void
+    {
+        $doc = $this->documento(['visto_departamento_data' => now()->subHour()]);
+        $doc->protocolo()->create([
+            'codigo' => 'PRT-TESTE-001',
+            'url_consulta' => '/protocolo/PRT-TESTE-001',
+            'gerado_em' => now()->subHour(),
+            'impresso_em' => now()->subHour(),
+        ]);
+        $admin = $this->admin();
+
+        $this->assertFalse(
+            $this->actingAs($admin)->get(route('documentos-entradas.show', $doc))
+                ->assertOk()->viewData('etiquetaDesatualizada')
+        );
+
+        $this->actingAs($admin)
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'procedencia' => 'Direção Provincial de Saúde',
+                'motivo' => 'Procedência trocada no ato do registo.',
+            ]))
+            ->assertRedirect();
+
+        $this->assertTrue(
+            $this->actingAs($admin)->get(route('documentos-entradas.show', $doc))
+                ->assertOk()->viewData('etiquetaDesatualizada')
+        );
+    }
+
+    /** Sem etiqueta impressa não há nada a reimprimir. */
+    public function test_sem_impressao_nao_ha_aviso_de_etiqueta(): void
+    {
+        $doc = $this->documento();
+
+        $this->actingAs($this->autor)
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'assunto' => 'Assunto corrigido',
+            ]));
+
+        $this->assertFalse(
+            $this->actingAs($this->autor)->get(route('documentos-entradas.show', $doc))
+                ->assertOk()->viewData('etiquetaDesatualizada')
+        );
     }
 
     private function admin(): User

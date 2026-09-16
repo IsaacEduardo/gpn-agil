@@ -1181,8 +1181,13 @@ class DocumentoEntradaService
             $documento->fill($fillableData);
 
             if ($mainFile) {
+                // O ficheiro anterior passa a anexo em vez de ser apagado. Num
+                // documento externo o ficheiro é o original digitalizado que a
+                // instituição recebeu: corrigir o registo não pode destruí-lo, e
+                // não há versionamento aqui (DocumentoVersao só serve os
+                // documentos internos).
                 if ($documento->arquivo_caminho) {
-                    Storage::disk(config('filesystems.docs_disk'))->delete($documento->arquivo_caminho);
+                    $this->guardarArquivoSubstituido($documento);
                 }
                 $dep = Departamento::find((int) $documento->departamento_id);
                 $gab = optional($dep)->gabinete;
@@ -1232,6 +1237,33 @@ class DocumentoEntradaService
 
             return $documento;
         });
+    }
+
+    /**
+     * Converte o ficheiro principal atual em anexo, antes de ser substituído.
+     *
+     * Fica com o nome que tinha e uma descrição a dizer quando saiu de serviço,
+     * para que se perceba, meses depois, porque é que o dossiê tem dois PDF.
+     */
+    private function guardarArquivoSubstituido(DocumentoEntrada $documento): void
+    {
+        $caminho = $documento->arquivo_caminho;
+        $disco = Storage::disk(config('filesystems.docs_disk'));
+
+        if (! $disco->exists($caminho)) {
+            return;
+        }
+
+        $documento->anexos()->create([
+            'nome_original' => basename($caminho),
+            'caminho_arquivo' => $caminho,
+            'mime_type' => $disco->mimeType($caminho) ?: null,
+            'tamanho_bytes' => $disco->size($caminho),
+            'descricao' => 'Ficheiro principal anterior, substituído em '.now()->format('d/m/Y H:i').'.',
+            'ordem' => ($documento->anexos()->max('ordem') ?? 0) + 1,
+            'user_id' => Auth::id(),
+            'ocr_status' => 'NAO_APLICAVEL',
+        ]);
     }
 
     /**

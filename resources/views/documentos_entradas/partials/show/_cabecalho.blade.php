@@ -73,12 +73,28 @@
                 <i class="fas fa-ellipsis-vertical"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="min-width: 17rem;">
+                {{-- Congelado, o item deixava simplesmente de existir: o utilizador
+                     que tinha uma gralha para corrigir não sabia porquê nem a quem
+                     recorrer. As mensagens da policy nunca chegavam a ser lidas,
+                     porque nunca se chegava ao 403. --}}
                 @can('update', $doc)
                     <li>
                         <a href="{{ route('documentos-entradas.edit', $doc) }}" class="dropdown-item py-2">
                             <i class="fas fa-edit me-2 text-primary"></i> Editar Documento
                         </a>
                     </li>
+                @else
+                    @php($motivoCongelamento = $doc->motivoDoCongelamento())
+                    @if ($motivoCongelamento)
+                        <li>
+                            <span class="dropdown-item-text py-2 small text-muted" style="white-space: normal;">
+                                <i class="fas fa-lock me-2"></i>
+                                <strong>Registo já não editável.</strong><br>
+                                {{ $motivoCongelamento }}
+                                Peça a correção a um administrador.
+                            </span>
+                        </li>
+                    @endif
                 @endcan
 
                 @if ($podeDespachar)
@@ -104,6 +120,17 @@
 
                 <li><hr class="dropdown-divider my-1"></li>
                 <li><h6 class="dropdown-header text-uppercase small fw-bold">Protocolo</h6></li>
+                @if ($etiquetaDesatualizada ?? false)
+                    {{-- A etiqueta leva a procedência e vai para impressão no ato do
+                         registo: corrigido o registo, o papel colado no documento
+                         passa a dizer outra coisa. --}}
+                    <li>
+                        <span class="dropdown-item-text py-1 small text-warning-emphasis" style="white-space: normal;">
+                            <i class="fas fa-triangle-exclamation me-1"></i>
+                            O registo foi corrigido depois da impressão — reimprima a etiqueta.
+                        </span>
+                    </li>
+                @endif
                 <li>
                     <a class="dropdown-item py-2 fw-semibold" target="_blank" rel="noopener"
                        href="{{ route('documentos-entradas.protocolo.etiqueta', [$doc, 'auto_print' => 1]) }}">
