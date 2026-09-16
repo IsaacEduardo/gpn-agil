@@ -1024,20 +1024,33 @@ Parecer: {$t->resposta}";
     {
         $this->authorize('update', $documentos_entrada);
 
+        // A saída de gabinete não se corrige aqui: 'saida_gabinete_data',
+        // 'encaminhamento_orgao' e 'encaminhamento_oficio_numero' eram graváveis
+        // por este formulário, o que dava a qualquer utilizador uma via paralela
+        // ao ato próprio — sem a policy 'saidaGabinete', sem criar o
+        // DocumentoEncaminhamentoExterno, sem mudar o status e sem avisar o
+        // gabinete de destino. Pior: a saída verdadeira ficava depois barrada
+        // por "documento já possui saída registada". É a mesma regra já aplicada
+        // ao departamento_id — quem muda o estado da tramitação é o ato, não a
+        // edição do registo.
         $validated = $request->validate([
             'classificacao_especie' => ['nullable', 'string', 'max:100'],
             'classificacao_ref_numero' => ['nullable', 'string', 'max:100'],
             'data_documento' => ['nullable', 'date'],
+            // A data de entrada alimenta o SLA e a ordenação da listagem, e era
+            // o único campo do registo sem qualquer via de correção — nem para
+            // o admin. Mesma regra do registo: não pode estar no futuro.
+            'data_entrada' => ['nullable', 'date', 'before_or_equal:today'],
             'procedencia' => ['nullable', 'string', 'max:255'],
             'procedencia_id' => ['nullable', 'exists:procedencias,id'],
             'assunto' => ['required', 'string', 'max:500'],
             'observacoes' => ['nullable', 'string'],
-            'saida_gabinete_data' => ['nullable', 'date'],
-            'encaminhamento_orgao' => ['nullable', 'string', 'max:255'],
-            'encaminhamento_oficio_numero' => ['nullable', 'string', 'max:100'],
+            'tags' => ['nullable', 'string'],
             'departamento_id' => ['nullable', 'exists:departamentos,id'],
             'arquivo' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB],
             'anexos.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB],
+        ], [
+            'data_entrada.before_or_equal' => 'A data de entrada não pode ser posterior a hoje.',
         ]);
 
         // Mudar de setor faz-se por encaminhamento, que deixa rasto. Gravar

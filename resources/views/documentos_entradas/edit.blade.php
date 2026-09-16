@@ -53,11 +53,12 @@
                             @enderror
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Saída do Gabinete</label>
-                            <input type="date" name="saida_gabinete_data"
-                                value="{{ old('saida_gabinete_data', optional($doc->saida_gabinete_data)->format('Y-m-d')) }}"
-                                class="form-control @error('saida_gabinete_data') is-invalid @enderror" />
-                            @error('saida_gabinete_data')
+                            <label class="form-label">Data de Entrada</label>
+                            <input type="date" name="data_entrada" max="{{ now()->format('Y-m-d') }}"
+                                value="{{ old('data_entrada', optional($doc->data_entrada)->format('Y-m-d')) }}"
+                                class="form-control @error('data_entrada') is-invalid @enderror" />
+                            <div class="form-text">Data em que o documento deu entrada. Conta para o prazo.</div>
+                            @error('data_entrada')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
@@ -99,24 +100,31 @@
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
+                        {{-- Saída de gabinete em leitura: escrevê-la aqui deixava o
+                             documento com data de saída mas sem encaminhamento externo,
+                             sem status e sem aviso ao gabinete de destino — e bloqueava
+                             depois a saída verdadeira. Faz-se pela ação própria. --}}
                         <div class="col-md-12">
-                            <label class="form-label">Encaminhamento (Órgão / Ofício Nº)</label>
-                            <div class="input-group">
-                                <input type="text" name="encaminhamento_orgao"
-                                    value="{{ old('encaminhamento_orgao', $doc->encaminhamento_orgao) }}"
-                                    class="form-control @error('encaminhamento_orgao') is-invalid @enderror"
-                                    placeholder="Órgão" />
-                                <input type="text" name="encaminhamento_oficio_numero"
-                                    value="{{ old('encaminhamento_oficio_numero', $doc->encaminhamento_oficio_numero) }}"
-                                    class="form-control @error('encaminhamento_oficio_numero') is-invalid @enderror"
-                                    placeholder="Ofício Nº" />
+                            <label class="form-label">Saída de Gabinete</label>
+                            <div class="border rounded px-3 py-2 bg-light">
+                                <div class="row g-2 small">
+                                    <div class="col-md-4">
+                                        <span class="text-muted">Data:</span>
+                                        {{ optional($doc->saida_gabinete_data)->format('d/m/Y') ?? '—' }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <span class="text-muted">Órgão:</span> {{ $doc->encaminhamento_orgao ?: '—' }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <span class="text-muted">Ofício Nº:</span>
+                                        {{ $doc->encaminhamento_oficio_numero ?: '—' }}
+                                    </div>
+                                </div>
                             </div>
-                            @error('encaminhamento_orgao')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                            @error('encaminhamento_oficio_numero')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
+                            <div class="form-text">
+                                Regista-se em <strong>Registrar Saída de Gabinete</strong>, no detalhe do documento,
+                                para que o gabinete de destino seja notificado e a saída fique na tramitação.
+                            </div>
                         </div>
                     </div>
                 </div>

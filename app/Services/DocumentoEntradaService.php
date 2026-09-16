@@ -364,17 +364,8 @@ class DocumentoEntradaService
             'gerado_em' => now(),
         ]);
 
-        if (! empty($data['tags'])) {
-            $tagNames = array_filter(array_map('trim', explode(',', $data['tags'])));
-            $tagIds = [];
-            foreach ($tagNames as $tagName) {
-                $tag = Tag::firstOrCreate(
-                    ['slug' => Str::slug($tagName)],
-                    ['nome' => $tagName]
-                );
-                $tagIds[] = $tag->id;
-            }
-            $doc->tags()->sync($tagIds);
+        if (array_key_exists('tags', $data)) {
+            $this->sincronizarTags($doc, $data['tags']);
         }
 
         if (! empty($attachments)) {
@@ -1155,6 +1146,17 @@ class DocumentoEntradaService
                 }
             }
 
+            // As tags não são coluna: saem do lote antes do fill() e são
+            // sincronizadas à parte. Ficavam por gravar na edição — o campo
+            // existia no formulário, o utilizador corrigia-o e o registo
+            // respondia "atualizado com sucesso" sem ter mudado nada.
+            // Distingue-se "não veio no pedido" de "veio vazio": o campo vazio é
+            // como se apaga uma tag mal escrita, pelo que não pode ser tratado
+            // como ausência.
+            $sincronizarTags = array_key_exists('tags', $data);
+            $tags = $sincronizarTags ? $data['tags'] : null;
+            unset($data['tags']);
+
             // Explicitly handle nullable fields if they are passed as null
             $fillableData = [];
             foreach ($data as $key => $value) {
@@ -1209,8 +1211,36 @@ class DocumentoEntradaService
 
             $documento->save();
 
+            if ($sincronizarTags) {
+                $this->sincronizarTags($documento, $tags);
+            }
+
             return $documento;
         });
+    }
+
+    /**
+     * Sincroniza as palavras-chave do documento a partir da lista separada por
+     * vírgulas que vem do formulário.
+     *
+     * Fonte única para o registo e para a edição: a lógica vivia só no
+     * createDocument, pelo que corrigir tags nunca chegou a funcionar.
+     * Uma lista vazia limpa as tags — é como se desfaz uma tag mal escrita.
+     */
+    private function sincronizarTags(DocumentoEntrada $documento, ?string $tags): void
+    {
+        $tagNames = array_filter(array_map('trim', explode(',', (string) $tags)));
+
+        $tagIds = [];
+        foreach ($tagNames as $tagName) {
+            $tag = Tag::firstOrCreate(
+                ['slug' => Str::slug($tagName)],
+                ['nome' => $tagName]
+            );
+            $tagIds[] = $tag->id;
+        }
+
+        $documento->tags()->sync($tagIds);
     }
 
     /**
@@ -1427,10 +1457,10 @@ class DocumentoEntradaService
                     $t->where('status', 'pendente');
                 });
                 break;
-            // 'em_andamento' saiu dos filtros: nada no sistema escreve esse
-            // estado (as tarefas vão de 'pendente' a 'concluida'), e concluir()
-            // recusa tudo o que não esteja em 'pendente'. Ficaria um separador
-            // a prometer uma fase que não existe.
+                // 'em_andamento' saiu dos filtros: nada no sistema escreve esse
+                // estado (as tarefas vão de 'pendente' a 'concluida'), e concluir()
+                // recusa tudo o que não esteja em 'pendente'. Ficaria um separador
+                // a prometer uma fase que não existe.
             case 'atribuidos_mim':
                 if ($user) {
                     $query->whereHas('tarefas', function ($t) use ($user) {
