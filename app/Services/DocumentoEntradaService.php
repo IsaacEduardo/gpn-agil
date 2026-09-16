@@ -353,7 +353,10 @@ class DocumentoEntradaService
         }
 
         $codigoProt = sprintf('PRT-%d-%03d-%s', $ano, $seq, strtoupper(Str::random(6)));
-        $urlConsulta = route('protocolo.publico', ['codigo' => $codigoProt]);
+        // Caminho relativo por desenho: um URL absoluto gravaria aqui o host
+        // da máquina que fez o registo e ficaria preso a ele para sempre. O
+        // endereço do QR é montado ao imprimir, a partir do código.
+        $urlConsulta = route('protocolo.publico', ['codigo' => $codigoProt], absolute: false);
         DocumentoProtocolo::create([
             'documento_entrada_id' => $doc->id,
             'codigo' => $codigoProt,

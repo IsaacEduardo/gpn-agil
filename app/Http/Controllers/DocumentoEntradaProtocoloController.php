@@ -33,7 +33,7 @@ class DocumentoEntradaProtocoloController extends Controller
 
         $this->ensureProtocolo($documento);
 
-        $consultaUrl = $documento->protocolo->url_consulta ?? route('documentos-entradas.protocolo', $documento);
+        $consultaUrl = $this->urlDeConsulta($documento);
         $protocolo = $documento->protocolo;
 
         return view('documentos_entradas.protocolo', compact('documento', 'protocolo', 'consultaUrl'));
@@ -47,7 +47,7 @@ class DocumentoEntradaProtocoloController extends Controller
 
         $this->ensureProtocolo($documento);
 
-        $consultaUrl = $documento->protocolo->url_consulta ?? route('documentos-entradas.protocolo', $documento);
+        $consultaUrl = $this->urlDeConsulta($documento);
         $protocolo = $documento->protocolo;
 
         $autoPrint = $request->boolean('auto_print', false);
@@ -76,7 +76,7 @@ class DocumentoEntradaProtocoloController extends Controller
 
         $this->ensureProtocolo($documento);
 
-        $consultaUrl = $documento->protocolo->url_consulta ?? route('documentos-entradas.protocolo', $documento);
+        $consultaUrl = $this->urlDeConsulta($documento);
         $protocolo = $documento->protocolo;
 
         // Create temporary QR Code SVG file for robust DomPDF rendering
@@ -206,6 +206,26 @@ class DocumentoEntradaProtocoloController extends Controller
     }
 
     /**
+     * URL de consulta pública do protocolo, derivada do código no momento de
+     * renderizar.
+     *
+     * Não se lê a coluna `url_consulta`: ela guarda um URL absoluto fixado no
+     * dia do registo, e isso falha de duas maneiras. O host fica congelado — os
+     * registos feitos em desenvolvimento gravaram 127.0.0.1, que num telemóvel
+     * aponta para o próprio telemóvel. E os protocolos anteriores à página
+     * pública gravaram a rota interna, que exige login: quem entrega o
+     * documento não tem conta. O código do protocolo nunca muda e o host vem
+     * sempre do pedido, pelo que derivar aqui corrige também os protocolos
+     * antigos, seja o que for que a coluna contenha.
+     *
+     * Chamar sempre depois de ensureProtocolo().
+     */
+    private function urlDeConsulta(DocumentoEntrada $documento): string
+    {
+        return route('protocolo.publico', ['codigo' => $documento->protocolo->codigo]);
+    }
+
+    /**
      * Garante que o documento tem protocolo (normalmente criado no registo).
      */
     private function ensureProtocolo(DocumentoEntrada $documento): void
@@ -215,7 +235,10 @@ class DocumentoEntradaProtocoloController extends Controller
         }
 
         $codigo = sprintf('PRT-%d-%03d-%s', $documento->ano_referencia, $documento->numero_sequencial, strtoupper(Str::random(6)));
-        $consultaUrl = route('protocolo.publico', ['codigo' => $codigo]);
+        // Caminho relativo por desenho: um URL absoluto gravaria aqui o host
+        // da máquina que fez o registo e ficaria preso a ele para sempre. O
+        // endereço do QR é montado ao imprimir, a partir do código.
+        $consultaUrl = route('protocolo.publico', ['codigo' => $codigo], absolute: false);
         $protocolo = DocumentoProtocolo::create([
             'documento_entrada_id' => $documento->id,
             'codigo' => $codigo,

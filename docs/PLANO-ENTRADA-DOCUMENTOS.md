@@ -568,3 +568,42 @@ para não desaparecerem dos resultados sem aviso.
 falha também na branch base — espera `GOVERNO PROVINCIAL DO NAMIBE, em Moçâmedes`
 e recebe `GOVERNO PROVINCIAL, em Sede` (`DadosInstituicao` por omissão). Fica para
 tratar fora deste plano.
+
+---
+
+## Correção posterior — o QR da etiqueta não abria
+
+O QR era desenhado a partir da coluna `documento_protocolos.url_consulta`, que
+guardava um **URL absoluto gravado no dia do registo**. Falhava de duas maneiras,
+e a segunda afetava também os registos novos:
+
+1. **Rota errada.** Dos 39 protocolos em base, 38 foram criados antes da página
+   pública e guardavam a rota interna (`/documentos-entradas/{id}/protocolo`),
+   dentro do grupo `auth`. Quem entrega o documento não tem conta: lia o QR e
+   caía no ecrã de login.
+2. **Host congelado.** O que lá estava era `http://127.0.0.1:8000/…` ou
+   `http://localhost:8000/…` — o endereço da máquina onde o registo foi feito.
+   Num telemóvel, `127.0.0.1` aponta para o próprio telemóvel.
+
+**Resolução:** os três formatos de impressão (etiqueta, página de protocolo e
+comprovativo A4) passam a montar o URL no momento de renderizar, a partir do
+código do protocolo — `DocumentoEntradaProtocoloController::urlDeConsulta()`.
+O código nunca muda e o host vem do pedido, pelo que corrige **também os
+protocolos antigos**, independentemente do que a coluna contenha.
+
+**Decisões que convém não desfazer:**
+
+- **A coluna passa a guardar o caminho relativo** (`/protocolo/PRT-…`), nos dois
+  sítios que a escrevem (`DocumentoEntradaService::processCreation` e
+  `ensureProtocolo`). Guardar o host era a causa; a migration
+  `2026_09_16_090000_normaliza_url_consulta_dos_protocolos` normaliza as linhas
+  existentes. A coluna é agora **informativa** — nada a lê para gerar o QR.
+- **Não se repõe o `?? route('documentos-entradas.protocolo', …)`** como recurso:
+  esse fallback era precisamente o caminho que exigia login.
+
+**⚠️ A validar em produção:** o `route()` tira o host do pedido HTTP quando há
+um, e do `APP_URL` quando não há (filas, comandos agendados). **Confirmar o
+`APP_URL` do `.env` da VPS antes de dar isto por fechado.**
+
+**Sem efeito retroativo no papel:** as etiquetas já impressas têm o QR errado a
+tinta. Para essas, ou o balcão reimprime, ou o munícipe dá o código ao atendimento.

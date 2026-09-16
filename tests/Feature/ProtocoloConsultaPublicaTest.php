@@ -111,4 +111,72 @@ class ProtocoloConsultaPublicaTest extends TestCase
             'A URL de consulta do protocolo deve apontar para a página pública.',
         );
     }
+
+    /**
+     * A regressão que motivou derivar o URL no momento de imprimir: o QR saía
+     * do que estava gravado em `url_consulta`, e o que lá estava era o host da
+     * máquina que fez o registo (127.0.0.1) — que num telemóvel aponta para o
+     * próprio telemóvel.
+     */
+    public function test_a_etiqueta_ignora_a_url_gravada_e_usa_a_publica(): void
+    {
+        $resposta = $this->actingAs($this->operadorDoDepartamento())
+            ->get(route('documentos-entradas.protocolo.etiqueta', $this->doc));
+
+        $resposta->assertStatus(200);
+        $this->assertSame(
+            route('protocolo.publico', ['codigo' => 'PRT-2026-042-ABCDEF']),
+            $resposta->viewData('consultaUrl'),
+        );
+    }
+
+    /** O estado dos protocolos antigos: gravaram a rota interna, que pede login. */
+    public function test_o_protocolo_antigo_deixa_de_apontar_para_a_rota_interna(): void
+    {
+        $this->protocolo->update([
+            'url_consulta' => 'http://127.0.0.1:8000/documentos-entradas/'.$this->doc->id.'/protocolo',
+        ]);
+
+        $resposta = $this->actingAs($this->operadorDoDepartamento())
+            ->get(route('documentos-entradas.protocolo', $this->doc));
+
+        $resposta->assertStatus(200);
+        $this->assertSame(
+            route('protocolo.publico', ['codigo' => 'PRT-2026-042-ABCDEF']),
+            $resposta->viewData('consultaUrl'),
+        );
+        $resposta->assertDontSee('127.0.0.1', false);
+    }
+
+    /** O que fica gravado é o caminho, sem host: continua verdadeiro se o domínio mudar. */
+    public function test_o_registo_guarda_o_caminho_sem_host(): void
+    {
+        $papel = Role::where('name', 'user')->firstOrFail();
+        $dep = Departamento::first();
+        $balcao = User::factory()->create(['role_id' => $papel->id, 'departamento_id' => $dep->id]);
+        $balcao->assignRole($papel);
+
+        $this->actingAs($balcao);
+        Storage::fake('public');
+
+        $novo = app(DocumentoEntradaService::class)->createDocument([
+            'assunto' => 'Novo registo',
+            'departamento_id' => $dep->id,
+            'classificacao_especie' => 'Ofício',
+        ]);
+
+        $this->assertStringStartsWith('/protocolo/', $novo->protocolo->url_consulta);
+    }
+
+    private function operadorDoDepartamento(): User
+    {
+        $papel = Role::where('name', 'user')->firstOrFail();
+        $operador = User::factory()->create([
+            'role_id' => $papel->id,
+            'departamento_id' => $this->doc->departamento_id,
+        ]);
+        $operador->assignRole($papel);
+
+        return $operador;
+    }
 }
