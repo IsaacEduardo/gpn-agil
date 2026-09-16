@@ -22,6 +22,15 @@ trait Auditable
         'api_key',
     ];
 
+    /**
+     * Justificação a anexar ao próximo registo de auditoria deste modelo.
+     *
+     * Propriedade declarada e não atributo: não é coluna do modelo e não pode ir
+     * parar ao save(). Quem exige a justificação é a camada que conhece a regra
+     * — ver DocumentoEntradaService::updateDocument.
+     */
+    public ?string $auditMotivo = null;
+
     public static function bootAuditable()
     {
         static::created(function ($model) {
@@ -41,7 +50,8 @@ trait Auditable
             }
 
             if (! empty($changes)) {
-                $model->logAudit('update', $model->sanitizeForAudit($old), $model->sanitizeForAudit($new));
+                $model->logAudit('update', $model->sanitizeForAudit($old), $model->sanitizeForAudit($new), $model->auditMotivo);
+                $model->auditMotivo = null;
             }
         });
 
@@ -50,7 +60,7 @@ trait Auditable
         });
     }
 
-    public function logAudit($action, $oldValues = null, $newValues = null)
+    public function logAudit($action, $oldValues = null, $newValues = null, ?string $motivo = null)
     {
         AuditLog::create([
             'user_id' => Auth::id(),
@@ -59,6 +69,7 @@ trait Auditable
             'auditable_id' => $this->id,
             'old_values' => is_array($oldValues) ? $this->sanitizeForAudit($oldValues) : $oldValues,
             'new_values' => is_array($newValues) ? $this->sanitizeForAudit($newValues) : $newValues,
+            'motivo' => $motivo,
             'ip_address' => Request::ip(),
             'user_agent' => Request::userAgent(),
         ]);

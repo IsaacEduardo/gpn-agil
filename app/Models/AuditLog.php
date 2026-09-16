@@ -16,6 +16,7 @@ class AuditLog extends Model
         'auditable_id',
         'old_values',
         'new_values',
+        'motivo',
         'ip_address',
         'user_agent',
     ];

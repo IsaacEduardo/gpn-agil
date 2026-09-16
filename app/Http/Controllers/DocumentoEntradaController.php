@@ -25,6 +25,7 @@ use App\Services\Ai\DocumentoAssistantService;
 use App\Services\DocumentoEntradaService;
 use App\Services\DocumentoPermissionService;
 use App\Support\SafeFileHeaders;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -672,7 +673,12 @@ Parecer: {$t->resposta}";
             }
         }
 
-        // 9. Arquivamento
+        // 9. Correções ao registo
+        foreach ($this->correcoesAoRegisto($doc) as $correcao) {
+            $events->push($correcao);
+        }
+
+        // 10. Arquivamento
         if ($doc->arquivado && $doc->arquivado_em) {
             $events->push([
                 'tipo' => 'arquivamento',
@@ -688,6 +694,100 @@ Parecer: {$t->resposta}";
         }
 
         return $events->sortByDesc('data')->values();
+    }
+
+    /**
+     * Campos do registo, para distinguir uma correção de um ato de tramitação.
+     *
+     * O audit log grava um 'update' por cada save do documento — vistos,
+     * despacho, mudança de status, arquivamento. Só estes campos descrevem o que
+     * foi escrito no ato do registo; mexer neles é corrigir o registo, e é isso
+     * que tem de aparecer no percurso.
+     */
+    private const CAMPOS_DO_REGISTO = [
+        'assunto' => 'Assunto',
+        'procedencia' => 'Procedência',
+        'classificacao_especie' => 'Espécie',
+        'classificacao_ref_numero' => 'Ref. nº',
+        'data_documento' => 'Data do documento',
+        'data_entrada' => 'Data de entrada',
+        'observacoes' => 'Observações',
+    ];
+
+    /**
+     * Campos de data do registo.
+     *
+     * O audit log guarda o que o modelo tinha em memória: de um lado um Carbon
+     * serializado em ISO-8601, do outro a string que veio da base de dados. Sem
+     * normalizar, qualquer gravação do documento — um visto, por exemplo —
+     * parecia ter alterado a data de entrada.
+     */
+    private const CAMPOS_DE_DATA_DO_REGISTO = ['data_documento', 'data_entrada'];
+
+    /**
+     * Eventos de correção do registo, lidos da auditoria.
+     *
+     * Ficavam apenas no audit log, visível só à chefia e só se abrisse a aba de
+     * auditoria: quem lê o percurso do documento não via que o assunto tinha sido
+     * reescrito depois de o documento ter seguido caminho.
+     */
+    private function correcoesAoRegisto(DocumentoEntrada $doc): Collection
+    {
+        return $doc->audits()
+            ->where('action', 'update')
+            ->with('user:id,name')
+            ->get()
+            ->map(function ($audit) use ($doc) {
+                $alterados = [];
+
+                foreach (self::CAMPOS_DO_REGISTO as $campo => $rotulo) {
+                    $antes = $this->valorDoRegistoParaComparar($campo, $audit->old_values[$campo] ?? null);
+                    $depois = $this->valorDoRegistoParaComparar($campo, $audit->new_values[$campo] ?? null);
+
+                    if ($antes !== $depois) {
+                        $alterados[] = $rotulo.': "'.($antes ?? '—').'" ➔ "'.($depois ?? '—').'"';
+                    }
+                }
+
+                if (empty($alterados)) {
+                    return null;
+                }
+
+                return [
+                    'tipo' => 'correcao_registo',
+                    'data' => $audit->created_at,
+                    'titulo' => 'Correção do Registo',
+                    'descricao' => implode("\n", $alterados)
+                        .($audit->motivo ? "\n\nMotivo: {$audit->motivo}" : ''),
+                    'autor' => optional($audit->user)->name ?? 'Utilizador',
+                    'setor' => optional($doc->departamento)->nome,
+                    'icone' => 'fas fa-pen-to-square',
+                    'badge_class' => 'bg-warning text-dark',
+                    'badge_text' => 'Correção',
+                ];
+            })
+            ->filter()
+            ->values();
+    }
+
+    /**
+     * Normaliza um valor do registo para comparação e leitura no percurso.
+     */
+    private function valorDoRegistoParaComparar(string $campo, $valor): ?string
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        if (in_array($campo, self::CAMPOS_DE_DATA_DO_REGISTO, true)) {
+            try {
+                return Carbon::parse($valor)->format('d/m/Y');
+            } catch (\Throwable) {
+                return (string) $valor;
+            }
+        }
+
+        return trim((string) $valor);
     }
 
     public function previewAjax(DocumentoEntrada $documento)
@@ -1017,6 +1117,9 @@ Parecer: {$t->resposta}";
             'procedencias' => $procedencias,
             'tags' => $tags,
             'podeAlterarDepartamento' => $this->podeAlterarDepartamento(Auth::user(), $documentos_entrada),
+            // Só um administrador chega aqui com o registo congelado; a view
+            // mostra-lhe o que já foi tratado e pede-lhe a justificação.
+            'motivoDoCongelamento' => $documentos_entrada->motivoDoCongelamento(),
         ]);
     }
 
@@ -1033,7 +1136,14 @@ Parecer: {$t->resposta}";
         // por "documento já possui saída registada". É a mesma regra já aplicada
         // ao departamento_id — quem muda o estado da tramitação é o ato, não a
         // edição do registo.
+        // Chegar aqui com o registo congelado significa que quem edita é
+        // administrador (só ele passa a policy nesse estado). Alterar por cima do
+        // trabalho de uma chefia tem de dizer porquê: a justificação fica na
+        // auditoria e no percurso do documento, à vista de quem o tratou.
+        $congelado = $documentos_entrada->motivoDoCongelamento() !== null;
+
         $validated = $request->validate([
+            'motivo' => [$congelado ? 'required' : 'nullable', 'string', 'max:500'],
             'classificacao_especie' => ['nullable', 'string', 'max:100'],
             'classificacao_ref_numero' => ['nullable', 'string', 'max:100'],
             'data_documento' => ['nullable', 'date'],
@@ -1061,11 +1171,15 @@ Parecer: {$t->resposta}";
             unset($validated['departamento_id']);
         }
 
+        $motivo = $validated['motivo'] ?? null;
+        unset($validated['motivo']);
+
         $this->documentoService->updateDocument(
             $documentos_entrada,
             $validated,
             $request->file('arquivo'),
-            $request->file('anexos')
+            $request->file('anexos'),
+            $motivo
         );
 
         return redirect()->route('documentos-entradas.show', $documentos_entrada)->with('success', 'Documento atualizado com sucesso.');

@@ -13,6 +13,31 @@
             class="row g-3">
             @csrf
             @method('PUT')
+
+            @if ($motivoDoCongelamento ?? null)
+                {{-- Editar por cima do trabalho de uma chefia tem de dizer porquê:
+                     a justificação fica na auditoria e no percurso do documento. --}}
+                <div class="card border-warning mb-3">
+                    <div class="card-body">
+                        <div class="d-flex align-items-start gap-2 mb-3">
+                            <i class="fas fa-triangle-exclamation text-warning mt-1"></i>
+                            <div>
+                                <div class="fw-semibold">Este registo já foi tratado</div>
+                                <div class="text-muted small">{{ $motivoDoCongelamento }}</div>
+                            </div>
+                        </div>
+                        <label class="form-label" for="motivoCorrecao">Motivo da correção <span
+                                class="text-danger">*</span></label>
+                        <textarea id="motivoCorrecao" name="motivo" rows="2" required maxlength="500"
+                            class="form-control @error('motivo') is-invalid @enderror"
+                            placeholder="Ex.: o número de ofício foi trocado no ato do registo.">{{ old('motivo') }}</textarea>
+                        <div class="form-text">Fica no percurso do documento, à vista de quem já o tratou.</div>
+                        @error('motivo')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+                </div>
+            @endif
             <div class="card mb-3">
                 <div class="card-header bg-gradient-primary">
                     <div class="section-title"><i class="fas fa-tags me-2"></i>Classificação e Datas</div>

@@ -1138,9 +1138,12 @@ class DocumentoEntradaService
         $documento->save();
     }
 
-    public function updateDocument(DocumentoEntrada $documento, array $data, $mainFile = null, $attachments = [])
+    public function updateDocument(DocumentoEntrada $documento, array $data, $mainFile = null, $attachments = [], ?string $motivo = null)
     {
-        return DB::transaction(function () use ($documento, $data, $mainFile, $attachments) {
+        return DB::transaction(function () use ($documento, $data, $mainFile, $attachments, $motivo) {
+            // Segue para o audit log desta gravação; o trait limpa-o a seguir.
+            $documento->auditMotivo = $motivo;
+
             // Filter out nulls from data if necessary, or just fill
             // Ensure specific fields that are not in $data are not overwritten if not intended
             // But usually fill() is safe with validated data.

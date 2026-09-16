@@ -244,18 +244,122 @@ class DocumentoEntradaEdicaoTest extends TestCase
     public function test_admin_corrige_registo_congelado(): void
     {
         $doc = $this->documento(['visto_departamento_data' => now()]);
-        $admin = User::factory()->create([
-            'role_id' => Role::where('name', 'admin')->firstOrFail()->id,
-            'departamento_id' => $this->dep->id,
-        ]);
 
-        $this->actingAs($admin)
+        $this->actingAs($this->admin())
             ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
                 'assunto' => 'Assunto corrigido',
+                'motivo' => 'Assunto trocado no ato do registo.',
             ]))
             ->assertRedirect();
 
         $this->assertSame('Assunto corrigido', $doc->fresh()->assunto);
+    }
+
+    /**
+     * Alterar por cima do trabalho de uma chefia tem de dizer porquê. Enquanto a
+     * janela está aberta a correção é trivial e não se exige justificação.
+     */
+    public function test_correcao_de_registo_congelado_exige_motivo(): void
+    {
+        $doc = $this->documento(['visto_departamento_data' => now()]);
+
+        $this->actingAs($this->admin())
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'assunto' => 'Assunto corrigido',
+            ]))
+            ->assertSessionHasErrors('motivo');
+
+        $this->assertSame('Pedido de parecer', $doc->fresh()->assunto);
+    }
+
+    public function test_correcao_com_janela_aberta_nao_exige_motivo(): void
+    {
+        $doc = $this->documento();
+
+        $this->actingAs($this->autor)
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'assunto' => 'Assunto corrigido',
+            ]))
+            ->assertSessionHasNoErrors();
+    }
+
+    public function test_motivo_fica_na_auditoria(): void
+    {
+        $doc = $this->documento(['visto_departamento_data' => now()]);
+
+        $this->actingAs($this->admin())
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'assunto' => 'Assunto corrigido',
+                'motivo' => 'Assunto trocado no ato do registo.',
+            ]))
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('audit_logs', [
+            'auditable_type' => DocumentoEntrada::class,
+            'auditable_id' => $doc->id,
+            'action' => 'update',
+            'motivo' => 'Assunto trocado no ato do registo.',
+        ]);
+    }
+
+    /**
+     * A correção ficava só no audit log — visível à chefia e só na aba de
+     * auditoria. Quem lê o percurso do documento não via que o assunto tinha
+     * sido reescrito depois de o documento seguir caminho.
+     */
+    public function test_correcao_aparece_no_percurso_do_documento(): void
+    {
+        $doc = $this->documento(['visto_departamento_data' => now()]);
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->put(route('documentos-entradas.update', $doc), $this->payload($doc, [
+                'assunto' => 'Assunto corrigido',
+                'motivo' => 'Assunto trocado no ato do registo.',
+            ]))
+            ->assertRedirect();
+
+        $percurso = $this->actingAs($admin)
+            ->get(route('documentos-entradas.show', $doc))
+            ->assertOk()
+            ->viewData('timelineEvents');
+
+        $correcao = collect($percurso)->firstWhere('tipo', 'correcao_registo');
+
+        $this->assertNotNull($correcao, 'A correção não apareceu no percurso.');
+        $this->assertStringContainsString('Assunto', $correcao['descricao']);
+        $this->assertStringContainsString('Assunto trocado no ato do registo.', $correcao['descricao']);
+        $this->assertSame($admin->name, $correcao['autor']);
+    }
+
+    /**
+     * O audit log grava um 'update' por cada save — vistos, despacho, status.
+     * Só as alterações aos campos do registo são correções.
+     */
+    public function test_visto_nao_conta_como_correcao_no_percurso(): void
+    {
+        $doc = $this->documento();
+        $admin = $this->admin();
+
+        app(DocumentoEntradaService::class)->registerVisto($doc, 'departamento', 'aprovado', $admin);
+
+        $percurso = $this->actingAs($admin)
+            ->get(route('documentos-entradas.show', $doc))
+            ->assertOk()
+            ->viewData('timelineEvents');
+
+        $this->assertNull(collect($percurso)->firstWhere('tipo', 'correcao_registo'));
+    }
+
+    private function admin(): User
+    {
+        $admin = User::factory()->create([
+            'role_id' => Role::where('name', 'admin')->firstOrFail()->id,
+            'departamento_id' => $this->dep->id,
+        ]);
+        $admin->assignRole(Role::where('name', 'admin')->firstOrFail());
+
+        return $admin;
     }
 
     /**
