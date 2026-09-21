@@ -154,11 +154,51 @@ class DocumentoPermissionService
     }
 
     /**
+     * Departamentos que têm o documento em mãos, para efeitos de competência.
+     *
+     * `departamento_id` é a custódia formal e só muda no recebimento (ver
+     * DocumentoEntradaService::receiveDocument). Enquanto um encaminhamento
+     * espera recibo, quem tem o documento à frente é o destino — e é ele que o
+     * tem de tratar.
+     *
+     * Reconhecer só a custódia formal fechava o ciclo sobre si mesmo: delegar
+     * vale como recibo (DocumentoEntradaService::receberPendenteAoDelegar), mas
+     * a guarda exigia o recibo para deixar delegar, e o chefe do departamento
+     * de destino nunca conseguia agir sobre um documento que lhe fora
+     * despachado.
+     *
+     * @return int[]
+     */
+    public function departamentosComCustodia($documento): array
+    {
+        $deps = [];
+
+        if ($documento->departamento_id) {
+            $deps[] = (int) $documento->departamento_id;
+        }
+
+        // Quem já tem os encaminhamentos carregados (a gaveta, a ficha) não paga
+        // uma consulta por cada verificação: canConcluirTarefa e
+        // canCancelarTarefa correm uma vez por tarefa na mesma página.
+        $pendentes = $documento->relationLoaded('encaminhamentos')
+            ? $documento->encaminhamentos
+                ->filter(fn ($e) => $e->recebido_em === null)
+                ->map(fn ($e) => (int) $e->destino_departamento_id)
+                ->all()
+            : DocumentoEncaminhamento::where('documento_entrada_id', $documento->id)
+                ->whereNull('recebido_em')
+                ->pluck('destino_departamento_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+        return array_values(array_unique(array_merge($deps, $pendentes)));
+    }
+
+    /**
      * Check if user has permission to manage tasks for a document.
      */
     public function canManageTasks(User $user, $documento): bool
     {
-        $docDepId = (int) $documento->departamento_id;
         $docGabId = $documento->departamento ? (int) $documento->departamento->gabinete_id : null;
 
         // 0. Super Cabinet Chief
@@ -172,10 +212,16 @@ class DocumentoPermissionService
             return true;
         }
 
-        // 2. Department Chief (and belongs to the document's department)
+        // 2. Department Chief (do departamento que tem o documento em mãos)
         if ($this->isChefeDepartamento($user)) {
             $userDeps = $this->getUserDepartments($user);
-            if (in_array($docDepId, $userDeps)) {
+
+            // Custódia formal primeiro: é o caso corrente e não custa consulta.
+            if (in_array((int) $documento->departamento_id, $userDeps, true)) {
+                return true;
+            }
+
+            if (array_intersect($this->departamentosComCustodia($documento), $userDeps)) {
                 return true;
             }
         }

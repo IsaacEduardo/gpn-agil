@@ -17,6 +17,16 @@
     // Normalizado uma vez: os ramos do formulário e o rodapé leem sempre daqui.
     $acaoRapida = $acaoRapida ?? null;
     $acao = $acoes[$acaoRapida] ?? null;
+
+    // O recibo existia só na página de detalhe: o controlador calculava
+    // $canReceive e a gaveta deitava-o fora, deixando sem saída quem tinha o
+    // documento à espera de recebimento.
+    $encPendente = $encPendente ?? null;
+    $destinosPendentes = $destinosPendentes ?? collect();
+    $podeReceber = ! empty($canReceive) && $encPendente !== null;
+    $rotaReceber = $podeReceber
+        ? route('documentos-entradas.encaminhamentos.receber', [$doc, $encPendente])
+        : null;
 @endphp
 
 <div class="preview-header border-bottom p-3 d-flex justify-content-between align-items-center bg-light">
@@ -75,6 +85,14 @@
                 <div class="col-6 mt-2">
                     <span class="text-muted d-block">Setor Atual</span>
                     <strong class="text-dark"><i class="fas fa-building text-secondary me-1"></i>{{ optional($doc->departamento)->nome ?? 'Gabinete' }}</strong>
+                    {{-- A custódia só muda no recebimento. Sem esta linha, quem
+                         espera o documento lia como "setor atual" o departamento
+                         que já lho despachou. --}}
+                    @if($destinosPendentes->isNotEmpty())
+                        <span class="d-block text-warning-emphasis" style="font-size: 0.72rem; line-height: 1.2;">
+                            <i class="fas fa-hourglass-half me-1"></i>Aguarda recebimento em: {{ $destinosPendentes->join(', ') }}
+                        </span>
+                    @endif
                 </div>
             </div>
         </div>
@@ -207,7 +225,9 @@
                          formulário vazio e um botão que o servidor recusaria. --}}
                     <div class="p-3 text-center text-muted small bg-light rounded border">
                         <i class="fas fa-info-circle me-1"></i>
-                        @if($userProfile === 'tecnico')
+                        @if($podeReceber)
+                            Este documento aguarda o recibo do seu departamento. Receba-o para que passe a constar à sua guarda.
+                        @elseif($userProfile === 'tecnico')
                             Não há demandas sob a sua atribuição ativa para este documento.
                         @elseif($userProfile === 'gabinete')
                             Este documento pertence a outro gabinete: só o gabinete responsável o pode despachar.
@@ -261,6 +281,20 @@
         <button type="submit" form="formDrawerQuickAction" id="btnSubmitDrawerQuickAction"
                 class="btn {{ $acao['classe'] }} fw-bold flex-grow-1 py-2 shadow-sm d-flex align-items-center justify-content-center">
             <i class="fas {{ $acao['icone'] }} me-1.5"></i> {{ $acao['rotulo'] }}
+        </button>
+        @if($podeReceber)
+            <button type="button" class="btn btn-outline-primary fw-semibold py-2 btn-drawer-receber"
+                    onclick="receberNoDrawer(this, '{{ $rotaReceber }}')"
+                    title="Dar o documento por recebido no seu departamento">
+                <i class="fas fa-inbox"></i>
+            </button>
+        @endif
+    @elseif($podeReceber)
+        {{-- Sem ação rápida, mas o documento espera o recibo deste utilizador: é
+             essa a ação que falta, e só existia na página de detalhe. --}}
+        <button type="button" class="btn btn-primary fw-bold flex-grow-1 py-2 shadow-sm d-flex align-items-center justify-content-center btn-drawer-receber"
+                onclick="receberNoDrawer(this, '{{ $rotaReceber }}')">
+            <i class="fas fa-inbox me-1.5"></i> Receber documento
         </button>
     @else
         <span class="flex-grow-1 text-muted small fst-italic">
@@ -339,6 +373,63 @@ if (typeof window.submitDrawerQuickAction === 'undefined') {
             }
         })
         .finally(() => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalBtnHtml;
+            }
+        });
+    };
+}
+
+if (typeof window.receberNoDrawer === 'undefined') {
+    window.receberNoDrawer = function(btn, url) {
+        if (!url) return;
+        const originalBtnHtml = btn ? btn.innerHTML : '';
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+        }
+
+        // A rota é PATCH; o método vai falseado no corpo, como nos formulários.
+        const corpo = new URLSearchParams();
+        corpo.append('_method', 'PATCH');
+        corpo.append('_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
+
+        fetch(url, {
+            method: 'POST',
+            body: corpo,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json()
+                    .catch(() => { throw new Error('Não foi possível registar o recibo.'); })
+                    .then(err => { throw new Error(err.error || err.message || 'Não foi possível registar o recibo.'); });
+            }
+            return response.json();
+        })
+        .then(data => {
+            const msg = data.message || 'Documento marcado como recebido.';
+            if (window.Toast) {
+                window.Toast.success(msg);
+            } else if (typeof showQuickToast === 'function') {
+                showQuickToast(msg);
+            }
+            if (typeof closePreviewDrawer === 'function') {
+                closePreviewDrawer();
+            }
+            setTimeout(() => { window.location.reload(); }, 600);
+        })
+        .catch(err => {
+            console.error(err);
+            if (window.Toast) {
+                window.Toast.error('Erro', err.message || 'Falha ao registar o recibo.');
+            }
             if (btn) {
                 btn.disabled = false;
                 btn.innerHTML = originalBtnHtml;

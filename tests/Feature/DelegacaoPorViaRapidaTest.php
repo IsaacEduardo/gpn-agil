@@ -53,6 +53,139 @@ class DelegacaoPorViaRapidaTest extends TestCase
         return compact('gab', 'dep', 'admin', 'chefe', 'tecnico');
     }
 
+    /**
+     * O caso real, que faltava: o documento é registado num departamento e
+     * despachado para OUTRO. Quem tem de agir é a chefia do destino.
+     *
+     * Os testes existentes despachavam o documento para o próprio departamento
+     * onde ele já estava, pelo que a custódia já estava certa antes do recibo e
+     * as guardas passavam por acidente.
+     */
+    private function cenarioComDoisDepartamentos(): array
+    {
+        $c = $this->cenario();
+
+        $roleChefe = Role::where('name', 'chefe-departamento')->firstOrFail();
+        $roleUser = Role::where('name', 'user')->firstOrFail();
+
+        $depDestino = Departamento::create(['nome' => 'Departamento Beta', 'gabinete_id' => $c['gab']->id]);
+
+        $chefeDestino = User::factory()->create(['role_id' => $roleChefe->id, 'departamento_id' => $depDestino->id]);
+        $chefeDestino->syncRoles(['chefe-departamento']);
+        $depDestino->update(['chefe_user_id' => $chefeDestino->id]);
+
+        $tecnicoDestino = User::factory()->create(['role_id' => $roleUser->id, 'departamento_id' => $depDestino->id]);
+
+        return $c + compact('depDestino', 'chefeDestino', 'tecnicoDestino');
+    }
+
+    private function documentoDespachadoParaOutroDepartamento(array $c)
+    {
+        $service = app(DocumentoEntradaService::class);
+
+        $this->actingAs($c['admin']);
+        $doc = $service->createDocument([
+            'assunto' => 'Pedido de parecer',
+            'departamento_id' => $c['dep']->id,
+        ]);
+
+        $service->despacharDocumento($doc, 'Ao Beta, para parecer.', [$c['depDestino']->id], $c['admin']);
+
+        return $doc->fresh();
+    }
+
+    /**
+     * A custódia (departamento_id) só muda no recebimento, e delegar vale como
+     * recibo. Exigir o recibo para deixar delegar fechava o ciclo sobre si
+     * mesmo e a chefia do destino nunca conseguia agir.
+     */
+    public function test_chefe_do_destino_delega_com_a_custodia_ainda_na_origem(): void
+    {
+        Storage::fake('public');
+        Notification::fake();
+
+        $c = $this->cenarioComDoisDepartamentos();
+        $doc = $this->documentoDespachadoParaOutroDepartamento($c);
+
+        $this->assertSame($c['dep']->id, (int) $doc->departamento_id, 'Pré-condição: a custódia está na origem.');
+        $this->assertSame(DocumentoStatus::ENCAMINHADO->value, $doc->status, 'Pré-condição: por receber.');
+
+        $this->actingAs($c['chefeDestino'])
+            ->postJson(route('documentos-entradas.quick-action', $doc), [
+                'assigned_to_user_id' => $c['tecnicoDestino']->id,
+                'descricao' => 'Elaborar parecer técnico.',
+                'prazo_at' => now()->addDays(5)->toDateString(),
+            ])
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->assertDatabaseHas('documento_tarefas', [
+            'documento_entrada_id' => $doc->id,
+            'assigned_to_user_id' => $c['tecnicoDestino']->id,
+        ]);
+
+        Notification::assertSentTo($c['tecnicoDestino'], TarefaDelegadaNotification::class);
+
+        $doc->refresh();
+        $this->assertSame(
+            $c['depDestino']->id,
+            (int) $doc->departamento_id,
+            'Delegar vale como recibo: a custódia tem de passar ao destino.'
+        );
+        $this->assertSame(DocumentoStatus::RECEBIDO->value, $doc->status);
+
+        $enc = DocumentoEncaminhamento::where('documento_entrada_id', $doc->id)->latest('id')->first();
+        $this->assertNotNull($enc->recebido_em, 'O encaminhamento ficou por receber.');
+        $this->assertSame($c['chefeDestino']->id, (int) $enc->recebido_por_id);
+    }
+
+    /**
+     * A gaveta lateral desenhava "sem ação rápida" à chefia do destino, porque
+     * lia a mesma guarda. É o ecrã que o utilizador vê — tem de dizer 'delegar'.
+     */
+    public function test_gaveta_oferece_delegar_a_chefia_do_destino(): void
+    {
+        Storage::fake('public');
+
+        $c = $this->cenarioComDoisDepartamentos();
+        $doc = $this->documentoDespachadoParaOutroDepartamento($c);
+
+        $this->actingAs($c['chefeDestino'])
+            ->get(route('documentos-entradas.preview-ajax', $doc))
+            ->assertOk()
+            ->assertSee('Delegar tarefa');
+    }
+
+    /**
+     * Alargar a competência ao destino pendente não pode alargá-la a terceiros:
+     * um chefe de um departamento sem relação com o documento continua fora.
+     */
+    public function test_chefe_alheio_ao_percurso_continua_recusado(): void
+    {
+        Storage::fake('public');
+        Notification::fake();
+
+        $c = $this->cenarioComDoisDepartamentos();
+
+        $roleChefe = Role::where('name', 'chefe-departamento')->firstOrFail();
+        $depAlheio = Departamento::create(['nome' => 'Departamento Gama', 'gabinete_id' => $c['gab']->id]);
+        $chefeAlheio = User::factory()->create(['role_id' => $roleChefe->id, 'departamento_id' => $depAlheio->id]);
+        $chefeAlheio->syncRoles(['chefe-departamento']);
+        $depAlheio->update(['chefe_user_id' => $chefeAlheio->id]);
+
+        $doc = $this->documentoDespachadoParaOutroDepartamento($c);
+
+        $this->actingAs($chefeAlheio)
+            ->postJson(route('documentos-entradas.quick-action', $doc), [
+                'assigned_to_user_id' => $c['tecnicoDestino']->id,
+                'descricao' => 'Tentativa indevida.',
+                'prazo_at' => now()->addDays(5)->toDateString(),
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('documento_tarefas', 0);
+    }
+
     private function documentoDespachado(array $c)
     {
         $service = app(DocumentoEntradaService::class);

@@ -845,11 +845,26 @@ Parecer: {$t->resposta}";
         $userDeps = $this->permissionService->getUserDepartments($actor);
         $userProfile = $this->permissionService->getUserWorkflowProfile($actor);
 
-        $enc = $doc->ultimoEncaminhamento;
-        $canReceive = false;
-        if ($enc && ! $enc->recebido_em) {
-            $canReceive = $this->permissionService->isAdmin($actor) || in_array((int) $enc->destino_departamento_id, $userDeps);
+        // Encaminhamento por receber que espera ESTE utilizador. Um despacho cria
+        // um pendente por departamento de destino, pelo que olhar só para o
+        // último deixava de fora o chefe do outro destino — e o recibo com ele.
+        $pendentes = $doc->encaminhamentos->filter(fn ($e) => ! $e->recebido_em);
+
+        $encPendente = $pendentes->first(fn ($e) => in_array((int) $e->destino_departamento_id, $userDeps));
+        if (! $encPendente && $this->permissionService->isAdmin($actor)) {
+            $encPendente = $pendentes->first();
         }
+
+        $canReceive = $encPendente !== null;
+
+        // A custódia formal (departamento_id) só muda no recebimento, pelo que
+        // anunciar o departamento do documento como "setor atual" apresentava a
+        // origem a quem espera o documento. Os destinos por receber dizem-se.
+        $destinosPendentes = $pendentes
+            ->map(fn ($e) => optional($e->destinoDepartamento)->nome)
+            ->filter()
+            ->unique()
+            ->values();
 
         $canForward = $this->permissionService->isAdmin($actor) ||
             ($this->permissionService->isChefeDepartamento($actor) && in_array((int) $doc->departamento_id, $userDeps)) ||
@@ -921,7 +936,9 @@ Parecer: {$t->resposta}";
             'tarefas',
             'canDespachar',
             'canDelegar',
-            'acaoRapida'
+            'acaoRapida',
+            'encPendente',
+            'destinosPendentes'
         ));
     }
 

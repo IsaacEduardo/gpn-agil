@@ -793,10 +793,24 @@ class DocumentoEntradaService
         }
 
         // Chefe de departamento: o destinatário tem de pertencer ao departamento
-        // onde o documento se encontra.
-        $depId = (int) $documento->departamento_id;
-        $pertence = ((int) $destino->departamento_id === $depId)
-            || $destino->departamentos()->where('departamento_id', $depId)->exists();
+        // que tem o documento em mãos E que é do próprio ator — delegar é um ato
+        // interno ao departamento, não uma atribuição a terceiros.
+        //
+        // Ler apenas departamento_id contava a ORIGEM enquanto o encaminhamento
+        // esperasse recibo, pelo que o chefe do destino via os seus próprios
+        // técnicos recusados com "Selecione usuário do seu departamento". Ver
+        // DocumentoPermissionService::departamentosComCustodia().
+        $deps = array_values(array_intersect(
+            $this->permissionService->departamentosComCustodia($documento),
+            $this->permissionService->getUserDepartments($actor)
+        ));
+
+        if (empty($deps)) {
+            return 'Selecione usuário do seu departamento.';
+        }
+
+        $pertence = in_array((int) $destino->departamento_id, $deps, true)
+            || $destino->departamentos()->whereIn('departamento_id', $deps)->exists();
 
         return $pertence ? null : 'Selecione usuário do seu departamento.';
     }
