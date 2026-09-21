@@ -85,7 +85,10 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('empresas', EmpresaController::class);
 
     // Rotas para o módulo de Departamentos
-    Route::resource('departamentos', DepartamentoController::class);
+    // 'show' não existe no controller: a resource completa registava uma rota
+    // que só podia dar 500. A gestão vive em index/create/edit.
+    Route::resource('departamentos', DepartamentoController::class)
+        ->except(['show']);
     Route::resource('gabinetes', GabineteController::class);
 
     // Rotas para o Módulo de Gestão de Lotes de Terra e Atribuição

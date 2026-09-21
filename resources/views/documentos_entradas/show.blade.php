@@ -159,5 +159,5 @@
             'ctxTitulo' => 'este documento de entrada',
         ])
     @endif
-    @include('documentos_entradas.partials.modal-despacho', ['doc' => $doc, 'departamentos' => $departamentos])
+    @include('documentos_entradas.partials.modal-despacho', ['doc' => $doc])
 @endsection

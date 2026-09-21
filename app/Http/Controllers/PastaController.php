@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\DocumentoStatus;
 use App\Models\DocumentoEntrada;
 use App\Models\DocumentoInterno;
 use App\Models\Pasta;
@@ -223,14 +224,22 @@ class PastaController extends Controller
     public function desarquivar($documentoId)
     {
         $documento = DocumentoEntrada::findOrFail($documentoId);
+
+        // Repõe o estado anterior ao arquivamento, gravado em status_pre_arquivo.
+        // Antes repunha sempre 'registrado' — o valor legado do estado de nascença —
+        // fosse qual fosse o percurso já feito: um documento tratado voltava a
+        // aparecer na fila de quem espera despacho, como se nunca tivesse sido
+        // visto. Sem memória gravada (documentos arquivados antes desta coluna
+        // existir e não reconstituídos), recai no estado de nascença atual.
+        $anterior = $documento->status_pre_arquivo ?: DocumentoStatus::PENDENTE_TRATAMENTO->value;
+
         $documento->update([
             'pasta_id' => null,
             'arquivado' => false,
             'arquivado_em' => null,
             'arquivado_por' => null,
-            'status' => 'registrado', // Revert to registered or something else? Maybe keep previous status?
-            // For now 'registrado' seems safe or maybe just leave it 'arquivado' in status but false in arquivado flag?
-            // No, consistency. Let's set to 'registrado'.
+            'status' => $anterior,
+            'status_pre_arquivo' => null,
         ]);
 
         return redirect()->back()->with('success', 'Documento desarquivado com sucesso.');

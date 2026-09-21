@@ -1,0 +1,14 @@
+{
+  "port": 18090,
+  "allowed_origins": [
+    "http://162.35.116.198",
+    "http://localhost",
+    "http://127.0.0.1:8000"
+  ],
+  "pairing_token": "",
+  "driver": "wia",
+  "max_pages": 100,
+  "max_body_bytes": 65536,
+  "scan_timeout_seconds": 180,
+  "preview_max_edge": 320
+}

@@ -32,6 +32,7 @@ class DocumentoEntrada extends Model
         'departamento_id',
         'user_id',
         'status',
+        'status_pre_arquivo',
         'sla_nivel_notificado',
         'sla_escalado_em',
         'arquivo_caminho',
@@ -56,7 +57,8 @@ class DocumentoEntrada extends Model
         'data_entrada' => 'date',
         'data_documento' => 'date',
         'saida_gabinete_data' => 'date',
-        'encaminhamento_data' => 'date',
+        // DATETIME, não DATE: a hora do encaminhamento é parte do registo.
+        'encaminhamento_data' => 'datetime',
         'visto_departamento_data' => 'datetime',
         'visto_gabinete_data' => 'datetime',
         'arquivado_em' => 'datetime',
@@ -112,6 +114,31 @@ class DocumentoEntrada extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Número de ficheiros distintos do documento.
+     *
+     * O contador do cabeçalho somava sempre 1 por `arquivo_caminho`, mas o
+     * registo com anexos copia o caminho do primeiro anexo para esse campo —
+     * é o mesmo ficheiro. Dois anexos apareciam como "3". Só conta à parte o
+     * ficheiro principal que não esteja já entre os anexos, caso dos registos
+     * antigos em que ele foi carregado sozinho.
+     */
+    public function totalDeFicheiros(): int
+    {
+        $anexos = $this->anexos;
+        $total = $anexos->count();
+
+        if (! $this->arquivo_caminho) {
+            return $total;
+        }
+
+        $jaListado = $anexos->contains(
+            fn ($anexo) => $anexo->caminho_arquivo === $this->arquivo_caminho
+        );
+
+        return $jaListado ? $total : $total + 1;
     }
 
     public function temTratamentoDeChefia(): bool

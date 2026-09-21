@@ -5,7 +5,7 @@
                         <i class="fas fa-paperclip text-secondary"></i>
                         <span>Arquivos & Anexos</span>
                     </h6>
-                    <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ $doc->anexos->count() + ($doc->arquivo_caminho ? 1 : 0) }}</span>
+                    <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ $doc->totalDeFicheiros() }}</span>
                 </div>
                 <div class="card-body p-0">
                     <ul class="list-group list-group-flush">

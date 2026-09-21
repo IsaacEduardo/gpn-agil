@@ -41,7 +41,23 @@ class RolePermissionController extends Controller
 
         $allRoles = Role::orderBy('name')->get();
 
-        $systemRoleNames = ['admin', 'user', 'chefe-departamento', 'chefe-gabinete', 'gestor-logistica'];
+        // Perfis do sistema: os papéis funcionais que o formulário de utilizadores
+        // oferece, por oposição aos papéis criados a partir do nome de um
+        // departamento (esses aparecem no separador "Departamentos").
+        //
+        // 'tecnico' e 'super-chefe-gabinete' faltavam nesta lista, pelo que caíam
+        // no separador dos departamentos e davam a impressão de não terem
+        // configuração possível — sendo o técnico o perfil que mais executa
+        // trabalho no sistema.
+        $systemRoleNames = [
+            'admin',
+            'super-chefe-gabinete',
+            'chefe-gabinete',
+            'chefe-departamento',
+            'tecnico',
+            'gestor-logistica',
+            'user',
+        ];
 
         $systemRoles = $allRoles->filter(function ($role) use ($systemRoleNames) {
             return in_array($role->name, $systemRoleNames);

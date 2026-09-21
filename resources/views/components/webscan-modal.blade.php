@@ -1,370 +1,71 @@
 @props(['targetInputId' => 'fileInput', 'modalId' => 'webscanModal'])
 
-{{-- Componente Modal de Digitalização Direta (WebScan Bridge) --}}
 <div class="modal fade" id="{{ $modalId }}" tabindex="-1" aria-labelledby="{{ $modalId }}Label" aria-hidden="true" data-bs-backdrop="static">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg rounded-4">
-            
-            {{-- Header --}}
             <div class="modal-header bg-primary text-white py-3 rounded-top-4">
-                <h5 class="modal-title fw-bold d-flex align-items-center gap-2" id="{{ $modalId }}Label">
-                    <i class="fas fa-print fs-4"></i>
-                    <span>Digitalizar Documentos (Scanner Direct)</span>
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title fw-bold d-flex align-items-center gap-2" id="{{ $modalId }}Label"><i class="fas fa-print"></i> Digitalizar documento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
-
-            {{-- Body --}}
             <div class="modal-body p-4">
-
-                {{-- Status Alert do Agente --}}
-                <div id="webscanAgentStatus" class="alert alert-light border d-flex align-items-center justify-content-between p-3 rounded-3 mb-4">
-                    <div class="d-flex align-items-center gap-3">
-                        <span id="webscanStatusIndicator" class="spinner-grow spinner-grow-sm text-warning" role="status"></span>
-                        <div>
-                            <strong id="webscanStatusText" class="d-block text-dark">Verificando comunicação com scanner local...</strong>
-                            <small class="text-muted">Serviço WebScan Bridge (127.0.0.1:18090)</small>
-                        </div>
-                    </div>
-                    <button type="button" id="btnRetryWebscanAgent" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
-                        <i class="fas fa-sync-alt me-1"></i> Reconectar
-                    </button>
+                <div id="webscanAgentStatus" class="alert alert-light border d-flex align-items-center justify-content-between gap-3 mb-3" role="status">
+                    <div><i id="webscanStatusIcon" class="fas fa-circle-notch fa-spin text-warning me-2"></i><strong id="webscanStatusText">A verificar o agente local…</strong><div id="webscanStatusHelp" class="small text-muted mt-1">O scanner é usado através do WebScan Bridge instalado neste computador.</div></div>
+                    <button type="button" id="btnRetryWebscanAgent" class="btn btn-sm btn-outline-secondary">Tentar novamente</button>
                 </div>
-
-                {{-- Painel de Configurações do Scanner --}}
-                <div class="card border-0 bg-light rounded-3 p-3 mb-4">
-                    <div class="row g-3 align-items-center">
-                        
-                        {{-- Seletor de Scanner --}}
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted mb-1">Scanner Conectado</label>
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text bg-white"><i class="fas fa-scanner text-primary"></i></span>
-                                <select id="webscanScannerSelect" class="form-select bg-white fw-semibold" disabled>
-                                    <option value="">Aguardando detecção de hardware...</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        {{-- Resolução DPI --}}
-                        <div class="col-md-3">
-                            <label class="form-label small fw-bold text-muted mb-1">Resolução (DPI)</label>
-                            <select id="webscanDpiSelect" class="form-select form-select-sm bg-white">
-                                <option value="200" selected>200 DPI (Padrão/Leve)</option>
-                                <option value="300">300 DPI (Alta Qualidade)</option>
-                            </select>
-                        </div>
-
-                        {{-- Modo de Cor --}}
-                        <div class="col-md-3">
-                            <label class="form-label small fw-bold text-muted mb-1">Modo de Cor</label>
-                            <select id="webscanColorModeSelect" class="form-select form-select-sm bg-white">
-                                <option value="color" selected>Colorido</option>
-                                <option value="bw">Preto e Branco (Rápido)</option>
-                                <option value="gray">Tons de Cinza</option>
-                            </select>
-                        </div>
-
-                        {{-- Opções Rápidas (ADF / Duplex) --}}
-                        <div class="col-md-6">
-                            <div class="d-flex gap-3">
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" id="webscanAdfSwitch" checked>
-                                    <label class="form-check-label small fw-semibold text-dark" for="webscanAdfSwitch">Alimentador Automático (ADF)</label>
-                                </div>
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" id="webscanDuplexSwitch">
-                                    <label class="form-check-label small fw-semibold text-dark" for="webscanDuplexSwitch">Frente e Verso (Duplex)</label>
-                                </div>
-                            </div>
-                        </div>
-
-                        {{-- Botão de Disparo --}}
-                        <div class="col-md-6 text-end">
-                            <button type="button" id="btnStartScanAction" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" disabled>
-                                <i class="fas fa-play me-2"></i> Iniciar Digitalização
-                            </button>
-                        </div>
-
+                <div id="webscanPairingPanel" class="alert alert-warning d-none">
+                    <label for="webscanPairingToken" class="form-label fw-semibold">Código de pareamento do scanner</label>
+                    <div class="input-group"><input id="webscanPairingToken" class="form-control" type="password" autocomplete="off" placeholder="Introduza o código configurado no agente"><button id="btnSaveWebscanPairing" class="btn btn-warning" type="button">Conectar</button></div>
+                    <div class="form-text">O código fica apenas nesta sessão do navegador.</div>
+                </div>
+                <div class="card border-0 bg-light rounded-3 p-3 mb-3">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-6"><label class="form-label small fw-bold">Scanner disponível</label><select id="webscanScannerSelect" class="form-select" disabled><option value="">Nenhum scanner detetado</option></select></div>
+                        <div class="col-md-3"><label class="form-label small fw-bold">Resolução</label><select id="webscanDpiSelect" class="form-select"><option value="200">200 DPI</option></select></div>
+                        <div class="col-md-3"><label class="form-label small fw-bold">Cor</label><select id="webscanColorModeSelect" class="form-select"><option value="color">Colorido</option></select></div>
+                        <div class="col-md-6 d-flex gap-4"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="webscanAdfSwitch"><label class="form-check-label" for="webscanAdfSwitch">Alimentador (ADF)</label></div><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="webscanDuplexSwitch"><label class="form-check-label" for="webscanDuplexSwitch">Frente e verso</label></div></div>
+                        <div class="col-md-6 text-md-end"><button type="button" id="btnStartScanAction" class="btn btn-primary px-4 fw-bold" disabled><i class="fas fa-play me-2"></i>Iniciar digitalização</button></div>
                     </div>
                 </div>
-
-                {{-- Barra de Progresso do Escaneamento --}}
-                <div id="webscanProgressBarContainer" class="d-none mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span id="webscanProgressStatusText" class="small fw-bold text-primary">Capturando páginas do alimentador...</span>
-                        <span id="webscanProgressPercent" class="small text-muted">0%</span>
-                    </div>
-                    <div class="progress" style="height: 10px;">
-                        <div id="webscanProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%"></div>
-                    </div>
-                </div>
-
-                {{-- Área de Visualização de Miniaturas das Páginas Capturadas --}}
-                <div>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
-                            <i class="fas fa-images text-secondary"></i>
-                            <span>Páginas Capturadas</span>
-                            <span id="webscanPageBadge" class="badge bg-secondary rounded-pill">0 páginas</span>
-                        </h6>
-                        <button type="button" id="btnClearAllPages" class="btn btn-link btn-sm text-danger text-decoration-none d-none">
-                            <i class="fas fa-trash me-1"></i> Limpar Tudo
-                        </button>
-                    </div>
-
-                    {{-- Container das Miniaturas --}}
-                    <div id="webscanThumbnailsContainer" class="border rounded-4 p-3 bg-light d-flex flex-wrap gap-3 align-items-center justify-content-start" style="min-height: 180px; max-height: 320px; overflow-y: auto;">
-                        <div id="webscanEmptyPlaceholder" class="text-center w-100 py-4 text-muted">
-                            <i class="fas fa-scanner fs-1 opacity-25 d-block mb-2"></i>
-                            <p class="mb-0 small">Nenhuma página capturada ainda. Clique em "Iniciar Digitalização" acima.</p>
-                        </div>
-                    </div>
-                </div>
-
+                <div id="webscanProgressPanel" class="d-none mb-3"><div class="d-flex justify-content-between small mb-1"><span id="webscanProgressText">A preparar…</span><span id="webscanProgressValue">0%</span></div><div class="progress" style="height:8px"><div id="webscanProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div></div></div>
+                <div class="d-flex justify-content-between align-items-center mb-2"><h6 class="mb-0 fw-bold">Pré-visualização</h6><span id="webscanPageBadge" class="badge bg-secondary">0 páginas</span></div>
+                <div id="webscanThumbnailsContainer" class="border rounded-3 p-3 bg-light d-flex flex-wrap gap-2" style="min-height:120px"><p id="webscanEmptyPlaceholder" class="text-muted small w-100 text-center my-auto">Nenhuma página digitalizada.</p></div>
+                <p id="webscanSizeMessage" class="small text-muted mt-2 mb-0"></p>
             </div>
-
-            {{-- Footer --}}
-            <div class="modal-footer border-0 pt-0 pb-4 px-4 d-flex justify-content-between align-items-center">
-                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" id="btnConfirmAttachScan" class="btn btn-success rounded-pill px-5 fw-bold shadow" disabled>
-                    <i class="fas fa-check-circle me-2"></i> Confirmar e Anexar ao Documento
-                </button>
-            </div>
-
+            <div class="modal-footer border-0"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button><button type="button" id="btnConfirmAttachScan" class="btn btn-success px-4 fw-bold" disabled><i class="fas fa-paperclip me-2"></i>Anexar PDF</button></div>
         </div>
     </div>
 </div>
 
-{{-- Scripts do Modal --}}
 <script src="{{ asset('js/webscan-bridge.js') }}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const bridge = new WebScanBridge();
-    const targetInputId = '{{ $targetInputId }}';
-    
-    // Elementos DOM
-    const statusIndicator = document.getElementById('webscanStatusIndicator');
-    const statusText = document.getElementById('webscanStatusText');
-    const scannerSelect = document.getElementById('webscanScannerSelect');
-    const btnStartScan = document.getElementById('btnStartScanAction');
-    const btnConfirmAttach = document.getElementById('btnConfirmAttachScan');
-    const thumbnailsContainer = document.getElementById('webscanThumbnailsContainer');
-    const emptyPlaceholder = document.getElementById('webscanEmptyPlaceholder');
-    const pageBadge = document.getElementById('webscanPageBadge');
-    const btnClearAll = document.getElementById('btnClearAllPages');
-    const progressBarContainer = document.getElementById('webscanProgressBarContainer');
-    const progressBar = document.getElementById('webscanProgressBar');
-    const progressStatusText = document.getElementById('webscanProgressStatusText');
+document.addEventListener('DOMContentLoaded', () => {
+    const maxBytes = {{ \App\Http\Requests\StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB * 1024 }};
+    const bridge = new WebScanBridge({ baseUrl: '{{ config('webscan.agent_url', 'http://127.0.0.1:18090') }}' });
+    const el = id => document.getElementById(id);
+    const scanner = el('webscanScannerSelect'), start = el('btnStartScanAction'), attach = el('btnConfirmAttachScan');
+    const badge = el('mainScannerBadgeIndicator_{{ $targetInputId }}'), opener = el('btnOpenScannerModal_{{ $targetInputId }}');
+    const setStatus = (kind, text, help = '') => { el('webscanStatusIcon').className = `fas ${kind === 'ok' ? 'fa-circle-check text-success' : kind === 'error' ? 'fa-circle-xmark text-danger' : 'fa-circle-notch fa-spin text-warning'} me-2`; el('webscanStatusText').textContent = text; el('webscanStatusHelp').textContent = help; };
+    const setMain = online => { if (badge) badge.innerHTML = online ? '<i class="fas fa-circle text-success me-1 small"></i> Scanner ativo' : '<i class="fas fa-circle text-secondary me-1 small"></i> Scanner offline'; if (opener) opener.disabled = !online; };
+    const selected = () => bridge.scanners.find(item => item.id === scanner.value);
+    const populateCapabilities = () => { const item = selected(), caps = item?.capabilities || {}; const fill = (target, values, label) => { target.innerHTML = ''; (values || []).forEach(value => target.add(new Option(label(value), value))); }; fill(el('webscanDpiSelect'), caps.dpis || [], value => `${value} DPI`); fill(el('webscanColorModeSelect'), caps.color_modes || [], value => ({bw:'Preto e branco', gray:'Tons de cinza', color:'Colorido'}[value] || value)); const sources = caps.sources || []; el('webscanAdfSwitch').checked = sources.includes('adf'); el('webscanAdfSwitch').disabled = !sources.includes('adf'); el('webscanDuplexSwitch').checked = false; el('webscanDuplexSwitch').disabled = !caps.duplex_supported; };
+    const render = () => { const pages = bridge.pages; el('webscanPageBadge').textContent = `${pages.length} página(s)`; el('webscanThumbnailsContainer').innerHTML = pages.length ? pages.map(page => `<img class="border rounded" style="width:96px;height:96px;object-fit:contain;background:#fff" alt="Página ${page.number}" src="${page.previewUrl}">`).join('') : '<p class="text-muted small w-100 text-center my-auto">Nenhuma página digitalizada.</p>'; const valid = bridge.lastPdf && bridge.lastPdf.size <= maxBytes; attach.disabled = !valid; el('webscanSizeMessage').textContent = bridge.lastPdf ? `PDF: ${(bridge.lastPdf.size / 1024 / 1024).toFixed(2)} MB de 10 MB permitidos.${valid ? '' : ' O ficheiro excede o limite.'}` : ''; };
+    const load = async () => { start.disabled = true; scanner.disabled = true; const health = await bridge.checkStatus(); if (health.status !== 'online') { setMain(false); setStatus('error', 'Agente local indisponível', health.message || 'Inicie o WebScan Bridge neste computador.'); el('webscanPairingPanel').classList.toggle('d-none', health.error_code !== 'PAIRING_REQUIRED'); return; } try { const scanners = await bridge.getScanners(); setMain(true); if (!scanners.length) { setStatus('error', 'Nenhum scanner detetado', 'Verifique a ligação e o driver do equipamento.'); return; } scanner.innerHTML = scanners.map(item => `<option value="${item.id}">${item.name} (${item.driver})</option>`).join(''); scanner.disabled = false; start.disabled = false; populateCapabilities(); setStatus('ok', 'Scanner pronto', `${scanners.length} equipamento(s) disponível(is).`); } catch (error) { setMain(false); setStatus('error', 'Não foi possível consultar scanners', error.message); } };
+    scanner.addEventListener('change', populateCapabilities);
+    bridge.onProgressCallback = progress => { el('webscanProgressPanel').classList.remove('d-none'); const value = Math.max(0, Math.min(100, progress.percent || 0)); el('webscanProgressBar').style.width = `${value}%`; el('webscanProgressValue').textContent = `${value}%`; el('webscanProgressText').textContent = progress.message || 'A digitalizar…'; };
+    start.addEventListener('click', async () => { start.disabled = true; bridge.clear(); render(); try { await bridge.startScan({ scanner_id: scanner.value, dpi: Number(el('webscanDpiSelect').value), color_mode: el('webscanColorModeSelect').value, source: el('webscanAdfSwitch').checked ? 'adf' : 'flatbed', duplex: el('webscanDuplexSwitch').checked, auto_deskew: true, auto_crop: true }); render(); } catch (error) { setStatus('error', 'Falha na digitalização', error.message); if (window.Toast) window.Toast.error('Scanner', error.message); } finally { start.disabled = !scanner.value; setTimeout(() => el('webscanProgressPanel').classList.add('d-none'), 1200); } });
+    attach.addEventListener('click', () => { const input = el('{{ $targetInputId }}'); if (!bridge.lastPdf || bridge.lastPdf.size > maxBytes || !input) return; const files = new DataTransfer(); Array.from(input.files || []).forEach(file => files.items.add(file)); files.items.add(bridge.lastPdf); input.files = files.files; input.dispatchEvent(new Event('change', { bubbles: true })); bootstrap.Modal.getInstance(el('{{ $modalId }}'))?.hide(); });
+    el('btnRetryWebscanAgent').addEventListener('click', load); el('btnSaveWebscanPairing').addEventListener('click', () => { bridge.setPairingToken(el('webscanPairingToken').value); load(); });
 
-    // Elementos Externos de Status na Tela Principal
-    const mainScannerBadge = document.getElementById('mainScannerBadgeIndicator');
-    const btnOpenScannerModal = document.getElementById('btnOpenScannerModal');
-
-    // Healthcheck Inicial
-    async function checkAgentHealth() {
-        statusIndicator.className = 'spinner-grow spinner-grow-sm text-warning';
-        statusText.innerText = 'Conectando ao agente de digitalização local...';
-        
-        const health = await bridge.checkStatus();
-        
-        if (health.status === 'online') {
-            statusIndicator.className = 'fas fa-check-circle text-success fs-5';
-            statusText.innerHTML = '<span class="text-success fw-bold">Agente WebScan Bridge Conectado</span>';
-            
-            if (mainScannerBadge) {
-                mainScannerBadge.className = 'badge bg-success-subtle text-success border border-success rounded-pill px-2 py-1';
-                mainScannerBadge.innerHTML = '<i class="fas fa-circle text-success me-1 small"></i> Scanner Ativo';
-            }
-            if (btnOpenScannerModal) {
-                btnOpenScannerModal.classList.remove('disabled');
-            }
-
-            // Carregar lista de scanners
-            loadScanners();
-        } else {
-            statusIndicator.className = 'fas fa-exclamation-circle text-danger fs-5';
-            statusText.innerHTML = '<span class="text-danger fw-bold">Agente Local Desconectado</span> <br><small class="text-muted">Certifique-se de que o WebScan Bridge está em execução em 127.0.0.1:18090</small>';
-            scannerSelect.disabled = true;
-            btnStartScan.disabled = true;
-            
-            if (mainScannerBadge) {
-                mainScannerBadge.className = 'badge bg-light text-muted border rounded-pill px-2 py-1';
-                mainScannerBadge.innerHTML = '<i class="fas fa-circle text-secondary me-1 small"></i> Scanner Offline';
-            }
-        }
-    }
-
-    async function loadScanners() {
-        const scanners = await bridge.getScanners();
-        scannerSelect.innerHTML = '';
-        
-        if (scanners.length > 0) {
-            scanners.forEach(sc => {
-                const opt = document.createElement('option');
-                opt.value = sc.id;
-                opt.innerText = `${sc.name} (${sc.driver})`;
-                scannerSelect.appendChild(opt);
-            });
-            scannerSelect.disabled = false;
-            btnStartScan.disabled = false;
-        } else {
-            scannerSelect.innerHTML = '<option value="virtual_default">Scanner Padrão TWAIN/WIA (Genérico)</option>';
-            scannerSelect.disabled = false;
-            btnStartScan.disabled = false;
-        }
-    }
-
-    // Iniciar Digitalização
-    btnStartScan.addEventListener('click', async function() {
-        const options = {
-            scanner_id: scannerSelect.value,
-            dpi: document.getElementById('webscanDpiSelect').value,
-            color_mode: document.getElementById('webscanColorModeSelect').value,
-            source: document.getElementById('webscanAdfSwitch').checked ? 'adf' : 'flatbed',
-            duplex: document.getElementById('webscanDuplexSwitch').checked
-        };
-
-        btnStartScan.disabled = true;
-        progressBarContainer.classList.remove('d-none');
-        progressBar.style.width = '30%';
-        progressStatusText.innerText = 'Comunicando com o scanner físico...';
-
-        try {
-            await bridge.startScan(options);
-            progressBar.style.width = '100%';
-            progressStatusText.innerText = 'Digitalização concluída com sucesso!';
-            setTimeout(() => progressBarContainer.classList.add('d-none'), 1500);
-        } catch (err) {
-            if (window.Toast) {
-                window.Toast.error('Falha no Scanner', 'Falha na digitalização: ' + err.message);
-            }
-            progressBarContainer.classList.add('d-none');
-        } finally {
-            btnStartScan.disabled = false;
-            renderThumbnails();
-        }
-    });
-
-    // Evento de captura de página
-    bridge.onPageCapturedCallback = function() {
-        renderThumbnails();
-    };
-
-    function renderThumbnails() {
-        const pages = bridge.pages;
-        pageBadge.innerText = `${pages.length} página(s)`;
-        
-        if (pages.length > 0) {
-            emptyPlaceholder.classList.add('d-none');
-            btnClearAll.classList.remove('d-none');
-            btnConfirmAttach.disabled = false;
-        } else {
-            emptyPlaceholder.classList.remove('d-none');
-            btnClearAll.classList.add('d-none');
-            btnConfirmAttach.disabled = true;
-        }
-
-        // Renderizar miniaturas
-        thumbnailsContainer.innerHTML = '';
-        if (pages.length === 0) {
-            thumbnailsContainer.appendChild(emptyPlaceholder);
-            return;
-        }
-
-        pages.forEach((p, index) => {
-            const card = document.createElement('div');
-            card.className = 'card border shadow-sm rounded-3 overflow-hidden position-relative';
-            card.style.width = '130px';
-            
-            card.innerHTML = `
-                <div class="position-absolute top-0 start-0 bg-primary text-white small px-2 py-1 rounded-bottom-end fw-bold" style="font-size: 0.7rem;">
-                    Pág ${index + 1}
-                </div>
-                <div class="p-2 text-center bg-white" style="height: 140px; display: flex; align-items: center; justify-content: center;">
-                    <img src="${p.imageBase64}" style="max-width: 100%; max-height: 100%; transform: rotate(${p.rotation}deg); transition: transform 0.2s ease;">
-                </div>
-                <div class="card-footer p-1 bg-light d-flex justify-content-around">
-                    <button type="button" class="btn btn-sm btn-link text-dark p-0 btn-rotate" data-id="${p.id}" title="Girar 90°">
-                        <i class="fas fa-redo-alt"></i>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-link text-danger p-0 btn-delete" data-id="${p.id}" title="Excluir">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            `;
-
-            // Botão Rotação
-            card.querySelector('.btn-rotate').addEventListener('click', () => {
-                bridge.rotatePage(p.id, 90);
-                renderThumbnails();
-            });
-
-            // Botão Excluir
-            card.querySelector('.btn-delete').addEventListener('click', () => {
-                bridge.deletePage(p.id);
-                renderThumbnails();
-            });
-
-            thumbnailsContainer.appendChild(card);
-        });
-    }
-
-    // Limpar tudo
-    btnClearAll.addEventListener('click', function() {
-        if (confirm('Deseja descartar todas as páginas digitalizadas?')) {
-            bridge.clearPages();
-            renderThumbnails();
-        }
-    });
-
-    // Confirmar e Anexar ao Formulário
-    btnConfirmAttach.addEventListener('click', async function() {
-        btnConfirmAttach.disabled = true;
-        btnConfirmAttach.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Anexando...';
-
-        try {
-            const pdfFile = await bridge.generateFile('documento_digitalizado_' + new Date().getTime() + '.pdf');
-            const targetInput = document.getElementById(targetInputId);
-
-            if (targetInput) {
-                const dataTransfer = new DataTransfer();
-                
-                // Manter arquivos já existentes no input se houver
-                if (targetInput.files && targetInput.files.length > 0) {
-                    Array.from(targetInput.files).forEach(f => dataTransfer.items.add(f));
-                }
-                
-                // Adicionar o PDF digitalizado
-                dataTransfer.items.add(pdfFile);
-                targetInput.files = dataTransfer.files;
-
-                // Disparar evento de alteração para atualizar a lista do componente file-upload
-                targetInput.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-
-            // Fechar modal
-            const modalEl = document.getElementById('{{ $modalId }}');
-            const bsModal = bootstrap.Modal.getInstance(modalEl);
-            if (bsModal) bsModal.hide();
-
-            if (window.Toast) {
-                window.Toast.success('Digitalização Concluída', 'Documento digitalizado anexado ao formulário com sucesso!');
-            }
-        } catch (err) {
-            if (window.Toast) {
-                window.Toast.error('Erro na Digitalização', 'Falha ao compilar documento: ' + err.message);
-            }
-        } finally {
-            btnConfirmAttach.disabled = false;
-            btnConfirmAttach.innerHTML = '<i class="fas fa-check-circle me-2"></i> Confirmar e Anexar ao Documento';
-        }
-    });
-
-    // Reconectar Agente
-    document.getElementById('btnRetryWebscanAgent').addEventListener('click', checkAgentHealth);
-
-    // Checagem ao carregar a página
-    checkAgentHealth();
+    // O botão "Tentar novamente" está dentro do modal, e o modal só abre pelo
+    // botão que fica desativado enquanto o agente estiver offline. Quem arranque
+    // o agente depois da página carregada ficaria preso sem recarregar (F5), por
+    // isso reavaliamos sozinhos: ao voltar o foco à janela e, em pano de fundo,
+    // enquanto continuar offline. Assim que fica online, a sondagem pára.
+    let recheck = null;
+    const scheduleRecheck = () => { if (!recheck) recheck = setInterval(refresh, 20000); };
+    const stopRecheck = () => { if (recheck) { clearInterval(recheck); recheck = null; } };
+    async function refresh() { await load(); if (bridge.isOnline) stopRecheck(); else scheduleRecheck(); }
+    window.addEventListener('focus', () => { if (!bridge.isOnline) refresh(); });
+    refresh();
 });
 </script>

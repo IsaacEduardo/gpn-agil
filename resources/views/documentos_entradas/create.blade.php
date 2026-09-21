@@ -163,8 +163,14 @@
                                         <select name="departamento_id" class="form-select @error('departamento_id') is-invalid @enderror" id="floatingDep" required
                                                 data-sugestao-destino='@json($sugestoesDestino ?? [])'>
                                             <option value="" selected disabled>Selecione...</option>
+                                            {{-- Campo obrigatório sem valor por omissão: abria pré-preenchido com o
+                                                 departamento de quem regista, e um registo submetido sem reparar
+                                                 encaminhava o documento para o sítio errado, em silêncio. A sugestão
+                                                 pelo histórico da procedência continua a existir — essa preenche e
+                                                 avisa (ver #avisoSugestaoDestino). Só old() repõe, após erro de
+                                                 validação, o que o utilizador tinha escolhido. --}}
                                             @foreach ($departamentos as $dep)
-                                                <option value="{{ $dep->id }}" {{ (old('departamento_id') ?? ($userDepartamentoId ?? '')) == $dep->id ? 'selected' : '' }}>
+                                                <option value="{{ $dep->id }}" {{ (string) old('departamento_id') === (string) $dep->id ? 'selected' : '' }}>
                                                     {{ $dep->nome }}
                                                 </option>
                                             @endforeach

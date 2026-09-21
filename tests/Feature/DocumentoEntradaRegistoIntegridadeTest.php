@@ -177,4 +177,22 @@ class DocumentoEntradaRegistoIntegridadeTest extends TestCase
             ]))
             ->assertSessionHasErrors('anexos.0');
     }
+
+    /** Um JPEG disfarçado de PDF não pode entrar no OCR nem no arquivo. */
+    public function test_recusa_imagem_com_extensao_pdf(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'pdf-disfarcado-');
+        file_put_contents($path, hex2bin('ffd8ffe000104a46494600010100000100010000ffd9'));
+        $ficheiroDisfarcado = new UploadedFile($path, 'digitalizacao.pdf', 'application/pdf', null, true);
+
+        try {
+            $this->actingAs($this->balcao)
+                ->post(route('documentos-entradas.store'), $this->payload([
+                    'anexos' => [$ficheiroDisfarcado],
+                ]))
+                ->assertSessionHasErrors('anexos.0');
+        } finally {
+            @unlink($path);
+        }
+    }
 }

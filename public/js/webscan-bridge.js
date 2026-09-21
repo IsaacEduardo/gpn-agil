@@ -1,218 +1,168 @@
 /**
- * WebScanBridge Client Library
- * Biblioteca de integração entre a aplicação EDMS Web e o agente local de digitalização (TWAIN/WIA/SANE).
- * Agente escuta por padrão em http://127.0.0.1:18090
+ * Cliente do WebScan Bridge. O navegador nunca fala directamente com TWAIN/WIA:
+ * comunica apenas com o agente local, limitado ao loopback.
  */
+(function (global) {
+    'use strict';
 
-class WebScanBridge {
-    constructor(baseUrl = 'http://127.0.0.1:18090') {
-        this.baseUrl = baseUrl;
-        this.isOnline = false;
-        this.scanners = [];
-        this.pages = []; // Lista de objetos { id, imageBase64, rotation, width, height }
-        this.onProgressCallback = null;
-        this.onPageCapturedCallback = null;
-        this.onErrorCallback = null;
-    }
+    const PDF_MIME = 'application/pdf';
 
-    /**
-     * Verifica o estado de comunicação (healthcheck) com o agente local.
-     */
-    async checkStatus() {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-            const response = await fetch(`${this.baseUrl}/status`, {
-                method: 'GET',
-                signal: controller.signal,
-                headers: { 'Accept': 'application/json' }
-            });
-            clearTimeout(timeoutId);
-
-            if (response.ok) {
-                const data = await response.json();
-                this.isOnline = data.status === 'online';
-                return data;
-            }
-        } catch (e) {
-            this.isOnline = false;
+    class WebScanError extends Error {
+        constructor(message, code = 'AGENT_ERROR') {
+            super(message);
+            this.name = 'WebScanError';
+            this.code = code;
         }
-        return { status: 'offline' };
     }
 
-    /**
-     * Obtém a lista de scanners conectados ao computador do utilizador.
-     */
-    async getScanners() {
-        if (!this.isOnline) {
+    class WebScanBridge {
+        constructor(options = {}) {
+            this.baseUrl = (options.baseUrl || 'http://127.0.0.1:18090').replace(/\/$/, '');
+            this.timeoutMs = options.timeoutMs || 8000;
+            this.storage = global.sessionStorage;
+            this.pairingToken = options.pairingToken || this.storage?.getItem('webscan.pairing-token') || '';
+            this.isOnline = false;
+            this.scanners = [];
+            this.pages = [];
+            this.lastPdf = null;
+            this.onProgressCallback = null;
+        }
+
+        setPairingToken(token) {
+            this.pairingToken = (token || '').trim();
+            if (this.pairingToken) this.storage?.setItem('webscan.pairing-token', this.pairingToken);
+            else this.storage?.removeItem('webscan.pairing-token');
+        }
+
+        async request(path, options = {}) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), options.timeoutMs || this.timeoutMs);
+            const headers = new Headers(options.headers || {});
+            headers.set('Accept', 'application/json');
+            if (this.pairingToken) headers.set('X-WebScan-Pairing', this.pairingToken);
+
+            try {
+                const response = await fetch(`${this.baseUrl}${path}`, {
+                    ...options,
+                    headers,
+                    signal: controller.signal,
+                });
+                const body = await response.json().catch(() => ({}));
+                if (!response.ok) throw new WebScanError(body.message || 'O agente local recusou o pedido.', body.error_code || `HTTP_${response.status}`);
+                return body;
+            } catch (error) {
+                if (error.name === 'AbortError') throw new WebScanError('Tempo limite ao comunicar com o scanner.', 'TIMEOUT');
+                if (error instanceof WebScanError) throw error;
+                throw new WebScanError('Não foi possível comunicar com o agente local.', 'OFFLINE');
+            } finally {
+                clearTimeout(timeout);
+            }
+        }
+
+        async checkStatus() {
+            try {
+                const status = await this.request('/status', { method: 'GET', timeoutMs: 2500 });
+                this.isOnline = status.status === 'online';
+                return status;
+            } catch (error) {
+                this.isOnline = false;
+                return { status: 'offline', error_code: error.code, message: error.message };
+            }
+        }
+
+        async getScanners() {
             const status = await this.checkStatus();
             if (status.status !== 'online') return [];
+            const data = await this.request('/scanners', { method: 'GET' });
+            this.scanners = Array.isArray(data.scanners) ? data.scanners : [];
+            return this.scanners;
         }
 
-        try {
-            const response = await fetch(`${this.baseUrl}/scanners`);
-            if (response.ok) {
-                const data = await response.json();
-                this.scanners = data.scanners || [];
-                return this.scanners;
-            }
-        } catch (e) {
-            console.warn('[WebScanBridge] Falha ao buscar scanners:', e);
-        }
-        return [];
-    }
-
-    /**
-     * Executa o processo de digitalização de documentos.
-     * @param {Object} options - Parâmetros { scanner_id, dpi, color_mode, source, duplex }
-     */
-    async startScan(options = {}) {
-        const payload = {
-            scanner_id: options.scanner_id || (this.scanners[0] ? this.scanners[0].id : 'default'),
-            dpi: parseInt(options.dpi || 200),
-            color_mode: options.color_mode || 'color', // bw, gray, color
-            source: options.source || 'adf', // adf, flatbed
-            duplex: !!options.duplex,
-            auto_deskew: true,
-            auto_crop: true
-        };
-
-        if (this.onProgressCallback) {
-            this.onProgressCallback('Conectando ao scanner...');
-        }
-
-        try {
-            const response = await fetch(`${this.baseUrl}/scan`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({ message: 'Erro desconhecido no scanner.' }));
-                throw new Error(errData.message || 'Erro durante a digitalização.');
-            }
-
-            const data = await response.json();
-
-            if (data.status === 'success' && data.pages && data.pages.length > 0) {
-                data.pages.forEach(p => {
-                    this.addPage(p.image_base64, p.width, p.height);
-                });
-
-                if (this.onProgressCallback) {
-                    this.onProgressCallback(`Digitalização concluída: ${data.pages.length} página(s) capturada(s).`);
+        /**
+         * Sonda o agente enquanto a digitalização decorre.
+         *
+         * O progresso é acessório: se a sondagem falhar, a digitalização segue e
+         * apenas a barra deixa de avançar. Devolve a função que a interrompe.
+         */
+        trackProgress(intervalMs = 700) {
+            let running = true;
+            const poll = async () => {
+                while (running) {
+                    await new Promise(resolve => setTimeout(resolve, intervalMs));
+                    if (!running) return;
+                    try {
+                        const progress = await this.request('/progress', { method: 'GET', timeoutMs: 2500 });
+                        if (running && progress.active) {
+                            this.onProgressCallback?.({ percent: progress.percent, message: progress.message });
+                        }
+                    } catch (_) {
+                        // Silencioso por desenho: não há nada a comunicar ao operador.
+                    }
                 }
-                return data;
-            } else {
-                throw new Error('Nenhuma página foi capturada pelo scanner.');
+            };
+            poll();
+            return () => { running = false; };
+        }
+
+        async startScan(options) {
+            if (!options || !options.scanner_id) throw new WebScanError('Selecione um scanner disponível.', 'SCANNER_REQUIRED');
+            this.onProgressCallback?.({ percent: 5, message: 'A iniciar digitalização…' });
+            const stopTracking = this.trackProgress();
+            let data;
+            try {
+                data = await this.request('/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(options),
+                    timeoutMs: 300000,
+                });
+            } finally {
+                stopTracking();
             }
-        } catch (err) {
-            console.error('[WebScanBridge] Erro no scan:', err);
-            if (this.onErrorCallback) {
-                this.onErrorCallback(err.message);
+            this.lastPdf = this.pdfFileFromResponse(data);
+            this.pages.forEach(page => URL.revokeObjectURL(page.previewUrl));
+            this.pages = this.previewPages(data.pages || []);
+            this.onProgressCallback?.({ percent: 100, message: 'Digitalização concluída.' });
+            return { ...data, file: this.lastPdf, pages: this.pages };
+        }
+
+        pdfFileFromResponse(data) {
+            const encoded = data.pdf_base64;
+            if (!encoded || typeof encoded !== 'string') throw new WebScanError('O agente não devolveu um PDF.', 'PDF_MISSING');
+            const base64 = encoded.includes(',') ? encoded.split(',', 2)[1] : encoded;
+            let bytes;
+            try {
+                const binary = atob(base64);
+                bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+            } catch (_) {
+                throw new WebScanError('O PDF devolvido pelo agente é inválido.', 'PDF_INVALID');
             }
-            throw err;
-        }
-    }
-
-    /**
-     * Adiciona uma página digitalizada à lista de miniaturas.
-     */
-    addPage(imageBase64, width = 1654, height = 2339) {
-        const pageObj = {
-            id: 'page_' + Math.random().toString(36).substr(2, 9),
-            imageBase64: imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
-            rotation: 0,
-            width: width,
-            height: height
-        };
-        this.pages.push(pageObj);
-        if (this.onPageCapturedCallback) {
-            this.onPageCapturedCallback(pageObj, this.pages);
-        }
-        return pageObj;
-    }
-
-    /**
-     * Gira uma página específica em 90 graus.
-     */
-    rotatePage(pageId, degrees = 90) {
-        const page = this.pages.find(p => p.id === pageId);
-        if (page) {
-            page.rotation = (page.rotation + degrees) % 360;
-        }
-        return page;
-    }
-
-    /**
-     * Remove uma página da lista.
-     */
-    deletePage(pageId) {
-        this.pages = this.pages.filter(p => p.id !== pageId);
-        return this.pages;
-    }
-
-    /**
-     * Limpa todo o lote de páginas capturadas.
-     */
-    clearPages() {
-        this.pages = [];
-    }
-
-    /**
-     * Compila todas as páginas em um único objeto File em formato PDF simulado / imagem.
-     * Retorna um File pronto para ser atribuído a um input de formulário HTML.
-     */
-    async generateFile(filename = 'documento_digitalizado.pdf') {
-        if (this.pages.length === 0) {
-            throw new Error('Nenhuma página disponível para compilação.');
+            const signature = new TextDecoder().decode(bytes.slice(0, 5));
+            if (signature !== '%PDF-') throw new WebScanError('O agente devolveu conteúdo que não é PDF.', 'PDF_INVALID');
+            return new File([bytes], data.filename || `documento_digitalizado_${Date.now()}.pdf`, { type: PDF_MIME });
         }
 
-        // Criar uma representação Blob em PDF/Imagem simples combinando as páginas
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-
-        // Para simplificar a geração sem bibliotecas pesadas de terceiros,
-        // geramos um arquivo combinando as imagens em alta resolução
-        const firstPage = this.pages[0];
-        const img = new Image();
-
-        await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            img.src = firstPage.imageBase64;
-        });
-
-        canvas.width = img.width;
-        canvas.height = img.height * this.pages.length;
-
-        for (let i = 0; i < this.pages.length; i++) {
-            const p = this.pages[i];
-            const pageImg = new Image();
-            await new Promise((resolve) => {
-                pageImg.onload = resolve;
-                pageImg.src = p.imageBase64;
+        previewPages(pages) {
+            return pages.slice(0, 100).flatMap((page, index) => {
+                const encoded = page.preview_base64 || page.image_base64;
+                if (!encoded || typeof encoded !== 'string') return [];
+                try {
+                    const base64 = encoded.includes(',') ? encoded.split(',', 2)[1] : encoded;
+                    const binary = atob(base64);
+                    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+                    const mime = page.mime_type || 'image/jpeg';
+                    return [{ number: page.page_number || index + 1, previewUrl: URL.createObjectURL(new Blob([bytes], { type: mime })) }];
+                } catch (_) { return []; }
             });
-
-            ctx.save();
-            if (p.rotation !== 0) {
-                ctx.translate(canvas.width / 2, (i * img.height) + img.height / 2);
-                ctx.rotate((p.rotation * Math.PI) / 180);
-                ctx.drawImage(pageImg, -img.width / 2, -img.height / 2);
-            } else {
-                ctx.drawImage(pageImg, 0, i * img.height);
-            }
-            ctx.restore();
         }
 
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-
-        return new File([blob], filename, { type: 'application/pdf' });
+        clear() {
+            this.pages.forEach(page => URL.revokeObjectURL(page.previewUrl));
+            this.pages = [];
+            this.lastPdf = null;
+        }
     }
-}
 
-window.WebScanBridge = WebScanBridge;
+    global.WebScanBridge = WebScanBridge;
+    global.WebScanError = WebScanError;
+})(window);

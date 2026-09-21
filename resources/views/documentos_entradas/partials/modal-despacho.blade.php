@@ -42,7 +42,10 @@
                             @php
                                 $selectedDeps = old('departamentos_ids', $doc->departamentosDestino->pluck('id')->toArray());
                             @endphp
-                            @foreach(($doc->departamentos_despacho ?? $departamentos) as $dep)
+                            {{-- Sem recurso a uma lista geral: o fallback era $departamentos, todos os
+                                     departamentos da instituição, e punha no ecrã destinos de outros gabinetes.
+                                     A lista permitida é calculada no controller (departamentosDestinoPermitidos). --}}
+                            @foreach(($doc->departamentos_despacho ?? collect()) as $dep)
                                 <div class="col-md-6">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" name="departamentos_ids[]" value="{{ $dep->id }}" id="dep_dest_{{ $doc->id }}_{{ $dep->id }}" {{ in_array($dep->id, $selectedDeps) ? 'checked' : '' }}>

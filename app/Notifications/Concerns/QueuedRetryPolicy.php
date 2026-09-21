@@ -23,4 +23,29 @@ trait QueuedRetryPolicy
     {
         return [30, 120, 300];
     }
+
+    /**
+     * Ligação de fila por canal.
+     *
+     * O aviso in-app (canal 'database') é a via principal — e era a única que
+     * o destinatário tinha. Estando tudo enfileirado, bastava não haver worker
+     * a correr para nenhuma notificação chegar: o registo de entrada, o despacho
+     * e a tarefa delegada ficavam parados na tabela `jobs` e o ecrã de
+     * notificações do utilizador mostrava-se vazio, sem erro nem sinal.
+     * Notavelmente, as notificações que funcionavam eram as não enfileiradas.
+     *
+     * O canal 'database' passa a ser gravado em 'sync', no próprio pedido: é uma
+     * escrita local, barata, e deixa de depender de infraestrutura para o
+     * utilizador ser avisado. O e-mail e o broadcast — que falam com serviços
+     * externos (SMTP, Reverb) e não podem atrasar nem fazer falhar o pedido —
+     * continuam enfileirados, com a política de retentativa acima.
+     *
+     * @return array<string, string|null>
+     */
+    public function viaConnections(): array
+    {
+        return [
+            'database' => 'sync',
+        ];
+    }
 }

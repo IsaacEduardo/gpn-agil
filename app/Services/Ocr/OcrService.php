@@ -152,10 +152,18 @@ class OcrService
             $ocrText = $this->processPdfWithOcr($fullPath);
             $cleanOcrText = $this->sanitizeText($ocrText);
 
-            // Se o OCR gerou texto superior ao nativo, adota o OCR; caso contrário combina ou usa o melhor
+            // Só adotamos o OCR quando ele supera a extração nativa.
+            //
+            // A condição anterior era `$ocrWordsCount > 0`, que trocava o texto
+            // nativo por uma leitura de imagem sempre que o OCR devolvesse
+            // alguma coisa. Num despacho curto — texto nativo perfeito, mas
+            // abaixo do limiar de palavras — isso substituía o original exacto
+            // por um reconhecimento aproximado, e era esse texto degradado que
+            // ficava no arquivo e alimentava a pesquisa. O defeito esteve
+            // invisível enquanto não havia rasterizador de PDF instalado.
             $ocrWordsCount = $this->countWords($cleanOcrText);
 
-            if ($ocrWordsCount > 0) {
+            if ($ocrWordsCount > $nativeWordsCount) {
                 return [
                     'text' => $cleanOcrText,
                     'method' => 'TESSERACT_OCR',
@@ -163,11 +171,24 @@ class OcrService
                 ];
             }
 
-            // Se não gerou nada via OCR, retorna o texto nativo residual se houver
+            if ($nativeWordsCount > 0) {
+                Log::info("OCR: extração nativa mantida ({$nativeWordsCount} palavras) por superar o OCR ({$ocrWordsCount}).", [
+                    'path' => $fullPath,
+                ]);
+
+                return [
+                    'text' => $cleanNativeText,
+                    'method' => 'PDF_NATIVO',
+                    'words_count' => $nativeWordsCount,
+                ];
+            }
+
+            // Nem nativo nem OCR produziram texto: o documento fica sem camada
+            // pesquisável, mas o percurso tem de terminar com estado coerente.
             return [
-                'text' => $cleanNativeText,
-                'method' => $nativeWordsCount > 0 ? 'PDF_NATIVO' : 'TESSERACT_OCR',
-                'words_count' => $nativeWordsCount,
+                'text' => $cleanOcrText,
+                'method' => 'TESSERACT_OCR',
+                'words_count' => $ocrWordsCount,
             ];
         }
 

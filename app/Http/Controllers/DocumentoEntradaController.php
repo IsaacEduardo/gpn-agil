@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Application\DocumentManagement\Commands\CriarDocumentoEntradaCommand;
 use App\Application\DocumentManagement\DTOs\CriarDocumentoEntradaDTO;
 use App\Application\DocumentManagement\Handlers\CriarDocumentoEntradaHandler;
-use App\Enums\DocumentoStatus;
 use App\Enums\TipoRelacaoDocumento;
 use App\Http\Requests\StoreDocumentoEntradaRequest;
 use App\Jobs\ProcessarOcrAnexo;
@@ -229,14 +228,12 @@ class DocumentoEntradaController extends Controller
             return Procedencia::where('ativo', true)->orderBy('nome')->get(['id', 'nome']);
         });
 
-        $userDepartamentoId = Auth::user()->departamento_id;
-
         // Destino provavel por procedencia, a partir do historico. Fica vazio
         // enquanto nao houver base — ver departamentoSugeridoPara().
         $sugestoesDestino = $this->documentoService->sugestoesDeDestino();
 
         return view('documentos_entradas.create', compact(
-            'departamentos', 'especies', 'procedencias', 'userDepartamentoId', 'sugestoesDestino'
+            'departamentos', 'especies', 'procedencias', 'sugestoesDestino'
         ));
     }
 
@@ -430,6 +427,17 @@ class DocumentoEntradaController extends Controller
         }
 
         $canDespachar = $this->permissionService->canDespachar($actor, $doc);
+
+        // O modal de despacho recebe os destinos já filtrados, como na listagem.
+        // Sem isto caía em $departamentos — todos os departamentos da instituição —
+        // e contrariava o seu próprio texto de ajuda: despachar para fora do
+        // gabinete tem caminho próprio ("Saída de Gabinete"). Ver
+        // departamentosDestinoPermitidos().
+        $doc->setAttribute(
+            'departamentos_despacho',
+            $canDespachar ? $this->documentoService->departamentosDestinoPermitidos($doc) : collect()
+        );
+
         // A auditoria expõe IPs e o antes/depois de cada alteração: fica na
         // chefia, não em quem apenas consegue ver o documento.
         $canVerAuditoria = $actor->can('verAuditoria', $doc);
@@ -987,26 +995,21 @@ Parecer: {$t->resposta}";
                 ], 422);
             }
 
-            // Criar Tarefa/Despacho atribuída ao técnico
-            $tarefa = DocumentoTarefa::create([
-                'documento_entrada_id' => $documento->id,
-                'assigned_by_id' => $actor->id,
-                'assigned_to_user_id' => $validated['assigned_to_user_id'],
+            // Fonte única da delegação: cria a tarefa, dá o visto do departamento
+            // e dá por recebido o encaminhamento pendente.
+            //
+            // Este ramo tinha uma cópia manuscrita da lógica — e, como o ramo do
+            // gabinete e o do técnico antes dele, já divergira: criava a tarefa
+            // sem disparar TaskAssigned, pelo que o executante NUNCA era
+            // notificado por esta via; e punha o status em RECEBIDO sem tocar no
+            // encaminhamento nem na custódia, deixando os dois eixos do documento
+            // a afirmar coisas diferentes.
+            $this->documentoService->createTask($documento, [
                 'titulo' => 'Despacho Executivo / Demanda Técnica',
                 'descricao' => $validated['descricao'],
+                'assigned_to_user_id' => $validated['assigned_to_user_id'],
                 'prazo_at' => $validated['prazo_at'],
-                'status' => 'pendente',
-            ]);
-
-            // Aprovação automática do documento pelo Chefe de Departamento ao delegar
-            $documento->visto_departamento_status = 'aprovado';
-            $documento->visto_departamento_por = $actor->id;
-            $documento->visto_departamento_data = now();
-            $documento->visto_departamento_observacao = 'Aprovado automaticamente com a emissão do despacho/tarefa.';
-            if ($documento->status === DocumentoStatus::ENCAMINHADO->value) {
-                $documento->status = DocumentoStatus::RECEBIDO->value;
-            }
-            $documento->save();
+            ], $actor);
 
             $message = 'Despacho/Tarefa delegada com sucesso e documento aprovado!';
         } elseif ($profile === 'tecnico') {

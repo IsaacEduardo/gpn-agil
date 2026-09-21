@@ -1,0 +1,7 @@
+# Dependencias do agente WebScan Bridge.
+#
+# pywin32 e obrigatorio no posto de trabalho: e o que da acesso ao WIA por COM.
+# Pillow e opcional e serve apenas para as miniaturas de pre-visualizacao; sem
+# ele o agente continua a digitalizar e a devolver o PDF, apenas sem previews.
+pywin32==306 ; sys_platform == 'win32'
+Pillow>=10.0.0

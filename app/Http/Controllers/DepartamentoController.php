@@ -13,8 +13,66 @@ use Spatie\Permission\Models\Role;
 
 class DepartamentoController extends Controller
 {
+    /**
+     * Gestão da estrutura orgânica é ato de administração, não de expediente.
+     *
+     * Estas rotas estavam sem qualquer verificação: qualquer sessão autenticada
+     * — incluindo um técnico — listava, criava, editava e apagava departamentos
+     * de qualquer gabinete da instituição. A permissão 'departamentos.gerir' já
+     * existia na matriz de acesso mas nunca era consultada.
+     *
+     * Quem pode gerir:
+     *  - admin, ou quem tenha a permissão 'departamentos.gerir' — sem restrição;
+     *  - o responsável (ou super chefe) de um gabinete — apenas dentro dele.
+     *
+     * $departamento, quando dado, é ainda verificado contra o gabinete do gestor
+     * restrito, para que a posse do registo seja validada e não só o papel.
+     */
+    protected function autorizarGestao(?Departamento $departamento = null): void
+    {
+        $user = Auth::user();
+
+        if (! $user) {
+            abort(403, 'Acesso restrito.');
+        }
+
+        if ($this->gestorSemRestricao($user)) {
+            return;
+        }
+
+        $gabinete = $this->gabineteDoGestor($user);
+
+        if (! $gabinete) {
+            abort(403, 'Acesso restrito à gestão da estrutura orgânica.');
+        }
+
+        if ($departamento && (int) $departamento->gabinete_id !== (int) $gabinete->id) {
+            abort(403, 'Este departamento pertence a outro gabinete.');
+        }
+    }
+
+    /**
+     * Gestores sem restrição de gabinete: o administrador e quem detenha
+     * explicitamente 'departamentos.gerir'.
+     */
+    protected function gestorSemRestricao(User $user): bool
+    {
+        return $user->podeGerirDepartamentosSemRestricao();
+    }
+
+    /**
+     * Gabinete dentro do qual um chefe de gabinete pode gerir departamentos,
+     * ou null se o utilizador não chefia nenhum.
+     */
+    protected function gabineteDoGestor(User $user): ?Gabinete
+    {
+        return $user->gabineteGerenciado ?? $user->gabineteSuperGerenciado;
+    }
+
     public function index(Request $request)
     {
+        $this->autorizarGestao();
+
         $perPage = (int) ($request->input('per_page', 15));
         if ($perPage < 5) {
             $perPage = 5;
@@ -26,16 +84,10 @@ class DepartamentoController extends Controller
         $query = Departamento::with(['chefe', 'gabinete'])
             ->orderBy('nome');
 
-        // Restringir visualização para Chefe de Gabinete
+        // O gestor restrito a um gabinete só vê os departamentos desse gabinete.
         $user = Auth::user();
-        if ($user && $user->role && $user->role->name === 'chefe-gabinete') {
-            $gabineteChefiado = Gabinete::where('responsavel_id', $user->id)->first();
-            if ($gabineteChefiado) {
-                $query->where('gabinete_id', $gabineteChefiado->id);
-            } else {
-                // Se é chefe de gabinete mas não chefia nenhum, não vê departamentos
-                $query->where('id', -1);
-            }
+        if (! $this->gestorSemRestricao($user)) {
+            $query->where('gabinete_id', $this->gabineteDoGestor($user)->id);
         }
 
         $departamentos = $query->paginate($perPage)
@@ -46,12 +98,14 @@ class DepartamentoController extends Controller
 
     public function create()
     {
+        $this->autorizarGestao();
+
         $user = Auth::user();
         $gabinetesQuery = Gabinete::orderBy('nome');
 
-        // Se for Chefe de Gabinete, só pode criar no seu próprio gabinete
-        if ($user && $user->role && $user->role->name === 'chefe-gabinete') {
-            $gabinetesQuery->where('responsavel_id', $user->id);
+        // O gestor restrito só pode criar dentro do gabinete que chefia.
+        if (! $this->gestorSemRestricao($user)) {
+            $gabinetesQuery->whereKey($this->gabineteDoGestor($user)->id);
         }
 
         $gabinetes = $gabinetesQuery->get();
@@ -61,14 +115,15 @@ class DepartamentoController extends Controller
 
     public function store(Request $request)
     {
+        $this->autorizarGestao();
+
         $user = Auth::user();
 
-        // Validação extra para Chefe de Gabinete
-        if ($user && $user->role && $user->role->name === 'chefe-gabinete') {
-            $gabineteChefiado = Gabinete::where('responsavel_id', $user->id)->first();
-            if (! $gabineteChefiado || (int) $request->input('gabinete_id') !== $gabineteChefiado->id) {
-                abort(403, 'Você só pode criar departamentos no seu próprio gabinete.');
-            }
+        // O gabinete de destino é verificado contra o do gestor restrito: sem
+        // isto, o formulário restrito seria contornável por POST direto.
+        if (! $this->gestorSemRestricao($user)
+            && (int) $request->input('gabinete_id') !== (int) $this->gabineteDoGestor($user)->id) {
+            abort(403, 'Você só pode criar departamentos no seu próprio gabinete.');
         }
 
         $data = $request->validate([
@@ -86,15 +141,9 @@ class DepartamentoController extends Controller
 
     public function edit(Departamento $departamento)
     {
-        $user = Auth::user();
+        $this->autorizarGestao($departamento);
 
-        // Restrição de acesso para Chefe de Gabinete
-        if ($user && $user->role && $user->role->name === 'chefe-gabinete') {
-            $gabineteChefiado = Gabinete::where('responsavel_id', $user->id)->first();
-            if (! $gabineteChefiado || $departamento->gabinete_id !== $gabineteChefiado->id) {
-                abort(403, 'Você não tem permissão para editar este departamento.');
-            }
-        }
+        $user = Auth::user();
 
         // Carregar usuários do departamento e o chefe atual, se existir
         $userRole = Role::where('name', 'user')->first();
@@ -120,9 +169,9 @@ class DepartamentoController extends Controller
 
         $gabinetesQuery = Gabinete::orderBy('nome');
 
-        // Se for Chefe de Gabinete, só vê seu próprio gabinete na lista
-        if ($user && $user->role && $user->role->name === 'chefe-gabinete') {
-            $gabinetesQuery->where('responsavel_id', $user->id);
+        // O gestor restrito só vê o seu próprio gabinete na lista.
+        if (! $this->gestorSemRestricao($user)) {
+            $gabinetesQuery->whereKey($this->gabineteDoGestor($user)->id);
         }
 
         $gabinetes = $gabinetesQuery->get();
@@ -139,21 +188,15 @@ class DepartamentoController extends Controller
 
     public function update(Request $request, Departamento $departamento)
     {
+        $this->autorizarGestao($departamento);
+
         $user = Auth::user();
 
-        // Restrição de acesso para Chefe de Gabinete
-        if ($user && $user->role && $user->role->name === 'chefe-gabinete') {
-            $gabineteChefiado = Gabinete::where('responsavel_id', $user->id)->first();
-
-            // Verificar se o departamento pertence ao gabinete do chefe
-            if (! $gabineteChefiado || $departamento->gabinete_id !== $gabineteChefiado->id) {
-                abort(403, 'Você não tem permissão para atualizar este departamento.');
-            }
-
-            // Verificar se não está tentando mover para outro gabinete
-            if ((int) $request->input('gabinete_id') !== $gabineteChefiado->id) {
-                abort(403, 'Você não pode mover o departamento para outro gabinete.');
-            }
+        // O gestor restrito não pode empurrar o departamento para fora do seu
+        // gabinete — isso retirar-lho-ia do alcance e entregá-lo-ia a outro.
+        if (! $this->gestorSemRestricao($user)
+            && (int) $request->input('gabinete_id') !== (int) $this->gabineteDoGestor($user)->id) {
+            abort(403, 'Você não pode mover o departamento para outro gabinete.');
         }
 
         $data = $request->validate([
@@ -240,15 +283,7 @@ class DepartamentoController extends Controller
 
     public function destroy(Departamento $departamento)
     {
-        $user = Auth::user();
-
-        // Restrição de acesso para Chefe de Gabinete
-        if ($user && $user->role && $user->role->name === 'chefe-gabinete') {
-            $gabineteChefiado = Gabinete::where('responsavel_id', $user->id)->first();
-            if (! $gabineteChefiado || $departamento->gabinete_id !== $gabineteChefiado->id) {
-                abort(403, 'Você não tem permissão para excluir este departamento.');
-            }
-        }
+        $this->autorizarGestao($departamento);
 
         if ($departamento->usuarios()->exists()) {
             return redirect()->route('departamentos.index')->with('error', 'Não é possível excluir: existem usuários associados.');

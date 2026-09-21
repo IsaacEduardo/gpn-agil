@@ -425,7 +425,11 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            // O TinyMCE 6 é distribuído sob GPL e pode ser auto-alojado sem licença
+            // comercial; o emblema "Upgrade" que mostrava é promocional, não um aviso
+            // de licença em falta. Numa instalação governamental não tem lugar.
             tinymce.init({
+                promotion: false,
                 selector: 'textarea#conteudo_final',
                 language: 'pt_BR', // Assuming pt_BR exists, otherwise default en
                 plugins: 'preview importcss searchreplace autolink autosave save directionality code visualblocks visualchars fullscreen image link media template codesample table charmap pagebreak nonbreaking anchor insertdatetime advlist lists wordcount help charmap quickbars emoticons',

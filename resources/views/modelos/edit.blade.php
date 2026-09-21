@@ -101,7 +101,11 @@
 <script src="//unpkg.com/alpinejs" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.2/tinymce.min.js" referrerpolicy="origin"></script>
 <script>
+  // O TinyMCE 6 é distribuído sob GPL e pode ser auto-alojado sem licença
+  // comercial; o emblema "Upgrade" que mostrava é promocional, não um aviso
+  // de licença em falta. Numa instalação governamental não tem lugar.
   tinymce.init({
+      promotion: false,
     selector: 'textarea#conteudo',
     plugins: 'link lists table',
     toolbar: 'undo redo | blocks | bold italic | alignleft aligncenter alignright | indent outdent | bullist numlist | table'

@@ -414,9 +414,67 @@ class DocumentoEntradaService
         return $doc;
     }
 
+    /**
+     * Único sítio onde o estado de um documento de entrada muda.
+     *
+     * O `status` era atribuído à mão em oito sítios espalhados por três classes.
+     * Sem um ponto único não havia onde verificar a legalidade da mudança nem
+     * onde a registar, e cada novo sítio era mais uma oportunidade de os factos
+     * divergirem do estado — foi essa dispersão que produziu D1, D3 e D8.
+     *
+     * Persiste o documento: `save()` grava também os campos que o chamador tenha
+     * alterado antes de chamar. Por isso a ordem correta é preencher tudo e
+     * chamar este método por último, em vez de gravar duas vezes.
+     *
+     * Chamar sempre DENTRO da transação do ato, para que um estado inválido não
+     * sobreviva ao rollback do facto que o justificava.
+     *
+     * @param  string  $motivo  Ato que justifica a mudança; aparece na exceção.
+     * @return bool  false quando o estado já era esse (não é erro: é idempotência).
+     *
+     * @throws \DomainException quando a transição não é legítima.
+     */
+    public function transitionTo(DocumentoEntrada $documento, DocumentoStatus $novo, string $motivo): bool
+    {
+        $atual = DocumentoStatus::tryFrom((string) $documento->status);
+
+        // Estado ilegível (dados legados ou fora do enum): não há matriz que o
+        // cubra, e recusar prenderia o documento. Deixa passar e normaliza.
+        if ($atual === null) {
+            $documento->status = $novo->value;
+            $documento->save();
+
+            return true;
+        }
+
+        if ($atual === $novo) {
+            // Mesmo assim grava: o chamador pode ter alterado outros campos.
+            if ($documento->isDirty()) {
+                $documento->save();
+            }
+
+            return false;
+        }
+
+        if (! $atual->podeTransitarDeEntradaPara($novo)) {
+            throw new \DomainException(sprintf(
+                'Transição de estado ilegítima no documento %d: %s → %s (ato: %s).',
+                $documento->id,
+                $atual->value,
+                $novo->value,
+                $motivo,
+            ));
+        }
+
+        $documento->status = $novo->value;
+        $documento->save();
+
+        return true;
+    }
+
     public function createTask(DocumentoEntrada $documento, array $data, User $actor)
     {
-        return DB::transaction(function () use ($documento, $data, $actor) {
+        $tarefa = DB::transaction(function () use ($documento, $data, $actor) {
             $tarefa = DocumentoTarefa::create([
                 'documento_entrada_id' => $documento->id,
                 'titulo' => $data['titulo'],
@@ -430,18 +488,43 @@ class DocumentoEntradaService
             ]);
 
             // Regra de negócio (documentos externos): ao delegar, a chefia dá
-            // o visto do departamento. O documento NÃO fica tratado aqui — o
+            // o visto do DEPARTAMENTO. O documento NÃO fica tratado aqui — o
             // trabalho ainda nem começou; fica-o quando a última tarefa é
             // concluída (ver fecharSeSemTarefasPendentes).
+            //
+            // Este bloco gravava despachado_por_id, data_despacho e o visto do
+            // GABINETE. Numa delegação posterior ao despacho — o caso corrente —
+            // reescrevia quem despachou e quando: a ficha passava a atestar que
+            // o despacho do gabinete fora emitido pelo chefe de departamento, à
+            // hora da delegação. Falseava o registo administrativo e punha um
+            // chefe de departamento a dar o visto do gabinete, quebrando a
+            // segregação de funções. O ato do gabinete pertence a quem o
+            // praticou e não se reescreve a partir daqui.
+            //
+            // Os campos certos são os do visto departamental — os mesmos que o
+            // despacho rápido da chefia (quickAction, perfil 'chefe') já usa.
+            // Um documento não pode constar como tratado enquanto tem trabalho por
+            // fazer. fecharSeSemTarefasPendentes() só sabia avançar, pelo que uma
+            // tarefa nova sobre um documento já fechado deixava-o em TRATADO com
+            // uma tarefa pendente — e a contar como concluído nos indicadores.
+            if ($documento->status === DocumentoStatus::TRATADO->value) {
+                $this->transitionTo($documento, DocumentoStatus::RECEBIDO, 'reabertura por nova tarefa delegada');
+
+                $this->audit('documento.reaberto_por_nova_tarefa', $documento, $actor, [
+                    'tarefa_id' => $tarefa->id,
+                    'tarefa_titulo' => $tarefa->titulo,
+                ]);
+            }
+
             if ($this->permissionService->canManageTasks($actor, $documento) || $this->permissionService->isAdmin($actor)) {
-                if (empty($documento->texto_despacho)) {
-                    $documento->texto_despacho = 'Documento aprovado via delegação de tarefa: '.$data['titulo'];
+                // Não sobrepõe um visto departamental já dado: o primeiro é que
+                // conta, e a 2.ª tarefa do mesmo documento não o redata.
+                if ($documento->visto_departamento_data === null) {
+                    $documento->visto_departamento_status = 'aprovado';
+                    $documento->visto_departamento_por = $actor->id;
+                    $documento->visto_departamento_data = now();
+                    $documento->visto_departamento_observacao = 'Aprovado automaticamente com a delegação da tarefa: '.$data['titulo'];
                 }
-                $documento->despachado_por_id = $actor->id;
-                $documento->data_despacho = now();
-                $documento->visto_gabinete_status = 'aprovado';
-                $documento->visto_gabinete_por = $actor->id;
-                $documento->visto_gabinete_data = now();
 
                 if (! empty($data['assigned_to_departamento_id'])) {
                     $documento->departamentosDestino()->syncWithoutDetaching([(int) $data['assigned_to_departamento_id']]);
@@ -452,7 +535,7 @@ class DocumentoEntradaService
                 $this->audit('documento.aprovado_via_delegacao', $documento, $actor, [
                     'tarefa_id' => $tarefa->id,
                     'tarefa_titulo' => $tarefa->titulo,
-                    'mensagem' => "Documento Externo aprovado automaticamente por via de delegação de tarefa por {$actor->name}",
+                    'mensagem' => "Visto do departamento dado automaticamente por via de delegação de tarefa por {$actor->name}",
                 ]);
             }
 
@@ -460,6 +543,46 @@ class DocumentoEntradaService
 
             return $tarefa;
         });
+
+        // Delegar sobre um documento ainda por receber vale como recibo: a chefia
+        // só pode delegar o que já tem em mãos. O painel rápido resolvia isto
+        // pondo o status em RECEBIDO à mão, sem tocar no encaminhamento nem na
+        // custódia — criando precisamente a divergência entre eixos que este
+        // módulo já pagou caro. Aqui recebe-se a sério, pela via normal.
+        $this->receberPendenteAoDelegar($documento, $actor);
+
+        return $tarefa;
+    }
+
+    /**
+     * Dá por recebido o encaminhamento pendente que espera o setor de quem delega.
+     *
+     * Fora da transação da tarefa, e tolerante a falha: a tarefa já foi criada e
+     * não pode ser desfeita por causa do recibo.
+     */
+    private function receberPendenteAoDelegar(DocumentoEntrada $documento, User $actor): void
+    {
+        try {
+            $pendente = DocumentoEncaminhamento::where('documento_entrada_id', $documento->id)
+                ->whereNull('recebido_em')
+                ->orderByDesc('encaminhado_em')
+                ->first();
+
+            if (! $pendente) {
+                return;
+            }
+
+            if (! $this->permissionService->canReceiveInDepartment($actor, (int) $pendente->destino_departamento_id)) {
+                return;
+            }
+
+            $this->receiveDocument($documento, $pendente, $actor);
+        } catch (\Throwable $e) {
+            Log::warning('Falha ao dar por recebido o encaminhamento na delegação da tarefa.', [
+                'documento_id' => $documento->id,
+                'erro' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -763,8 +886,7 @@ class DocumentoEntradaService
             return;
         }
 
-        $documento->status = DocumentoStatus::TRATADO->value;
-        $documento->save();
+        $this->transitionTo($documento, DocumentoStatus::TRATADO, 'conclusão da última tarefa');
 
         $this->audit('documento.tratado_pelo_departamento', $documento, $actor, [
             'origem' => 'conclusao_de_tarefas',
@@ -831,9 +953,8 @@ class DocumentoEntradaService
                 'status' => DocumentoStatus::ENCAMINHADO->value,
                 'observacao' => $observation,
             ]);
-            $locked->status = DocumentoStatus::ENCAMINHADO->value;
             $locked->encaminhamento_data = now();
-            $locked->save();
+            $this->transitionTo($locked, DocumentoStatus::ENCAMINHADO, 'encaminhamento para outro setor');
 
             // Sincroniza a instância em memória recebida pelo chamador.
             $documento->status = $locked->status;
@@ -898,13 +1019,16 @@ class DocumentoEntradaService
                 ->where('id', '!=', $encaminhamento->id)
                 ->whereNotNull('recebido_em')
                 ->exists();
+            // REGISTRADO é o valor legado do estado de nascença; o registo hoje
+            // escreve PENDENTE_TRATAMENTO. Cancelar um encaminhamento devolvia o
+            // documento ao valor antigo, deixando dois estados equivalentes vivos
+            // na mesma coluna — e toda a consulta obrigada a lembrar-se do par.
             $novoStatus = $jaRecebidoAntes
-                ? DocumentoStatus::RECEBIDO->value
-                : DocumentoStatus::REGISTRADO->value;
+                ? DocumentoStatus::RECEBIDO
+                : DocumentoStatus::PENDENTE_TRATAMENTO;
 
-            $documento->status = $novoStatus;
             $documento->encaminhamento_data = null;
-            $documento->save();
+            $this->transitionTo($documento, $novoStatus, 'cancelamento do encaminhamento');
 
             // Auditoria ANTES do hard delete — preserva a evidência do encaminhamento cancelado.
             $this->audit('documento.encaminhamento_cancelado', $documento, $actor, [
@@ -942,8 +1066,7 @@ class DocumentoEntradaService
 
             $docLocked = DocumentoEntrada::whereKey($documento->id)->lockForUpdate()->first();
             $docLocked->departamento_id = $locked->destino_departamento_id;
-            $docLocked->status = DocumentoStatus::RECEBIDO->value;
-            $docLocked->save();
+            $this->transitionTo($docLocked, DocumentoStatus::RECEBIDO, 'recebimento no setor de destino');
 
             // Sincroniza as instâncias em memória do chamador.
             $encaminhamento->recebido_em = $locked->recebido_em;
@@ -1074,8 +1197,7 @@ class DocumentoEntradaService
             $documento->saida_gabinete_data = Carbon::parse($date);
             $documento->encaminhamento_orgao = $gabineteDestino ? ($gabineteDestino->sigla ? ($gabineteDestino->nome.' ('.$gabineteDestino->sigla.')') : $gabineteDestino->nome) : null;
             $documento->encaminhamento_oficio_numero = $oficio ?? null;
-            $documento->status = DocumentoStatus::ENCAMINHADO_EXTERNO->value;
-            $documento->save();
+            $this->transitionTo($documento, DocumentoStatus::ENCAMINHADO_EXTERNO, 'saída para outro gabinete');
 
             $ext = DocumentoEncaminhamentoExterno::create([
                 'documento_entrada_id' => $documento->id,
@@ -1320,9 +1442,8 @@ class DocumentoEntradaService
             $documento->visto_gabinete_por = $actor->id;
             $documento->visto_gabinete_data = $agora;
 
-            $documento->status = DocumentoStatus::ENCAMINHADO->value;
             $documento->encaminhamento_data = $agora;
-            $documento->save();
+            $this->transitionTo($documento, DocumentoStatus::ENCAMINHADO, 'despacho do gabinete');
 
             $documento->departamentosDestino()->sync($destinos);
 

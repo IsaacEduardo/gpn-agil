@@ -1,0 +1,3 @@
+# Apenas para gerar o executavel distribuivel.
+-r requirements.txt
+pyinstaller>=6.3.0

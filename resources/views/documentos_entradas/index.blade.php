@@ -635,24 +635,28 @@ tr.keyboard-selected {
                                         @endif
                                     </td>
 
-                                    <td class="loc-cell">
-                                        @if ($enc)
-                                            <div class="d-flex flex-column small">
-                                                <span
-                                                    class="fw-medium text-dark">{{ optional($enc->destinoDepartamento)->nome ?? '—' }}</span>
-                                                @if ($enc->recebido_em)
-                                                    <span class="text-success"><i
-                                                            class="fas fa-check-circle me-1"></i>Recebido
-                                                        {{ \Carbon\Carbon::parse($enc->recebido_em)->format('d/m') }}</span>
-                                                @else
-                                                    <span class="text-warning"><i
-                                                            class="fas fa-paper-plane me-1"></i>Encaminhado
-                                                        {{ optional($enc->encaminhado_em)->format('d/m') }}</span>
-                                                @endif
-                                            </div>
-                                        @else
-                                            <span class="text-muted small">—</span>
-                                        @endif
+                                    {{-- Localização = onde o documento está AGORA (departamento_id), a mesma
+                                         fonte que a ficha de detalhe lê. Esta célula mostrava o destino do último
+                                         encaminhamento mesmo antes de ele ser recebido, pelo que listagem e ficha
+                                         afirmavam locais diferentes para o mesmo documento. A custódia só muda no
+                                         recebimento; até lá o documento está na origem e o destino anuncia-se como
+                                         trânsito. --}}
+                                    @php($emTransito = $enc && ! $enc->recebido_em)
+                                    <td class="loc-cell"
+                                        data-transito-nome="{{ $emTransito ? (optional($enc->destinoDepartamento)->nome ?? '') : '' }}">
+                                        <div class="d-flex flex-column small">
+                                            <span class="fw-medium text-dark loc-nome">{{ optional($doc->departamento)->nome ?? '—' }}</span>
+                                            @if ($emTransito)
+                                                <span class="text-warning"><i
+                                                        class="fas fa-paper-plane me-1"></i>Em trânsito p/
+                                                    {{ optional($enc->destinoDepartamento)->nome ?? '—' }}
+                                                    {{ optional($enc->encaminhado_em)->format('d/m') }}</span>
+                                            @elseif ($enc && $enc->recebido_em)
+                                                <span class="text-success"><i
+                                                        class="fas fa-check-circle me-1"></i>Recebido
+                                                    {{ \Carbon\Carbon::parse($enc->recebido_em)->format('d/m') }}</span>
+                                            @endif
+                                        </div>
                                     </td>
 
                                     <td class="text-end pe-4" onclick="event.stopPropagation()">
@@ -724,7 +728,7 @@ tr.keyboard-selected {
                                             </ul>
                                         </div>
                                     </td>
-                                @endif                     @include('documentos_entradas.partials.modal-despacho', ['doc' => $doc, 'departamentos' => $departamentos])
+                                @endif                     @include('documentos_entradas.partials.modal-despacho', ['doc' => $doc])
                                 </td>
                             </tr>
                         @empty

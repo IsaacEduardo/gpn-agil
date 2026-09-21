@@ -105,11 +105,41 @@
                 if (bsModal) bsModal.show();
             };
 
+            // Escapa texto vindo do servidor antes de o injetar como HTML: o nome
+            // do departamento é dado de utilizador e esta função constrói markup.
+            function escaparTexto(valor) {
+                const div = document.createElement('div');
+                div.textContent = valor == null ? '' : String(valor);
+                return div.innerHTML;
+            }
+
+            // A célula de localização mostra onde o documento está agora e, por
+            // baixo, o trânsito em curso. O nome do local nunca é apagado — antes
+            // o recebimento substituía a célula inteira por "Recebido agora" e a
+            // linha deixava de dizer onde o documento estava.
+            function pintarLocalizacao(loc, nomeAtual, transitoNome, estado) {
+                const linhas = [`<span class="fw-medium text-dark loc-nome">${escaparTexto(nomeAtual || '—')}</span>`];
+
+                if (estado === 'transito') {
+                    linhas.push(`<span class="text-warning"><i class="fas fa-paper-plane me-1"></i>Em trânsito p/ ${escaparTexto(transitoNome || '—')} agora</span>`);
+                } else if (estado === 'recebido') {
+                    linhas.push('<span class="text-success"><i class="fas fa-check-circle me-1"></i>Recebido agora</span>');
+                }
+
+                loc.innerHTML = `<div class="d-flex flex-column small">${linhas.join('')}</div>`;
+            }
+
             function updateRowForwarded(id, destinoNome) {
                 const row = document.querySelector(`tr[data-doc-id="${id}"]`);
                 if (!row) return;
                 const loc = row.querySelector('.loc-cell');
-                if (loc) loc.innerHTML = `<div class="d-flex flex-column small"><span class="fw-medium text-dark">${destinoNome || '—'}</span><span class="text-warning"><i class="fas fa-paper-plane me-1"></i>Encaminhado agora</span></div>`;
+                if (loc) {
+                    // A custódia só muda no recebimento: o nome do local mantém-se
+                    // e o destino fica registado como trânsito pendente.
+                    const nomeAtual = loc.querySelector('.loc-nome')?.textContent?.trim() || '—';
+                    loc.dataset.transitoNome = destinoNome || '';
+                    pintarLocalizacao(loc, nomeAtual, destinoNome, 'transito');
+                }
                 const cb = row.querySelector('.row-checkbox');
                 if (cb) { cb.checked = false; cb.dataset.canForward = '0'; }
                 row.classList.add('table-success');
@@ -120,7 +150,14 @@
                 const row = document.querySelector(`tr[data-doc-id="${id}"]`);
                 if (!row) return;
                 const loc = row.querySelector('.loc-cell');
-                if (loc) loc.innerHTML = `<div class="d-flex flex-column small"><span class="text-success"><i class="fas fa-check-circle me-1"></i>Recebido agora</span></div>`;
+                if (loc) {
+                    // Ao receber, o destino do trânsito passa a ser o local atual.
+                    const nomeAtual = (loc.dataset.transitoNome || '').trim()
+                        || loc.querySelector('.loc-nome')?.textContent?.trim()
+                        || '—';
+                    loc.dataset.transitoNome = '';
+                    pintarLocalizacao(loc, nomeAtual, '', 'recebido');
+                }
                 const cb = row.querySelector('.row-checkbox');
                 if (cb) cb.checked = false;
                 row.classList.add('table-success');

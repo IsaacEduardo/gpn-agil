@@ -13,6 +13,14 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    // A descoberta automática de eventos varre app/Listeners e regista o handle()
+    // de cada ouvinte — POR CIMA do mapa explícito de App\Providers\EventServiceProvider.
+    // Cada ouvinte ficava assim registado duas vezes ('Ouvinte' e 'Ouvinte@handle',
+    // que o array_unique do Laravel não reconhece como iguais) e corria duas vezes
+    // por evento: o executante recebia a notificação de tarefa delegada em
+    // duplicado e os ouvintes de auditoria gravavam dois registos por facto.
+    // O mapa explícito é a fonte única; a descoberta fica desligada.
+    ->withEvents(discover: false)
     ->withMiddleware(function (Middleware $middleware): void {
         // Middleware de cabeçalhos de segurança HTTP (OWASP)
         $middleware->append(\App\Http\Middleware\SecurityHeadersMiddleware::class);

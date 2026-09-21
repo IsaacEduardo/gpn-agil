@@ -373,6 +373,28 @@ class DashboardService
         $gabinete = $user->gabineteGerenciado ?? $user->gabineteSuperGerenciado ?? $user->gabinete();
         $anoAtual = (int) date('Y');
 
+        // Este painel é partilhado pelo administrador e pelo chefe de gabinete,
+        // mas as consultas corriam sempre sem filtro: um chefe via os contadores
+        // de toda a instituição e a lista de despachos pendentes trazia-lhe
+        // documentos de outros gabinetes — número, assunto e procedência — com
+        // botão DESPACHAR que o backend depois recusava. Divulgava o que o
+        // utilizador não pode ver e oferecia ações que não pode praticar.
+        //
+        // O administrador mantém a visão institucional; qualquer outro perfil
+        // fica limitado ao gabinete que chefia. Sem gabinete resolvido, não há
+        // âmbito legítimo: o filtro fecha em vez de abrir.
+        $gabineteId = $user->isAdmin() ? null : ($gabinete?->id ?? -1);
+
+        // DocumentoEntrada e DocumentoInterno ligam-se ao gabinete pelo
+        // departamento; null deixa a consulta intacta (administrador).
+        $limitarAoGabinete = function ($query) use ($gabineteId) {
+            if ($gabineteId !== null) {
+                $query->whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabineteId));
+            }
+
+            return $query;
+        };
+
         // 1. Contagens agregadas de governança
         //
         // carecer_despacho media-se pelo estado, como o separador homónimo da
@@ -383,7 +405,7 @@ class DashboardService
         // TRATADO deixou de ser "pronto a expedir" — o despacho já entrega o
         // documento aos departamentos —, e passou a significar que o
         // departamento o tratou. O indicador acompanha esse sentido.
-        $entradasAgg = DocumentoEntrada::query()
+        $entradasAgg = $limitarAoGabinete(DocumentoEntrada::query())
             ->selectRaw("
                 COUNT(CASE WHEN status IN ('registrado', 'pendente_tratamento') AND arquivado = 0 THEN 1 END) as carecer_despacho,
                 COUNT(CASE WHEN status = 'tratado' AND arquivado = 0 THEN 1 END) as tratados_departamentos,
@@ -393,7 +415,7 @@ class DashboardService
 
         $startOfYear = now()->startOfYear();
 
-        $internosAgg = DocumentoInterno::query()
+        $internosAgg = $limitarAoGabinete(DocumentoInterno::query())
             ->selectRaw("
                 COUNT(CASE WHEN status = 'em_analise' THEN 1 END) as em_analise_total,
                 COUNT(CASE WHEN status IN ('aprovado', 'assinado') AND updated_at >= ? THEN 1 END) as atos_emitidos_ano
@@ -406,7 +428,7 @@ class DashboardService
         $totalGeralAno = (int) ($entradasAgg->total_ano ?? 0);
 
         // 2. Entradas Prioritárias / Despachos Pendentes
-        $entradasPrioritarias = DocumentoEntrada::with(['departamento'])
+        $entradasPrioritarias = $limitarAoGabinete(DocumentoEntrada::with(['departamento']))
             ->whereIn('status', ['pendente_tratamento', 'registrado'])
             ->where('arquivado', false)
             ->orderBy('created_at', 'asc')
@@ -427,7 +449,7 @@ class DashboardService
             });
 
         // 3. Atos Administrativos & Ordens Emitidas Recentes
-        $atosEmitidos = DocumentoInterno::with(['autor', 'departamento', 'especie'])
+        $atosEmitidos = $limitarAoGabinete(DocumentoInterno::with(['autor', 'departamento', 'especie']))
             ->whereIn('status', [DocumentoStatus::ASSINADO->value, DocumentoStatus::APROVADO->value])
             ->orderByRaw('COALESCE(assinado_em, updated_at) DESC')
             ->limit(6)

@@ -1,64 +1,69 @@
 # Especificação da API: WebScan Bridge Local Agent
 
-## Visão Geral
-O **WebScan Bridge Local** é um serviço em segundo plano (daemon/serviço) executado na máquina do utilizador que estabelece a ponte entre navegadores web (via HTTP/WebSocket local) e scanners de documentos físicos conectados via drivers TWAIN, WIA (Windows) ou SANE (Linux).
+Contrato HTTP entre o browser e o agente local de digitalização.
+Implementação em [`agent/`](../agent); notas técnicas em [webscan-agent.md](webscan-agent.md).
 
-- **Endereço Base HTTP:** `http://127.0.0.1:18090`
-- **Endereço Base WebSocket:** `ws://127.0.0.1:18090/ws`
-- **Protocolo de Comunicação:** JSON over HTTP / WebSocket
-- **CORS:** Headers `Access-Control-Allow-Origin: *` habilitados para aceitar requisições de origens da aplicação EDMS.
+## Visão Geral
+
+- **Endereço base:** `http://127.0.0.1:18090` (configurável; sempre loopback)
+- **Protocolo:** JSON over HTTP/1.1
+- **CORS:** apenas a origem exacta configurada no agente. `Access-Control-Allow-Origin: *` é proibido.
 
 ---
 
-## Endpoints HTTP da API
+## Segurança de transporte
 
-### 1. Verification / Healthcheck
-Retorna o estado do agente local para que o frontend exiba o indicador de scanner ativo.
+O agente recusa qualquer pedido que não passe os quatro filtros:
 
-- **Método:** `GET /status`
-- **Response `200 OK`:**
+1. **Host** — `127.0.0.1`, `localhost` ou `::1`. Bloqueia *DNS rebinding*.
+2. **Origin** — igualdade exacta contra `allowed_origins`. Obrigatório em
+   `/scanners`, `/scan` e `/progress`; opcional em `/status` para diagnóstico local.
+3. **`X-WebScan-Pairing`** — token local, comparado em tempo constante.
+4. **Payload** — JSON, dentro de `max_body_bytes`, com cada parâmetro validado
+   contra as **capacidades reais** do scanner escolhido.
+
+Respostas autorizadas incluem `Access-Control-Allow-Origin` com a origem exacta e
+`Vary: Origin`. Respostas recusadas não incluem cabeçalhos CORS.
+
+O preflight `OPTIONS` devolve `Access-Control-Allow-Private-Network: true`,
+exigido pelo Chrome para uma página HTTPS pública contactar a rede privada.
+
+> A aplicação Laravel tem de autorizar esta origem em `connect-src`
+> (`SecurityHeadersMiddleware`), ou o browser bloqueia o pedido antes de sair.
+
+---
+
+## Endpoints
+
+### `GET /status`
+
 ```json
 {
   "status": "online",
   "version": "1.0.0",
   "agent": "WebScanBridgeDaemon",
   "os": "windows_x64",
-  "drivers_available": ["TWAIN", "WIA"]
+  "drivers_available": ["WIA"]
 }
 ```
 
----
+### `GET /scanners`
 
-### 2. Listar Scanners Conectados
-Retorna a lista de dispositivos de digitalização reconhecidos pelo sistema operacional.
+Lista vazia é resposta válida: significa que não há equipamento ligado.
 
-- **Método:** `GET /scanners`
-- **Response `200 OK`:**
 ```json
 {
   "status": "success",
   "scanners": [
     {
-      "id": "twain_fujitsu_fi7160",
-      "name": "Fujitsu fi-7160 (TWAIN)",
-      "driver": "TWAIN",
+      "id": "\\\\.\\Usb#Vid_04a9...",
+      "name": "HP ScanJet Pro 2500 f1",
+      "driver": "WIA",
       "is_default": true,
       "capabilities": {
         "sources": ["adf", "flatbed"],
         "color_modes": ["bw", "gray", "color"],
-        "dpis": [150, 200, 300, 600],
-        "duplex_supported": true
-      }
-    },
-    {
-      "id": "wia_hp_scanjet_pro",
-      "name": "HP ScanJet Pro 2500 f1 (WIA)",
-      "driver": "WIA",
-      "is_default": false,
-      "capabilities": {
-        "sources": ["flatbed", "adf"],
-        "color_modes": ["bw", "color"],
-        "dpis": [200, 300],
+        "dpis": [150, 200, 300],
         "duplex_supported": false
       }
     }
@@ -66,93 +71,97 @@ Retorna a lista de dispositivos de digitalização reconhecidos pelo sistema ope
 }
 ```
 
----
+### `POST /scan`
 
-### 3. Iniciar Digitalização (HTTP Post)
-Solicita ao scanner a captura das páginas de acordo com as configurações especificadas.
+Pedido:
 
-- **Método:** `POST /scan`
-- **Request Body:**
 ```json
 {
-  "scanner_id": "twain_fujitsu_fi7160",
+  "scanner_id": "\\\\.\\Usb#Vid_04a9...",
   "dpi": 200,
   "color_mode": "color",
   "source": "adf",
   "duplex": true,
+  "orientation": "portrait",
   "auto_deskew": true,
-  "auto_crop": true,
-  "output_format": "pdf"
+  "auto_crop": true
 }
 ```
 
-- **Response `200 OK`:**
+`dpi`, `color_mode`, `source` e `duplex` têm de constar das capacidades do
+scanner indicado; caso contrário, `INVALID_REQUEST`.
+
+Resposta:
+
 ```json
 {
   "status": "success",
-  "job_id": "job_98412384",
-  "page_count": 2,
-  "pdf_base64": "data:application/pdf;base64,JVBERi0xLj...=",
+  "page_count": 3,
+  "filename": "digitalizacao_20260916_101500.pdf",
+  "pdf_base64": "JVBERi0xLjQK...",
   "pages": [
-    {
-      "page_number": 1,
-      "image_base64": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
-      "width": 1654,
-      "height": 2339
-    },
-    {
-      "page_number": 2,
-      "image_base64": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
-      "width": 1654,
-      "height": 2339
-    }
+    { "page_number": 1, "mime_type": "image/jpeg", "preview_base64": "/9j/4AAQ..." }
   ]
 }
 ```
 
-- **Response Erro (`400` / `500`):**
+- **`pdf_base64` é a única fonte do ficheiro.** PDF 1.4 multipágina, uma página
+  por folha, com os JPEG originais embebidos via `/DCTDecode` — sem recompressão.
+- `pages` são **miniaturas de pré-visualização**, não o documento. Podem vir
+  vazias se o agente não tiver Pillow. O cliente nunca deve montar um PDF a
+  partir delas.
+
+O cliente valida a assinatura `%PDF-` antes de aceitar o ficheiro.
+
+### `GET /progress`
+
+Sondado enquanto o `POST /scan` decorre. Substitui o WebSocket: mesmo progresso
+real, muito menos superfície.
+
 ```json
 {
-  "status": "error",
-  "error_code": "PAPER_JAM",
-  "message": "Atolamento de papel detectado no alimentador (ADF)."
+  "status": "success",
+  "active": true,
+  "current_page": 2,
+  "total_pages": 3,
+  "message": "A digitalizar pagina 2 de 3...",
+  "percent": 66
 }
 ```
 
 ---
 
-## Comunicação via WebSocket (Streaming de Progresso)
+## Erros
 
-- **Conexão:** `ws://127.0.0.1:18090/ws`
+Formato único para todas as falhas:
 
-### Mensagens Enviadas pelo Frontend ao Agente:
 ```json
-{
-  "action": "START_SCAN",
-  "params": {
-    "scanner_id": "twain_fujitsu_fi7160",
-    "dpi": 300,
-    "color_mode": "bw",
-    "source": "adf",
-    "duplex": false
-  }
-}
+{ "status": "error", "error_code": "ADF_EMPTY", "message": "O alimentador esta vazio." }
 ```
 
-### Eventos Emitidos pelo Agente ao Frontend:
-1. **Progresso da Digitalização:**
-   ```json
-   { "event": "PROGRESS", "job_id": "job_123", "current_page": 1, "message": "Digitalizando página 1..." }
-   ```
-2. **Página Capturada em Tempo Real:**
-   ```json
-   { "event": "PAGE_CAPTURED", "job_id": "job_123", "page_number": 1, "image_base64": "data:image/jpeg;base64,..." }
-   ```
-3. **Conclusão:**
-   ```json
-   { "event": "SCAN_COMPLETE", "job_id": "job_123", "total_pages": 3, "pdf_base64": "data:application/pdf;base64,..." }
-   ```
-4. **Erro de Hardware:**
-   ```json
-   { "event": "ERROR", "error_code": "SCANNER_OFFLINE", "message": "O scanner selecionado está desligado ou desconectado." }
-   ```
+O cliente decide pelo `error_code`; a `message` é texto para o operador.
+
+| `error_code` | HTTP | Situação |
+|---|---|---|
+| `INVALID_REQUEST` | 400 | Payload malformado, fora dos limites ou incompatível com as capacidades |
+| `PAIRING_REQUIRED` | 401 | Token ausente ou inválido |
+| `ORIGIN_REJECTED` | 403 | Origem ou Host não autorizados |
+| `SCANNER_NOT_FOUND` | 404 | O scanner indicado desapareceu |
+| `NOT_FOUND` | 404 | Recurso inexistente |
+| `ADF_EMPTY` | 409 | Alimentador vazio |
+| `PAPER_JAM` | 409 | Papel encravado |
+| `SCAN_CANCELLED` | 409 | Cancelado no equipamento |
+| `SCAN_BUSY` | 429 | Já existe uma digitalização em curso |
+| `DRIVER_UNAVAILABLE` | 503 | WIA indisponível ou driver em erro |
+| `SCANNER_OFFLINE` | 503 | Equipamento desligado, ocupado ou a aquecer |
+| `SCAN_TIMEOUT` | 504 | Excedeu `scan_timeout_seconds` |
+
+Códigos gerados no cliente, sem resposta do agente:
+
+| `error_code` | Situação |
+|---|---|
+| `OFFLINE` | Agente inacessível |
+| `TIMEOUT` | Sem resposta dentro do prazo |
+| `PDF_MISSING` | Resposta sem `pdf_base64` |
+| `PDF_INVALID` | Conteúdo devolvido não é PDF |
+| `SCANNER_REQUIRED` | Nenhum scanner selecionado |

@@ -111,9 +111,13 @@
                         <a href="{{ route('admin.users.index') }}"
                             class="nav-link {{ request()->routeIs('admin.users.*') ? 'active' : '' }}">Usuários</a>
                     @endif
-                    @if ($isAdmin || Auth::user()->can('departamentos.gerir'))
+                    {{-- Mesma regra do DepartamentoController (User::podeGerirDepartamentos). --}}
+                    @if (Auth::user()->podeGerirDepartamentos())
                         <a href="{{ route('departamentos.index') }}"
                             class="nav-link {{ request()->routeIs('departamentos.*') ? 'active' : '' }}">Departamentos</a>
+                    @endif
+                    {{-- Gabinetes é exclusivo do administrador (GabineteController::ensureAdmin). --}}
+                    @if ($isAdmin)
                         <a href="{{ route('gabinetes.index') }}"
                             class="nav-link {{ request()->routeIs('gabinetes.*') ? 'active' : '' }}">Gabinetes</a>
                     @endif

@@ -34,9 +34,18 @@
             $allTarefasDone = $hasTarefas && $doc->tarefas->whereIn('status', ['concluida', 'concluido'])->count() === $doc->tarefas->count();
             $isArquivado = $doc->arquivado || in_array($doc->status, ['arquivado', 'finalizado']);
 
-            if ($isArquivado || ($hasRecebimento && ($hasTarefas ? $allTarefasDone : true))) {
+            // Receber é o INÍCIO do trabalho no sector, não o seu fim. Esta etapa
+            // dava-se por concluída à chegada do documento, pelo que o indicador
+            // saltava para "5. Resposta & Arquivo" sem existir tarefa nem resposta
+            // — e recuava para "4" assim que a primeira tarefa era criada, porque
+            // aí passava a haver trabalho por concluir. O marco fecha quando o
+            // sector termina: todas as tarefas concluídas, o documento dado como
+            // tratado, ou arquivado.
+            $tratadoPeloSector = $doc->status === 'tratado';
+
+            if ($isArquivado || $tratadoPeloSector || ($hasTarefas && $allTarefasDone)) {
                 $step4State = 'completed';
-            } elseif ($hasEncaminhamento || $hasTarefas || $step3State === 'completed') {
+            } elseif ($hasRecebimento || $hasEncaminhamento || $hasTarefas || $step3State === 'completed') {
                 $step4State = 'active';
             } else {
                 $step4State = 'pending';

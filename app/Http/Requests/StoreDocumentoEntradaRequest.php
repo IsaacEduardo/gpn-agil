@@ -5,7 +5,9 @@ namespace App\Http\Requests;
 use App\Models\DocumentoEntrada;
 use App\Models\DocumentoEspecie;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Rule;
 
 class StoreDocumentoEntradaRequest extends FormRequest
@@ -30,6 +32,23 @@ class StoreDocumentoEntradaRequest extends FormRequest
             return DocumentoEspecie::where('ativo', true)->orderBy('ordem')->pluck('nome')->all();
         });
 
+        $documentFile = [
+            'file',
+            File::types(['pdf', 'jpg', 'jpeg', 'png'])->max(self::LIMITE_FICHEIRO_KB.'kb'),
+            function (string $attribute, mixed $value, \Closure $fail): void {
+                if (! $value instanceof UploadedFile) {
+                    return;
+                }
+
+                // `mimes` aceita uma imagem pelo conteúdo mesmo quando o nome é .pdf.
+                // Para o arquivo institucional, a extensão PDF tem de corresponder a PDF real.
+                if (strtolower($value->getClientOriginalExtension()) === 'pdf'
+                    && $value->getMimeType() !== 'application/pdf') {
+                    $fail('O ficheiro PDF enviado não contém um documento PDF válido.');
+                }
+            },
+        ];
+
         return [
             // A espécie era required no HTML e nullable aqui — e é a chave da
             // tabela de retenção (RetentionSchedule).
@@ -47,8 +66,8 @@ class StoreDocumentoEntradaRequest extends FormRequest
             'encaminhamento_orgao' => ['nullable', 'string', 'max:255'],
             'encaminhamento_oficio_numero' => ['nullable', 'string', 'max:100'],
             'departamento_id' => ['required', 'exists:departamentos,id'],
-            'arquivo' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.self::LIMITE_FICHEIRO_KB],
-            'anexos.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.self::LIMITE_FICHEIRO_KB],
+            'arquivo' => ['nullable', ...$documentFile],
+            'anexos.*' => ['nullable', ...$documentFile],
             'tags' => ['nullable', 'string'],
             'confirmar_duplicado' => ['nullable'],
         ];
@@ -60,7 +79,36 @@ class StoreDocumentoEntradaRequest extends FormRequest
             'classificacao_especie.required' => 'Selecione a espécie do documento.',
             'data_entrada.before_or_equal' => 'A data de entrada não pode ser posterior a hoje.',
             'arquivo.max' => 'O ficheiro não pode exceder :max KB.',
+            'arquivo.mimes' => 'O ficheiro anexado deve ser PDF, JPG ou PNG.',
+            'arquivo.file' => 'O ficheiro anexado não foi recebido corretamente. Tente novamente.',
+            // Sem estas, a mensagem do Laravel cai no nome técnico do campo e o
+            // balconista lia "O campo anexos.0 deve ser um arquivo do tipo...".
             'anexos.*.max' => 'Cada anexo não pode exceder :max KB.',
+            'anexos.*.mimes' => 'O ficheiro anexado deve ser PDF, JPG ou PNG.',
+            'anexos.*.file' => 'O ficheiro anexado não foi recebido corretamente. Tente novamente.',
+        ];
+    }
+
+    /**
+     * Nomes legíveis para as mensagens que os interpolam.
+     *
+     * 'anexos.*' cobre qualquer índice: sem isto a validação do terceiro anexo
+     * falava de "anexos.2".
+     *
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'arquivo' => 'ficheiro principal',
+            'anexos' => 'anexos',
+            'anexos.*' => 'ficheiro anexado',
+            'classificacao_especie' => 'espécie do documento',
+            'classificacao_ref_numero' => 'número de referência',
+            'data_documento' => 'data do documento',
+            'data_entrada' => 'data de entrada',
+            'departamento_id' => 'departamento de destino',
+            'procedencia_id' => 'procedência',
         ];
     }
 }

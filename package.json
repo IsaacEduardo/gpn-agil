@@ -5,7 +5,10 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:visual": "node scripts/verify-pdf-visual.js"
+        "test:visual": "node scripts/verify-pdf-visual.js",
+        "test:webscan": "node --test tests/js/webscan-bridge.test.mjs",
+        "test:agent": "python -m unittest discover -s agent/tests -t agent",
+        "test:scanner": "npm run test:webscan && npm run test:agent"
     },
     "devDependencies": {
         "@popperjs/core": "^2.11.6",

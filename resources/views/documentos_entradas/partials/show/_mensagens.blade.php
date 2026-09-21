@@ -1,13 +1,19 @@
         <!-- Feedback Messages -->
         @php($currentDept = optional($doc->departamento)->nome)
         @php($currentStatus = ucfirst($doc->status))
+        {{-- A custódia só muda no recebimento, pelo que logo após um encaminhamento
+             o "Departamento atual" é ainda a origem. Sem dizer para onde o documento
+             segue, a frase lia-se como contradição ("encaminhado com sucesso" e o
+             departamento de partida). O trânsito em curso é nomeado. --}}
+        @php($encPendente = $doc->encaminhamentos->firstWhere('recebido_em', null))
+        @php($transitoPara = $encPendente ? optional($encPendente->destinoDepartamento)->nome : null)
         
         @if (session('success'))
             <div class="alert alert-success alert-dismissible fade show d-flex align-items-center mb-4" role="alert">
                 <i class="fas fa-check-circle fs-4 me-3"></i>
                 <div>
                     <div class="fw-semibold">{{ session('success') }}</div>
-                    <div class="small opacity-75">Departamento atual: {{ $currentDept ?? '—' }} • Status: {{ $currentStatus }}</div>
+                    <div class="small opacity-75">Departamento atual: {{ $currentDept ?? '—' }}@if ($transitoPara) <span class="fst-italic">(em trânsito para {{ $transitoPara }}, aguarda recebimento)</span>@endif • Status: {{ $currentStatus }}</div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
@@ -18,7 +24,7 @@
                 <i class="fas fa-info-circle fs-4 me-3"></i>
                 <div>
                     <div class="fw-semibold">{{ session('info') }}</div>
-                    <div class="small opacity-75">Departamento atual: {{ $currentDept ?? '—' }} • Status: {{ $currentStatus }}</div>
+                    <div class="small opacity-75">Departamento atual: {{ $currentDept ?? '—' }}@if ($transitoPara) <span class="fst-italic">(em trânsito para {{ $transitoPara }}, aguarda recebimento)</span>@endif • Status: {{ $currentStatus }}</div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>

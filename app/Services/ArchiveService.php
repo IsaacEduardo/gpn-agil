@@ -43,13 +43,23 @@ class ArchiveService
 
         $pasta = $this->resolveFolder($documento, $actor, $tipo, $pastaId);
 
-        $documento->update([
+        $campos = [
             'pasta_id' => $pasta->id,
             'arquivado' => true,
             'arquivado_em' => now(),
             'arquivado_por' => $actor->id,
             'status' => $statusArquivado,
-        ]);
+        ];
+
+        // O documento de entrada guarda o estado anterior para que o
+        // desarquivamento o reponha, em vez de o atirar para o início do
+        // percurso. Só na primeira vez: rearquivar não deve sobrepor a memória
+        // do percurso original com 'arquivado'.
+        if ($tipo === 'entrada' && empty($documento->status_pre_arquivo)) {
+            $campos['status_pre_arquivo'] = (string) $documento->status;
+        }
+
+        $documento->update($campos);
 
         $this->audit($documento, $actor, $pasta, $tipo);
 

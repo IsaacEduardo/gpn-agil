@@ -45,13 +45,23 @@ class SecurityHeadersMiddleware
         // 7. Content Security Policy (CSP)
         // Permite recursos locais e CDNs corporativos utilizados pela plataforma (Bootstrap, FontAwesome, DataTables, TinyMCE, Pusher, NProgress, Chart.js)
         // Permite WebSockets do Laravel Reverb (ws: wss:)
+
+        // O agente de digitalização corre em loopback no posto do operador, num
+        // esquema http: que 'self' e https: não cobrem. Sem esta autorização
+        // explícita o browser bloqueia o pedido antes de sair e o scanner
+        // aparece sempre offline, mesmo com o agente a correr.
+        $connectSrc = "connect-src 'self' ws: wss: https:";
+        if ($webscanOrigin = $this->webscanAgentOrigin()) {
+            $connectSrc .= ' '.$webscanOrigin;
+        }
+
         $csp = [
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://code.jquery.com https://unpkg.com https://js.pusher.com",
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://unpkg.com https://fonts.bunny.net https://fonts.googleapis.com",
             "font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.bunny.net https://fonts.gstatic.com",
             "img-src 'self' data: blob: https:",
-            "connect-src 'self' ws: wss: https:",
+            $connectSrc,
             "object-src 'none'",
             "frame-ancestors 'self'",
             "base-uri 'self'",
@@ -62,5 +72,30 @@ class SecurityHeadersMiddleware
         $response->header('Content-Security-Policy', implode('; ', $csp));
 
         return $response;
+    }
+
+    /**
+     * Origem (esquema://host:porta) do agente local de digitalização.
+     *
+     * Devolve null quando a configuração está vazia ou malformada, para que uma
+     * definição errada não injecte lixo na política de segurança.
+     */
+    private function webscanAgentOrigin(): ?string
+    {
+        $url = trim((string) config('webscan.agent_url', ''));
+
+        if ($url === '') {
+            return null;
+        }
+
+        $parts = parse_url($url);
+
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+
+        $origin = $parts['scheme'].'://'.$parts['host'];
+
+        return isset($parts['port']) ? $origin.':'.$parts['port'] : $origin;
     }
 }

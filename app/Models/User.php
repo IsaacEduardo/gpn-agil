@@ -282,6 +282,45 @@ class User extends Authenticatable
     }
 
     /**
+     * Pode gerir a estrutura orgânica (departamentos)?
+     *
+     * Regra única, partilhada pelo DepartamentoController e pela navegação, para
+     * que o menu e o backend não possam divergir: o menu já se guardava por
+     * 'departamentos.gerir' enquanto o controller não verificava nada, e um
+     * técnico que escrevesse o URL à mão criava departamentos.
+     *
+     * O admin e quem detenha a permissão gerem sem restrição; o responsável (ou
+     * super chefe) de um gabinete gere apenas dentro dele — ver
+     * DepartamentoController::gabineteDoGestor().
+     */
+    public function podeGerirDepartamentos(): bool
+    {
+        if ($this->podeGerirDepartamentosSemRestricao()) {
+            return true;
+        }
+
+        return $this->gabineteGerenciado()->exists() || $this->gabineteSuperGerenciado()->exists();
+    }
+
+    /**
+     * Gere departamentos de qualquer gabinete, sem restrição de âmbito.
+     */
+    public function podeGerirDepartamentosSemRestricao(): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        // hasPermissionTo lança quando a permissão ainda não foi semeada; numa
+        // verificação de acesso isso tem de ler-se como "não autorizado".
+        try {
+            return $this->hasPermissionTo('departamentos.gerir');
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
      * Verifica se o usuário é Super Chefe de Gabinete
      */
     public function isSuperChefeGabinete(): bool

@@ -150,8 +150,14 @@
                     @if ($isAdmin || Auth::user()->can('usuarios.gerir'))
                         <li><a class="dropdown-item py-2 {{ request()->routeIs('admin.users.*') ? 'active' : '' }}" href="{{ route('admin.users.index') }}"><i class="fas fa-users-cog me-2 text-muted"></i>Gestão de Usuários</a></li>
                     @endif
-                    @if ($isAdmin || Auth::user()->can('departamentos.gerir'))
+                    {{-- Mesma regra do DepartamentoController (User::podeGerirDepartamentos):
+                         inclui o chefe de gabinete, que gere os departamentos do seu. --}}
+                    @if (Auth::user()->podeGerirDepartamentos())
                         <li><a class="dropdown-item py-2 {{ request()->routeIs('departamentos.*') ? 'active' : '' }}" href="{{ route('departamentos.index') }}"><i class="fas fa-sitemap me-2 text-muted"></i>Departamentos</a></li>
+                    @endif
+                    {{-- Gabinetes é exclusivo do administrador (GabineteController::ensureAdmin):
+                         estava no mesmo @if e oferecia ao chefe de gabinete um link que dava 403. --}}
+                    @if ($isAdmin)
                         <li><a class="dropdown-item py-2 {{ request()->routeIs('gabinetes.*') ? 'active' : '' }}" href="{{ route('gabinetes.index') }}"><i class="fas fa-building me-2 text-muted"></i>Gabinetes</a></li>
                     @endif
                     @if ($isAdmin || Auth::user()->can('permissoes.gerir'))

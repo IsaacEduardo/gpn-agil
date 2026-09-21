@@ -128,13 +128,19 @@ return [
     | Application Timezone
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | Fuso horário da aplicação. O Laravel grava e lê as datas neste fuso, pelo
+    | que mudá-lo reinterpreta TODOS os carimbos já gravados na base: um registo
+    | escrito em UTC passa a ser lido como hora local e desloca-se. Em
+    | documentação administrativa o carimbo temporal tem valor probatório, por
+    | isso a mudança só se faz com conversão dos dados existentes.
+    |
+    | O fuso oficial de referência é Africa/Luanda (UTC+1). Fica configurável
+    | por ambiente, mantendo UTC por omissão para não alterar o significado dos
+    | registos atuais sem decisão explícita.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------

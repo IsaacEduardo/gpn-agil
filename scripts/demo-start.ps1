@@ -38,7 +38,10 @@ function Start-Svc($title, $cmd) {
 Write-Host "A lançar serviços..." -ForegroundColor Cyan
 Start-Svc 'GPN :: WEB (8000)'    'php artisan serve --host=127.0.0.1 --port=8000'
 Start-Svc 'GPN :: REVERB (8080)' 'php artisan reverb:start --host=127.0.0.1 --port=8080'
-Start-Svc 'GPN :: QUEUE'         'php artisan queue:work --queue=notifications --sleep=1 --tries=3'
+# A fila 'default' tambem tem de ser drenada: e nela que caem os eventos de
+# broadcast das notificacoes. Drenando so 'notifications', esses jobs ficavam
+# a acumular indefinidamente (ver docs/GUIA_HOSPEDAGEM.md, que ja usa ambas).
+Start-Svc 'GPN :: QUEUE'         'php artisan queue:work --queue=notifications,default --sleep=1 --tries=3'
 
 Start-Sleep -Seconds 3
 Write-Host ""

@@ -127,14 +127,23 @@ class EncaminhamentoFlowTest extends TestCase
             ->whereNotNull('recebido_em')->count());
     }
 
-    public function test_cancel_reverts_to_registrado_when_never_received(): void
+    /**
+     * Cancelar devolve o documento ao estado de nascença.
+     *
+     * Repunha 'registrado' — o valor legado — quando o registo hoje escreve
+     * 'pendente_tratamento'. Dois valores equivalentes na mesma coluna obrigam
+     * todas as consultas a lembrar-se do par, e basta esquecê-lo num sítio para
+     * o contador ficar errado em silêncio. Cancelar passa a repor o estado que
+     * o registo de facto produz.
+     */
+    public function test_cancel_reverts_to_pendente_tratamento_when_never_received(): void
     {
         $doc = $this->doc();
         $enc = $this->service()->forwardDocument($doc, $this->depB->id, null, $this->userA);
 
         $this->service()->cancelForwarding($enc, $this->userA);
 
-        $this->assertSame('registrado', $doc->fresh()->status);
+        $this->assertSame('pendente_tratamento', $doc->fresh()->status);
         $this->assertDatabaseMissing('documento_encaminhamentos', ['id' => $enc->id]);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'documento.encaminhamento_cancelado',
