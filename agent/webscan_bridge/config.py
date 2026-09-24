@@ -92,12 +92,18 @@ def load_config(path: Path | None = None, *, create_missing: bool = True) -> Age
     """Le a configuracao; gera token e ficheiro na primeira execucao."""
     target = Path(path or default_config_path())
     data: dict = {}
+    ilegivel = False
     if target.is_file():
         try:
-            data = json.loads(target.read_text(encoding='utf-8'))
+            # utf-8-sig e nao utf-8: o Windows PowerShell 5.1 escreve BOM em
+            # `Set-Content -Encoding utf8`, e e ele que o install-servico.ps1
+            # usa. Ler em utf-8 estrito rejeitava o ficheiro que o proprio
+            # instalador acabara de escrever, e o posto ficava sem origens.
+            data = json.loads(target.read_text(encoding='utf-8-sig'))
         except (json.JSONDecodeError, OSError) as error:
             logger.error('Configuracao ilegivel em %s (%s); a usar valores por omissao.', target, error)
             data = {}
+            ilegivel = True
 
     config = AgentConfig(
         port=int(os.environ.get('WEBSCAN_PORT') or data.get('port') or DEFAULT_PORT),
@@ -118,7 +124,17 @@ def load_config(path: Path | None = None, *, create_missing: bool = True) -> Age
         changed = True
         logger.info('Token de pareamento gerado. Consulte-o em %s', target)
 
-    if changed and create_missing:
+    # Nunca gravar por cima de um ficheiro que existe e nao foi possivel ler: o
+    # que la esta e a configuracao do posto, e substitui-la pelos valores por
+    # omissao apaga as origens autorizadas — o agente passa a recusar tudo e o
+    # operador ve "Scanner Offline" sem perceber porque. Um erro de leitura tem
+    # de ser reparavel, nao destrutivo.
+    if ilegivel:
+        logger.error(
+            'A configuracao em %s nao foi substituida para nao perder o que la esta. '
+            'Corrija o ficheiro (JSON valido em UTF-8) e reinicie o agente.', target,
+        )
+    elif changed and create_missing:
         try:
             config.save(target)
         except OSError as error:

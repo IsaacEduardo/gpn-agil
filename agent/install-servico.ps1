@@ -67,7 +67,13 @@ if (Test-Path $configPath) {
         preview_max_edge     = 320
     }
 }
-$config | ConvertTo-Json -Depth 5 | Set-Content -Path $configPath -Encoding utf8
+# UTF-8 SEM BOM, escrito pelo .NET: no Windows PowerShell 5.1 o
+# `Set-Content -Encoding utf8` poe BOM, e o agente lia o ficheiro em utf-8
+# estrito — o instalador escrevia uma configuracao que o agente rejeitava, e o
+# posto ficava sem origens autorizadas. O agente ja tolera BOM, mas nao ha
+# razao para o continuar a produzir.
+$json = $config | ConvertTo-Json -Depth 5
+[System.IO.File]::WriteAllText($configPath, $json, (New-Object System.Text.UTF8Encoding $false))
 Write-Host "Configuracao gravada em $configPath" -ForegroundColor Green
 
 # Arranque automatico com a sessao do utilizador.
