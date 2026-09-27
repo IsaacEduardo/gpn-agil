@@ -10,6 +10,7 @@ use App\Services\DocumentoCollaborationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Endpoints da edição colaborativa em tempo real de Documentos Internos.
@@ -17,6 +18,14 @@ use Illuminate\Support\Facades\Auth;
  */
 class DocumentoColaboracaoController extends Controller
 {
+    /**
+     * true desde que o schema Tiptap (resources/js/collab/extensoes.js) preserva os
+     * marcadores estruturados — verificado com um teste de ida e volta sobre um ofício real.
+     * Voltar a false bloqueia de imediato a colaboração nesses documentos. A guarda do
+     * servidor em sync/checkpoint mantém-se em qualquer caso.
+     */
+    public const EDITOR_PRESERVA_ESTRUTURA = true;
+
     public function __construct(private DocumentoCollaborationService $service) {}
 
     /**
@@ -26,12 +35,19 @@ class DocumentoColaboracaoController extends Controller
     {
         $this->authorize('collaborate', $documentoInterno);
 
-        $documentoInterno->load(['especie', 'departamento.gabinete', 'autor']);
+        // Temporário: o editor colaborativo ainda não preserva os marcadores dos modelos
+        // estruturados (ofício). Até preservar, estes documentos usam o editor clássico.
+        if (! self::EDITOR_PRESERVA_ESTRUTURA && $documentoInterno->temConteudoEstruturado()) {
+            return redirect()->route('documentos-internos.edit', $documentoInterno)
+                ->with('warning', 'Este documento foi gerado a partir de um modelo estruturado e, por agora, só pode ser editado no editor clássico.');
+        }
+
+        $documentoInterno->load(['especie', 'departamento.gabinete', 'gabinete', 'autor']);
 
         $colaboradores = $documentoInterno->colaboradores()->with('user')->get();
 
         // Candidatos a convite: utilizadores do mesmo gabinete do documento (excluindo já colaboradores/autor).
-        $gabineteId = optional($documentoInterno->departamento)->gabinete_id;
+        $gabineteId = $documentoInterno->gabineteEmissorId();
         $jaColaboram = $colaboradores->pluck('user_id')->push($documentoInterno->criado_por)->all();
         $candidatos = collect();
         if ($gabineteId) {
@@ -61,7 +77,7 @@ class DocumentoColaboracaoController extends Controller
     {
         $this->authorize('collaborate', $documentoInterno);
 
-        return response()->json($this->service->estadoInicial($documentoInterno));
+        return response()->json($this->service->estadoInicial($documentoInterno, Auth::user()));
     }
 
     /**
@@ -75,11 +91,37 @@ class DocumentoColaboracaoController extends Controller
         $validated = $request->validate([
             'update' => 'required|string',
             'html' => 'nullable|string',
+            'seed' => 'nullable|boolean',
+            'revisao' => 'nullable|integer',
         ]);
+
+        // Sessão aberta antes de uma gravação clássica: o log Yjs em que se baseia foi
+        // descartado, por isso nem o delta nem o HTML podem ser aceites.
+        if ($this->service->sessaoDesactualizada($documentoInterno, $request->filled('revisao') ? (int) $request->input('revisao') : null)) {
+            return $this->respostaSessaoDesactualizada();
+        }
+
+        // Seed: estado inicial de quem abriu primeiro, sem HTML (nada muda no documento).
+        if ($request->boolean('seed')) {
+            if (! $this->service->registarSeed($documentoInterno, Auth::user(), $validated['update'])) {
+                return response()->json(['ok' => false, 'seed_rejeitado' => true], 409);
+            }
+
+            return response()->json(['ok' => true]);
+        }
 
         $this->service->registarUpdate($documentoInterno, Auth::user(), $validated['update']);
 
         if (! empty($validated['html'])) {
+            if ($this->service->degradaConteudo($documentoInterno, $validated['html'])) {
+                Log::warning('Autosave colaborativo recusado: o HTML perderia marcadores estruturados.', [
+                    'documento_interno_id' => $documentoInterno->id,
+                    'user_id' => Auth::id(),
+                ]);
+
+                return response()->json(['ok' => true, 'html_rejeitado' => true]);
+            }
+
             $this->service->autosave($documentoInterno, $validated['html']);
         }
 
@@ -99,7 +141,19 @@ class DocumentoColaboracaoController extends Controller
             'change_type' => 'nullable|in:patch,minor,major',
             'change_log' => 'nullable|string',
             'snapshot' => 'nullable|string',
+            'revisao' => 'nullable|integer',
         ]);
+
+        if ($this->service->sessaoDesactualizada($documentoInterno, $request->filled('revisao') ? (int) $request->input('revisao') : null)) {
+            return $this->respostaSessaoDesactualizada();
+        }
+
+        if ($this->service->degradaConteudo($documentoInterno, $validated['html'])) {
+            return response()->json([
+                'message' => 'Não foi possível guardar a versão: o conteúdo perderia campos do modelo '
+                    .'(Assunto, destinatário ou referência). Use o editor clássico para alterar esses campos.',
+            ], 422);
+        }
 
         $doc = $this->service->checkpoint(
             $documentoInterno,
@@ -130,6 +184,35 @@ class DocumentoColaboracaoController extends Controller
         $this->service->salvarTitulo($documentoInterno, $validated['titulo']);
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Guarda os dados do destinatário (autosave, sem criar versão), como o título.
+     * O texto no corpo é actualizado no editor e chega aos outros pelo Yjs.
+     */
+    public function salvarCampos(Request $request, DocumentoInterno $documentoInterno): JsonResponse
+    {
+        abort_unless($this->service->podeEditar(Auth::user(), $documentoInterno), 403);
+
+        $validated = $request->validate([
+            'destinatario_nome' => 'sometimes|nullable|string|max:255',
+            'destinatario_cargo' => 'sometimes|nullable|string|max:255',
+            'destinatario_orgao' => 'sometimes|nullable|string|max:255',
+            'destinatario_local' => 'sometimes|nullable|string|max:255',
+        ]);
+
+        $this->service->salvarDestinatario($documentoInterno, $validated);
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function respostaSessaoDesactualizada(): JsonResponse
+    {
+        return response()->json([
+            'ok' => false,
+            'versao_desactualizada' => true,
+            'message' => 'Este documento foi alterado no editor clássico. Recarregue a página para continuar.',
+        ], 409);
     }
 
     public function colaboradores(DocumentoInterno $documentoInterno): JsonResponse

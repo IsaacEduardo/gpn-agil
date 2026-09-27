@@ -167,6 +167,7 @@
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item py-2 {{ request()->routeIs('admin.instituicao.*') ? 'active' : '' }}" href="{{ route('admin.instituicao.edit') }}"><i class="fas fa-landmark me-2 text-muted"></i>Dados da Instituição</a></li>
                         <li><a class="dropdown-item py-2 {{ request()->routeIs('admin.documento-especies.*') ? 'active' : '' }}" href="{{ route('admin.documento-especies.index') }}"><i class="fas fa-stopwatch me-2 text-muted"></i>Espécies e Prazos</a></li>
+                        <li><a class="dropdown-item py-2 {{ request()->routeIs('admin.numeracao.*') ? 'active' : '' }}" href="{{ route('admin.numeracao.index') }}"><i class="fas fa-list-ol me-2 text-muted"></i>Numeração</a></li>
                         <li><a class="dropdown-item py-2 {{ request()->routeIs('modelos-despacho.*') ? 'active' : '' }}" href="{{ route('modelos-despacho.index') }}"><i class="fas fa-file-signature me-2 text-muted"></i>Modelos de Despacho</a></li>
                     @endif
                     @if ($isAdmin || Auth::user()->can('configuracoes.editar'))

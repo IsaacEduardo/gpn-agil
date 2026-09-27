@@ -611,7 +611,7 @@ class TemplatesSeeder extends Seeder
     
     <!-- Título da Ordem de Serviço da Secretaria Geral -->
     <div style="text-align: center; margin: 30px 0 35px 0; font-weight: bold; letter-spacing: 0.5px;">
-        ORDEM DE SERVIÇO Nº <span style="border-bottom: 1.5px solid #111111; padding: 0 8px; display: inline-block; min-width: 35px; text-align: center;">{{ numero_ordem }}</span> /SEC.GER.GOV.PROV.HLA/{{ ano_corrente }}
+        ORDEM DE SERVIÇO Nº <span style="border-bottom: 1.5px solid #111111; padding: 0 8px; display: inline-block; min-width: 35px; text-align: center;">{{ numero_ordem }}</span> /{{CODIGO_ORDEM_SERVICO}}/{{ ano_corrente }}
     </div>
 
     <!-- Dispositivo / Texto -->

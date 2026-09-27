@@ -389,7 +389,10 @@ class DashboardService
         // departamento; null deixa a consulta intacta (administrador).
         $limitarAoGabinete = function ($query) use ($gabineteId) {
             if ($gabineteId !== null) {
-                $query->whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabineteId));
+                // Internos: também os emitidos pelo próprio gabinete (sem departamento).
+                $query->getModel() instanceof DocumentoInterno
+                    ? $query->doGabinete($gabineteId)
+                    : $query->whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabineteId));
             }
 
             return $query;

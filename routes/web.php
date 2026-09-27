@@ -260,6 +260,11 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
         ->parameters(['documento-especies' => 'documento_especie'])
         ->names('admin.documento-especies');
 
+    // Numeração: séries por ano e último número emitido fora do sistema (arranque a meio do ano)
+    Route::get('numeracao', [\App\Http\Controllers\Admin\NumeracaoController::class, 'index'])->name('admin.numeracao.index');
+    Route::get('numeracao/previa', [\App\Http\Controllers\Admin\NumeracaoController::class, 'previa'])->name('admin.numeracao.previa');
+    Route::post('numeracao', [\App\Http\Controllers\Admin\NumeracaoController::class, 'definir'])->name('admin.numeracao.definir');
+
     // Gestão de Permissões (RBAC)
     Route::prefix('permissoes')->name('configuracoes.permissoes.')->group(function () {
         Route::get('/', [RolePermissionController::class, 'index'])->name('index');
@@ -367,6 +372,7 @@ if (config('app.feature_collab')) {
             Route::post('/sync', [DocumentoColaboracaoController::class, 'sync'])->name('sync');
             Route::post('/checkpoint', [DocumentoColaboracaoController::class, 'checkpoint'])->name('checkpoint');
             Route::post('/titulo', [DocumentoColaboracaoController::class, 'salvarTitulo'])->name('titulo');
+            Route::post('/campos', [DocumentoColaboracaoController::class, 'salvarCampos'])->name('campos');
             Route::get('/colaboradores', [DocumentoColaboracaoController::class, 'colaboradores'])->name('colaboradores');
             Route::post('/colaboradores', [DocumentoColaboracaoController::class, 'convidar'])->name('convidar');
             Route::patch('/colaboradores/{user}', [DocumentoColaboracaoController::class, 'atualizarColaborador'])->name('colaborador.update');

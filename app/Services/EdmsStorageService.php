@@ -25,7 +25,7 @@ class EdmsStorageService
 
         // 2. Definir caminho de armazenamento
         // Estrutura: edms/{gabinete_id}/{departamento_id}/{ano}/{hash}.enc
-        $gabineteId = $documento->departamento->gabinete_id ?? 'global';
+        $gabineteId = $documento->gabineteEmissorId() ?? 'global';
         $deptId = $documento->departamento_id;
         $year = date('Y');
         $path = "edms/{$gabineteId}/{$deptId}/{$year}/{$hash}.enc";

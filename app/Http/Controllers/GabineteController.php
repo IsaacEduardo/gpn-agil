@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class GabineteController extends Controller
 {
@@ -21,6 +22,33 @@ class GabineteController extends Controller
         if (! $user || ! $user->role || $user->role->name !== 'admin') {
             abort(403, 'Acesso restrito ao administrador.');
         }
+    }
+
+    /**
+     * Regras do código de ofícios. O valor é normalizado antes (maiúsculas, sem pontos
+     * nas pontas) e tem de ser único: cada código tem a sua própria sequência de ofícios.
+     */
+    protected function regrasCodigoOficios(Request $request, ?Gabinete $gabinete = null): array
+    {
+        if ($request->filled('codigo_oficios')) {
+            $request->merge([
+                'codigo_oficios' => mb_strtoupper(trim((string) $request->input('codigo_oficios'), " .\t\n\r\0\x0B")),
+            ]);
+        }
+
+        return [
+            'nullable', 'string', 'max:40',
+            'regex:/^[A-Z0-9]+(\.[A-Z0-9]+)*$/',
+            Rule::unique('gabinetes', 'codigo_oficios')->ignore($gabinete?->id),
+        ];
+    }
+
+    protected function mensagensCodigoOficios(): array
+    {
+        return [
+            'codigo_oficios.regex' => 'O código de ofícios só pode ter letras, números e pontos entre blocos (ex.: SEC.GOV.PROV.HLA).',
+            'codigo_oficios.unique' => 'Este código de ofícios já está atribuído a outro gabinete.',
+        ];
     }
 
     public function index()
@@ -54,9 +82,10 @@ class GabineteController extends Controller
         $data = $request->validate([
             'nome' => ['required', 'string', 'max:255', 'unique:gabinetes,nome'],
             'sigla' => ['nullable', 'string', 'max:10'],
+            'codigo_oficios' => $this->regrasCodigoOficios($request),
             'responsavel_id' => ['nullable', 'exists:users,id'],
             'super_chefe_id' => ['nullable', 'exists:users,id'],
-        ]);
+        ], $this->mensagensCodigoOficios());
 
         $gabinete = Gabinete::create($data);
 
@@ -121,11 +150,12 @@ class GabineteController extends Controller
         $rules = [
             'nome' => ['required', 'string', 'max:255', "unique:gabinetes,nome,{$gabinete->id}"],
             'sigla' => ['nullable', 'string', 'max:10'],
+            'codigo_oficios' => $this->regrasCodigoOficios($request, $gabinete),
             'responsavel_id' => ['nullable', 'exists:users,id'],
             'super_chefe_id' => ['nullable', 'exists:users,id'],
         ];
 
-        $data = $request->validate($rules);
+        $data = $request->validate($rules, $this->mensagensCodigoOficios());
 
         $gabinete->update($data);
 

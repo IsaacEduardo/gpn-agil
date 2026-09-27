@@ -3,18 +3,33 @@
 namespace App\Services;
 
 use App\Enums\DocumentoStatus;
+use App\Models\Departamento;
+use App\Models\Gabinete;
 use App\Models\DocumentoEntrada;
 use App\Models\DocumentoEspecie;
 use App\Models\DocumentoInterno;
 use App\Models\DocumentoVersao;
 use App\Models\ModeloDocumento;
 use App\Models\User;
+use App\Support\CamposVinculados;
+use App\Support\SeriesNumeracao;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class DocumentoInternoService
 {
+    /**
+     * Classe do <span> que marca a referência no corpo. É uma classe, e não um
+     * data-*, porque o HtmlSanitizer só preserva class/style.
+     */
+    public const CLASSE_NOSSA_REFERENCIA = 'ref-nossa-referencia';
+
+    /** Marcador do número (Nº da Ordem de Serviço, Nº no quadro da Informação), preenchido ao gravar. */
+    public const CLASSE_NUMERO_ORDEM = 'ref-numero-ordem';
+
+    /** Marcador da referência sem a identificação da série, para títulos ("INFORMAÇÃO Nº …"). */
+    public const CLASSE_REFERENCIA_TITULO = 'ref-referencia-titulo';
+
     /**
      * Verifica se o utilizador pertence à Secretaria Geral ou possui privilégios de Admin.
      */
@@ -24,24 +39,25 @@ class DocumentoInternoService
             return true;
         }
 
-        $dep = $user->departamento;
-        if (! $dep) {
-            return false;
-        }
-
-        $depSigla = strtoupper($dep->sigla ?? '');
-        $depNome = mb_strtoupper($dep->nome ?? '');
-
         $validSiglas = ['SEC_GERAL', 'SEC.GERAL', 'SEC_GER', 'SG', 'SEC.GER.GOV.PROV.HLA'];
-        if (in_array($depSigla, $validSiglas)) {
-            return true;
+
+        $dep = $user->departamento;
+        if ($dep) {
+            $depSigla = strtoupper($dep->sigla ?? '');
+            $depNome = mb_strtoupper($dep->nome ?? '');
+
+            if (in_array($depSigla, $validSiglas)) {
+                return true;
+            }
+
+            if (str_contains($depNome, 'SECRETARIA GERAL') || str_contains($depNome, 'SECRETÁRIA GERAL')) {
+                return true;
+            }
         }
 
-        if (str_contains($depNome, 'SECRETARIA GERAL') || str_contains($depNome, 'SECRETÁRIA GERAL')) {
-            return true;
-        }
-
-        $gab = $dep->gabinete;
+        // Gabinete do departamento ou, sem departamento, o que o utilizador chefia
+        // (o Secretário Geral não pertence a nenhum departamento).
+        $gab = $this->gabineteDoUtilizador($user);
         if ($gab) {
             $gabSigla = strtoupper($gab->sigla ?? '');
             $gabNome = mb_strtoupper($gab->nome ?? '');
@@ -54,11 +70,21 @@ class DocumentoInternoService
     }
 
     /**
+     * Gabinete do utilizador: o do seu departamento ou, sem departamento, o que chefia.
+     */
+    public function gabineteDoUtilizador(User $user): ?Gabinete
+    {
+        return $user->departamento?->gabinete
+            ?? $user->gabineteGerenciado
+            ?? $user->gabineteSuperGerenciado;
+    }
+
+    /**
      * Retorna a lista dos Chefes de Departamento do gabinete do utilizador.
      */
     public function getChefesDepartamentoForUser(User $user)
     {
-        $gabineteId = $user->departamento ? $user->departamento->gabinete_id : null;
+        $gabineteId = $this->gabineteDoUtilizador($user)?->id;
 
         $query = User::query()->with('departamento');
 
@@ -101,7 +127,7 @@ class DocumentoInternoService
      */
     public function getTemplatesForUser(User $user)
     {
-        $gabineteId = $user->departamento ? $user->departamento->gabinete_id : null;
+        $gabineteId = $this->gabineteDoUtilizador($user)?->id;
         $isSecGeral = $this->isUserSecretariaGeral($user);
 
         return ModeloDocumento::where('ativo', true)
@@ -114,19 +140,33 @@ class DocumentoInternoService
             ->when(! $isSecGeral, function ($q) {
                 $q->where(function ($sq) {
                     $sq->whereNull('codigo')
-                        ->orWhere('codigo', '!=', 'ORDEM_DE_SERVICO_SEC_GERAL');
+                        ->orWhereNotIn('codigo', ModeloDocumento::CODIGOS_EXCLUSIVOS_SEC_GERAL);
                 });
             })
             ->with('especie')
             ->get();
     }
 
-    public function processarTemplate(string $conteudoTemplate, ?DocumentoEntrada $docEntrada, User $user, array $dadosExtras = []): string
+    /**
+     * @param  Departamento|Gabinete|null  $emissor  quem emite: um departamento, o próprio gabinete
+     *                                              (sem departamento) ou, se null, o departamento do utilizador
+     * @param  DocumentoEspecie|null  $especie  espécie do documento: a referência provisória sai no
+     *                                          formato da série certa (ex.: "NOTA ___/…")
+     */
+    public function processarTemplate(string $conteudoTemplate, ?DocumentoEntrada $docEntrada, User $user, array $dadosExtras = [], Departamento|Gabinete|null $emissor = null, ?DocumentoEspecie $especie = null): string
     {
+        if ($emissor instanceof Gabinete) {
+            [$dep, $gab] = [null, $emissor];
+        } else {
+            $dep = $emissor ?? $user->departamento;
+            $gab = $dep?->gabinete ?? ($dep ? null : ($user->gabineteGerenciado ?? $user->gabineteSuperGerenciado));
+        }
+        $numeracao = app(NumeracaoDocumentoService::class);
+
         // Obter Responsável do Gabinete (Chefe do Gabinete / Secretário Geral)
-        $responsavel = $user->departamento?->gabinete?->responsavel
-            ?? $user->departamento?->gabinete?->superChefe
-            ?? $user->departamento?->responsavel
+        $responsavel = $gab?->responsavel
+            ?? $gab?->superChefe
+            ?? $dep?->responsavel
             ?? $user;
         $nomeResponsavel = $responsavel->name;
 
@@ -153,15 +193,13 @@ class DocumentoInternoService
             $dadosInstituicao->cabecalho_linha2 = mb_strtoupper($dadosInstituicao->nome_oficial);
         }
 
-        $siglaGabinete = $user->departamento?->gabinete?->sigla
-            ?? $user->departamento?->sigla
+        $siglaGabinete = $gab?->sigla
+            ?? $dep?->sigla
             ?? 'SEC.GER.GOV.PROV.HLA';
 
         $insigniaUrl = ! empty($dadosInstituicao->logo_url) ? $dadosInstituicao->logo_url : asset('images/insignia.png');
         $governoNome = ! empty($dadosInstituicao->cabecalho_linha2) ? $dadosInstituicao->cabecalho_linha2 : 'Governo Provincial da Huíla';
-        $gabineteSecretariaNome = ($user->departamento && $user->departamento->gabinete)
-            ? $user->departamento->gabinete->nome
-            : ($user->departamento ? $user->departamento->nome : 'Secretaria Geral');
+        $gabineteSecretariaNome = $gab?->nome ?? ($dep ? $dep->nome : 'Secretaria Geral');
 
         $qrCodeDefault = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="70" height="70" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23eee"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="%23666">QR CODE</text></svg>';
 
@@ -178,12 +216,13 @@ class DocumentoInternoService
             '{{ USUARIO_NOME }}' => $user->name,
             '{{RESPONSAVEL_NOME}}' => $nomeResponsavel,
             '{{ RESPONSAVEL_NOME }}' => $nomeResponsavel,
-            '{{DEPARTAMENTO_NOME}}' => $user->departamento ? $user->departamento->nome : 'Departamento',
-            '{{ DEPARTAMENTO_NOME }}' => $user->departamento ? $user->departamento->nome : 'Departamento',
-            '{{GABINETE_NOME}}' => ($user->departamento && $user->departamento->gabinete) ? $user->departamento->gabinete->nome : '',
-            '{{ GABINETE_NOME }}' => ($user->departamento && $user->departamento->gabinete) ? $user->departamento->gabinete->nome : '',
-            '{{DEPARTAMENTO_SIGLA}}' => $user->departamento ? strtoupper(Str::slug($user->departamento->nome, '')) : 'DEP',
-            '{{ DEPARTAMENTO_SIGLA }}' => $user->departamento ? strtoupper(Str::slug($user->departamento->nome, '')) : 'DEP',
+            '{{DEPARTAMENTO_NOME}}' => $dep ? $dep->nome : 'Departamento',
+            '{{ DEPARTAMENTO_NOME }}' => $dep ? $dep->nome : 'Departamento',
+            '{{GABINETE_NOME}}' => $gab?->nome ?? '',
+            '{{ GABINETE_NOME }}' => $gab?->nome ?? '',
+            // Emitido pelo gabinete: a sigla é a do gabinete.
+            '{{DEPARTAMENTO_SIGLA}}' => $numeracao->siglaEmissor($dep, $gab),
+            '{{ DEPARTAMENTO_SIGLA }}' => $numeracao->siglaEmissor($dep, $gab),
             '{{INSTITUICAO_NOME}}' => $dadosInstituicao->nome_oficial,
             '{{ INSTITUICAO_NOME }}' => $dadosInstituicao->nome_oficial,
             '{{INSTITUICAO_CABECALHO_1}}' => $dadosInstituicao->cabecalho_linha1,
@@ -197,22 +236,41 @@ class DocumentoInternoService
         ];
 
         // Construir a linha da data institucional
-        $gabineteNome = ($user->departamento && $user->departamento->gabinete) ? $user->departamento->gabinete->nome : ($user->departamento ? $user->departamento->nome : $dadosInstituicao->cabecalho_linha2);
+        $gabineteNome = $gab?->nome ?? ($dep ? $dep->nome : $dadosInstituicao->cabecalho_linha2);
         $linhaData = mb_strtoupper($gabineteNome).', em '.$dadosInstituicao->cidade.', aos '.$dataExtensoFormatada;
 
         $placeholders['{{RODAPE_INSTITUCIONAL_DATA}}'] = $linhaData;
 
+        // Ofício: referência (marcador substituído pela definitiva ao gravar) e datação.
+        $placeholders['{{GABINETE_CODIGO_OFICIOS}}'] = (string) ($gab?->codigo_oficios ?? '');
+        $referenciaProvisoria = $this->referenciaProvisoria($dep, $gab, $especie);
+        $placeholders['{{NOSSA_REFERENCIA}}'] = '<span class="'.self::CLASSE_NOSSA_REFERENCIA.'">'
+            .e($referenciaProvisoria).'</span>';
+        $placeholders['{{REFERENCIA_TITULO}}'] = '<span class="'.self::CLASSE_REFERENCIA_TITULO.'">'
+            .e(SeriesNumeracao::semIdentificacao($referenciaProvisoria)).'</span>';
+
+        // Nota: assina o Chefe de Departamento designado para o departamento emissor.
+        $chefeDepartamento = $dep?->chefeDesignado()?->name ?? '[Chefe de Departamento não definido]';
+        $placeholders['{{CHEFE_DEPARTAMENTO_NOME}}'] = e($chefeDepartamento);
+        $placeholders['{{ CHEFE_DEPARTAMENTO_NOME }}'] = e($chefeDepartamento);
+        $placeholders['{{GABINETE_INSTITUICAO}}'] = mb_strtoupper(
+            ($gab?->nome ? $gab->nome.' do ' : '').$dadosInstituicao->nome_oficial
+        );
+        // Nota: a datação começa pelo departamento que a emite
+        // ("DEPARTAMENTO DE … DA SECRETARIA GERAL DO GOVERNO PROVINCIAL DA HUÍLA").
+        $placeholders['{{DEPARTAMENTO_GABINETE_INSTITUICAO}}'] = $dep
+            ? mb_strtoupper($dep->nome.($gab?->nome ? ' '.$this->preposicaoPara($gab->nome).' ' : ' do ')
+                .($gab?->nome ? $gab->nome.' do ' : '').$dadosInstituicao->nome_oficial)
+            : $placeholders['{{GABINETE_INSTITUICAO}}'];
+        $placeholders['{{SUA_REFERENCIA}}'] = $docEntrada
+            ? ($docEntrada->classificacao_ref_numero ?: $docEntrada->numero_sequencial.'/'.$docEntrada->ano_referencia)
+            : '';
+        $placeholders['{{SUA_COMUNICACAO}}'] = $docEntrada?->data_documento?->format('d/m/Y') ?? '';
+
         // Helper to trim and check
         $getVal = fn ($key, $default) => ! empty($dadosExtras[$key]) && trim($dadosExtras[$key]) !== '' ? trim($dadosExtras[$key]) : $default;
 
-        // Recipient placeholders from dadosExtras
-        $placeholders['{{DESTINATARIO_NOME}}'] = $getVal('destinatario_nome', '[NOME DO DESTINATÁRIO]');
-        $placeholders['{{DESTINATARIO_CARGO}}'] = $getVal('destinatario_cargo', '[CARGO]');
-        $placeholders['{{DESTINATARIO_ORGAO}}'] = $getVal('destinatario_orgao', '[INSTITUIÇÃO/ÓRGÃO]');
-        $placeholders['{{DESTINATARIO_LOCAL}}'] = $getVal('destinatario_local', $dadosInstituicao->cidade);
-
-        // Subject placeholder
-        $placeholders['{{ASSUNTO}}'] = $getVal('titulo', '[ASSUNTO]');
+        // Assunto e destinatário: ver CamposVinculados (aplicados depois do merge dos extras).
 
         if ($docEntrada) {
             $placeholders['{{DOCUMENTO_ORIGEM_NUMERO}}'] = $docEntrada->numero_sequencial.'/'.$docEntrada->ano_referencia;
@@ -266,21 +324,17 @@ class DocumentoInternoService
             $placeholders['{{{ '.$key.' }}}'] = $value;
         }
 
-        // Calcular número de ordem sequencial automático para o ano atual do servidor
-        $especieOrdemId = DocumentoEspecie::where('nome', 'like', '%Ordem%')->value('id');
-        $countExistentes = DocumentoInterno::where(function ($q) use ($especieOrdemId) {
-            if ($especieOrdemId) {
-                $q->where('documento_especie_id', $especieOrdemId);
-            } else {
-                $q->where('titulo', 'like', '%Ordem%');
-            }
-        })
-        ->whereYear('created_at', now()->year)
-        ->count();
+        // Ordem de Serviço: o número vem da série do gabinete (OS:{código}), reservado ao
+        // gravar; aqui fica um marcador (substituído em aplicarReferenciaDefinitiva).
+        $numeroOrdemFinal = '<span class="'.self::CLASSE_NUMERO_ORDEM.'">__</span>';
+        $anoAtualServidor = (string) NumeracaoDocumentoService::anoCorrente();
+        $codigoOrdemServico = $numeracao->codigoOficios($gab) ?? $numeracao->siglaEmissor($dep, $gab);
 
-        $numAutoCalculado = sprintf('%02d', 6 + $countExistentes);
-        $numeroOrdemFinal = $getVal('numero_ordem', $numAutoCalculado);
-        $anoAtualServidor = now()->format('Y');
+        // Assunto e destinatário em marcadores sincronizáveis. Depois do merge acima,
+        // que de outro modo os sobrepunha com o valor cru (ou vazio).
+        $placeholders = array_merge($placeholders, CamposVinculados::placeholders(
+            CamposVinculados::valores($dadosExtras, $dadosInstituicao->cidade)
+        ));
 
         // Placeholders específicos formatados (sobrepõem entradas brutas se necessário)
         $placeholders['{{ qr_code_img_url }}'] = $getVal('qr_code_img_url', $qrCodeDefault);
@@ -289,7 +343,11 @@ class DocumentoInternoService
         $placeholders['{{ gabinete_secretaria_nome }}'] = $getVal('gabinete_secretaria_nome', 'Secretaria Geral');
         $placeholders['{{ numero_ordem }}'] = $numeroOrdemFinal;
         $placeholders['{{NUMERO_ORDEM}}'] = $numeroOrdemFinal;
+        $placeholders['{{NUMERO_DOCUMENTO}}'] = $numeroOrdemFinal;
+        // Informação/Parecer: "Proc." é opcional; vazio fica a linha para preencher à mão.
+        $placeholders['{{ numero_processo }}'] = e($getVal('numero_processo', '________'));
         $placeholders['{{ sigla_gabinete }}'] = $getVal('sigla_gabinete', $siglaGabinete);
+        $placeholders['{{CODIGO_ORDEM_SERVICO}}'] = $codigoOrdemServico;
         $placeholders['{{ ano_corrente }}'] = $anoAtualServidor;
         $placeholders['{{ANO_CORRENTE}}'] = $anoAtualServidor;
         
@@ -369,46 +427,95 @@ class DocumentoInternoService
         return $conteudoProcessado;
     }
 
-    public function gerarNumeroReferencia(DocumentoInterno $doc): string
+    /**
+     * "da" ou "do" antes do nome de uma unidade, pelo género da primeira palavra
+     * (Secretaria/Direcção → "da"; Gabinete/Departamento → "do").
+     */
+    private function preposicaoPara(string $nome): string
     {
-        // Format: SIGLA_DEP/ESPECIE/SEQ/ANO
-        // Example: DTI/MEMO/001/2025
+        $primeira = mb_strtolower(strtok(trim($nome), ' ') ?: '');
 
-        $ano = now()->year;
+        return preg_match('/(a|ção|cção|dade|agem)$/u', $primeira) ? 'da' : 'do';
+    }
 
-        // Count existing docs for this department and year
-        $count = DocumentoInterno::where('departamento_id', $doc->departamento_id)
-            ->whereYear('created_at', $ano)
-            ->count();
-        // Note: This count assumes the current doc is not yet saved or we increment.
-        // Since we generate this usually before or during save, let's assume +1.
-        // If updating, we should check if ref already exists.
-
-        $seq = $count + 1;
-
-        $especie = $doc->especie ? strtoupper(Str::slug($doc->especie->nome, '')) : 'DOC';
-        // Shorten especie if needed, e.g. MEMORANDO -> MEMO
-        $especieShort = match ($especie) {
-            'MEMORANDO' => 'MEMO',
-            'OFICIO' => 'OF',
-            'DESPACHO' => 'DESP',
-            'CIRCULAR' => 'CIRC',
-            'NOTA' => 'NOTA',
-            'ORDEMDESERVICO', 'ORDEM' => 'OS',
-            default => substr($especie, 0, 4)
-        };
-
-        $depSigla = 'DEP';
-        if ($doc->departamento) {
-            if (! empty($doc->departamento->sigla)) {
-                $depSigla = $doc->departamento->sigla;
-            } else {
-                $slug = strtoupper(Str::slug($doc->departamento->nome, ''));
-                $depSigla = substr($slug, 0, 3);
-            }
+    /**
+     * Referência com o número em branco. Com a espécie, usa a série real (ofício, nota, OS…);
+     * sem ela, mantém o formato do ofício.
+     */
+    private function referenciaProvisoria(?Departamento $dep, ?Gabinete $gab, ?DocumentoEspecie $especie): string
+    {
+        if (! $especie || ! $gab) {
+            return app(NumeracaoDocumentoService::class)->referenciaProvisoria($dep, $gab);
         }
 
-        return sprintf('%s/%s/%03d/%d', $depSigla, $especieShort, $seq, $ano);
+        // Documento fictício (não gravado), só para determinar a série.
+        $doc = new DocumentoInterno;
+        $doc->departamento_id = $dep?->id;
+        $doc->gabinete_id = $gab->id;
+        $doc->setRelation('departamento', $dep);
+        $doc->setRelation('gabinete', $gab);
+        $doc->setRelation('especie', $especie);
+
+        return SeriesNumeracao::paraDocumento($doc)
+            ->formatarProvisoria(NumeracaoDocumentoService::anoCorrente());
+    }
+
+    /**
+     * Reserva a referência do documento (ver NumeracaoDocumentoService).
+     * Chamar dentro da mesma transacção em que o documento é gravado.
+     */
+    public function gerarNumeroReferencia(DocumentoInterno $doc): string
+    {
+        return app(NumeracaoDocumentoService::class)->gerar($doc);
+    }
+
+    /**
+     * Como gerarNumeroReferencia, mas devolve também o número (ex.: o nº da Ordem de Serviço).
+     *
+     * @return array{referencia: string, numero: int}
+     */
+    public function reservarNumero(DocumentoInterno $doc): array
+    {
+        return app(NumeracaoDocumentoService::class)->reservarParaDocumento($doc);
+    }
+
+    /**
+     * Antes de gravar: repõe o Assunto e o destinatário submetidos nos marcadores do
+     * corpo (vale mesmo sem JavaScript). Os vazios ficam gravados, para reaparecerem se o
+     * campo for preenchido mais tarde; só a apresentação os esconde
+     * (DocumentoInterno::conteudoParaApresentacao).
+     */
+    public function prepararCamposVinculados(string $html, array $entrada): string
+    {
+        $cidade = rescue(fn () => \App\Models\DadosInstituicao::first()?->cidade, null, false) ?: 'Sede';
+
+        return CamposVinculados::sincronizar($html, CamposVinculados::valores($entrada, $cidade));
+    }
+
+    /**
+     * Substitui o texto do marcador {{NOSSA_REFERENCIA}} pela referência definitiva,
+     * para que o corpo impresso coincida com numero_referencia.
+     */
+    public function aplicarReferenciaDefinitiva(string $html, string $referencia, ?int $numero = null): string
+    {
+        $html = $this->preencherMarcador($html, self::CLASSE_NOSSA_REFERENCIA, $referencia);
+        $html = $this->preencherMarcador($html, self::CLASSE_REFERENCIA_TITULO, SeriesNumeracao::semIdentificacao($referencia));
+
+        // Nº no título/quadro: "Nº 08" nas Ordens de Serviço, "Nº 12" na Informação/Parecer.
+        return $numero !== null
+            ? $this->preencherMarcador($html, self::CLASSE_NUMERO_ORDEM, SeriesNumeracao::numeroParaTitulo($referencia, $numero))
+            : $html;
+    }
+
+    private function preencherMarcador(string $html, string $classe, string $texto): string
+    {
+        $classe = preg_quote($classe, '/');
+
+        return preg_replace_callback(
+            '/(<span\b[^>]*\bclass\s*=\s*["\'][^"\']*\b'.$classe.'\b[^"\']*["\'][^>]*>)(.*?)(<\/span>)/is',
+            fn ($m) => $m[1].e($texto).$m[3],
+            $html
+        ) ?? $html;
     }
 
     /**
@@ -468,6 +575,41 @@ class DocumentoInternoService
 
             return $documento;
         });
+    }
+
+    /**
+     * Garante que o conteúdo actual existe no histórico (versão inicial, salvaguardas).
+     * Sem versão para o número actual cria-a com esse número; se existir mas o conteúdo
+     * divergir (ex.: autosave), cria uma nova versão patch. Não faz nada se já coincidir.
+     */
+    public function garantirVersaoDoConteudoActual(DocumentoInterno $documento, User $usuario, string $changeLog): void
+    {
+        $ultima = DocumentoVersao::where('documento_interno_id', $documento->id)->orderByDesc('versao')->first();
+
+        if ($ultima && $ultima->conteudo_final === $documento->conteudo_final && $ultima->titulo === $documento->titulo) {
+            return;
+        }
+
+        if (! $ultima || (int) $ultima->versao < (int) ($documento->versao_atual ?? 1)) {
+            DocumentoVersao::create([
+                'documento_interno_id' => $documento->id,
+                'versao' => $documento->versao_atual ?? 1,
+                'major' => $documento->versao_major ?? 0,
+                'minor' => $documento->versao_minor ?? 0,
+                'patch' => $documento->versao_patch ?? 0,
+                'titulo' => $documento->titulo,
+                'conteudo_final' => $documento->conteudo_final,
+                'criado_por' => $usuario->id,
+                'change_log' => $changeLog,
+            ]);
+
+            return;
+        }
+
+        $this->updateWithVersioning($documento, [
+            'titulo' => $documento->titulo,
+            'conteudo_final' => $documento->conteudo_final,
+        ], $usuario, 'patch', $changeLog);
     }
 
     /**

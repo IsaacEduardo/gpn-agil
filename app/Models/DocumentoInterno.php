@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\DocumentoStatus;
+use App\Support\CamposVinculados;
+use App\Support\Sanitizer;
 use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +25,7 @@ class DocumentoInterno extends Model
         'documento_entrada_id',
         'criado_por',
         'departamento_id',
+        'gabinete_id',
         'status',
         'retencao_notificada_em',
         'destinatario_nome',
@@ -54,11 +57,99 @@ class DocumentoInterno extends Model
         'versao_patch' => 'integer',
         'arquivado' => 'boolean',
         'arquivado_em' => 'datetime',
+        'revisao_classica' => 'integer',
     ];
+
+    protected static function booted(): void
+    {
+        // Snapshot do gabinete emissor em todos os caminhos de criação/edição.
+        static::saving(function (self $doc) {
+            if ($doc->gabinete_id === null && $doc->departamento_id) {
+                $doc->gabinete_id = Departamento::whereKey($doc->departamento_id)->value('gabinete_id');
+            }
+        });
+    }
+
+    /**
+     * Gabinete emissor: o snapshot gravado; para registos antigos, o gabinete do departamento.
+     */
+    public function gabineteEmissor(): ?Gabinete
+    {
+        if ($this->gabinete_id) {
+            return $this->relationLoaded('gabinete') ? $this->gabinete : $this->gabinete()->first();
+        }
+
+        return $this->departamento?->gabinete;
+    }
+
+    public function gabineteEmissorId(): ?int
+    {
+        $id = $this->gabinete_id ?? $this->departamento?->gabinete_id;
+
+        return $id !== null ? (int) $id : null;
+    }
+
+    /** Emitido pelo próprio gabinete (Chefe de Gabinete / Secretário Geral), sem departamento. */
+    public function emitidoPeloGabinete(): bool
+    {
+        return $this->departamento_id === null && $this->gabinete_id !== null;
+    }
+
+    /**
+     * Documentos de um gabinete: pelo snapshot ou, em registos sem ele, pelo departamento.
+     */
+    public function scopeDoGabinete($query, $gabineteId)
+    {
+        return $query->where(function ($q) use ($gabineteId) {
+            $q->where('gabinete_id', $gabineteId)
+                ->orWhere(function ($q2) use ($gabineteId) {
+                    $q2->whereNull('gabinete_id')
+                        ->whereHas('departamento', fn ($d) => $d->where('gabinete_id', $gabineteId));
+                });
+        });
+    }
 
     public function getVersaoSemanticaAttribute(): string
     {
         return "{$this->versao_major}.{$this->versao_minor}.{$this->versao_patch}";
+    }
+
+    /**
+     * Marcadores que ligam o corpo a dados do documento (Assunto/destinatário e referência).
+     * Um editor que os perca degrada o documento; por isso servem de critério de guarda.
+     */
+    public static function contarMarcadoresEstruturados(?string $html): int
+    {
+        return preg_match_all('/class\s*=\s*["\'][^"\']*(?<![\w-])(?:campo-vinculado|ref-nossa-referencia)(?![\w-])/i', (string) $html);
+    }
+
+    public function temConteudoEstruturado(): bool
+    {
+        return self::contarMarcadoresEstruturados($this->conteudo_final) > 0;
+    }
+
+    /**
+     * HTML para mostrar, imprimir ou indexar. Os campos vazios (ex.: "[Cargo]") ficam
+     * gravados, para reaparecerem quando forem preenchidos, mas nunca são apresentados.
+     * O que é assinado/hasheado continua a ser o conteudo_final gravado.
+     */
+    public static function htmlParaApresentacao(?string $html): string
+    {
+        return Sanitizer::clean(CamposVinculados::limparVazios((string) $html));
+    }
+
+    public function conteudoParaApresentacao(): string
+    {
+        return self::htmlParaApresentacao($this->conteudo_final);
+    }
+
+    /**
+     * HTML gravado sem os campos vazios, para extrair texto (indexação, assistente de IA).
+     * Não passa pelo Sanitizer, que codificaria os acentos em entidades.
+     */
+    public function conteudoSemCamposVazios(): string
+    {
+        return CamposVinculados::limparVazios((string) $this->conteudo_final);
     }
 
     /**
@@ -73,19 +164,15 @@ class DocumentoInterno extends Model
         if ($user->isSuperChefeGabinete()) {
             $gabinete = $user->gabineteSuperGerenciado;
             if ($gabinete) {
-                return $query->whereHas('departamento', function ($q) use ($gabinete) {
-                    $q->where('gabinete_id', $gabinete->id);
-                });
+                return $query->doGabinete($gabinete->id);
             }
         }
 
         if ($user->isChefeGabinete()) {
             $gabinete = $user->gabineteGerenciado;
 
-            // Retorna docs onde o departamento pertence ao gabinete
-            return $query->whereHas('departamento', function ($q) use ($gabinete) {
-                $q->where('gabinete_id', $gabinete->id);
-            });
+            // Docs do gabinete: dos seus departamentos e os emitidos pelo próprio gabinete
+            return $query->doGabinete($gabinete->id);
         }
 
         // Pode ser delegado (se implementarmos permission 'gabinete.view_all')
@@ -93,9 +180,7 @@ class DocumentoInterno extends Model
         try {
             if ($user->hasPermissionTo('gabinete.view_all')) {
                 if ($user->departamento && $user->departamento->gabinete_id) {
-                    return $query->whereHas('departamento', function ($q) use ($user) {
-                        $q->where('gabinete_id', $user->departamento->gabinete_id);
-                    });
+                    return $query->doGabinete($user->departamento->gabinete_id);
                 }
             }
         } catch (PermissionDoesNotExist $e) {
@@ -176,6 +261,12 @@ class DocumentoInterno extends Model
     public function departamento()
     {
         return $this->belongsTo(Departamento::class);
+    }
+
+    /** Snapshot do gabinete emissor (ver gabineteEmissor()). */
+    public function gabinete()
+    {
+        return $this->belongsTo(Gabinete::class);
     }
 
     public function assinadoPor()

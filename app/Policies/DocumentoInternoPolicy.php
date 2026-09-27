@@ -44,7 +44,7 @@ class DocumentoInternoPolicy
         // Super Chefe de Gabinete (Se o depto do doc pertence ao gabinete dele)
         if ($user->isSuperChefeGabinete()) {
             $gabinete = $user->gabineteSuperGerenciado;
-            if ($gabinete && $doc->departamento && $doc->departamento->gabinete_id === $gabinete->id) {
+            if ($gabinete && $doc->gabineteEmissorId() === (int) $gabinete->id) {
                 return true;
             }
         }
@@ -52,7 +52,7 @@ class DocumentoInternoPolicy
         // Chefe de Gabinete (Se o depto do doc pertence ao gabinete dele)
         if ($user->isChefeGabinete()) {
             $gabinete = $user->gabineteGerenciado;
-            if ($doc->departamento && $doc->departamento->gabinete_id === $gabinete->id) {
+            if ($gabinete && $doc->gabineteEmissorId() === (int) $gabinete->id) {
                 return true;
             }
         }
@@ -60,7 +60,7 @@ class DocumentoInternoPolicy
         // Permissão delegada
         if ($user->hasPermissionTo('gabinete.view_all')) {
             $userGabId = optional($user->departamento)->gabinete_id;
-            if ($userGabId && optional($doc->departamento)->gabinete_id === $userGabId) {
+            if ($userGabId && $doc->gabineteEmissorId() === (int) $userGabId) {
                 return true;
             }
         }
@@ -133,7 +133,7 @@ class DocumentoInternoPolicy
         // Chefe de Gabinete também pode aprovar (override)
         if ($user->isChefeGabinete()) {
             $gabinete = $user->gabineteGerenciado;
-            if ($gabinete && optional($doc->departamento)->gabinete_id === $gabinete->id) {
+            if ($gabinete && $doc->gabineteEmissorId() === (int) $gabinete->id) {
                 return true;
             }
         }
@@ -167,7 +167,7 @@ class DocumentoInternoPolicy
         // Chefe de Gabinete can archive documents belonging to his gabinete
         if ($user->isChefeGabinete()) {
             $gabinete = $user->gabineteGerenciado;
-            if ($gabinete && optional($doc->departamento)->gabinete_id === $gabinete->id) {
+            if ($gabinete && $doc->gabineteEmissorId() === (int) $gabinete->id) {
                 return true;
             }
         }

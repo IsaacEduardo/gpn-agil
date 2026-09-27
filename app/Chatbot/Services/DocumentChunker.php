@@ -76,7 +76,7 @@ class DocumentChunker
     public function chunkInterno(DocumentoInterno $doc): array
     {
         $doc->loadMissing('especie');
-        $corpo = trim($this->htmlParaTexto((string) $doc->conteudo_final));
+        $corpo = trim($this->htmlParaTexto($doc->conteudoSemCamposVazios()));
 
         $cabecalho = collect([
             'Título: '.($doc->titulo ?? ''),

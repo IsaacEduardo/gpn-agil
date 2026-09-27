@@ -8,8 +8,22 @@
         padding: 20px;
         border-radius: 8px;
         border: 1px solid #dee2e6;
-        display: flex;
         justify-content: center;
+    }
+    /* Só o separador activo é flex: um display no seletor de ID sobrepunha-se ao
+       display:none do Bootstrap e a folha A4 ocupava ~2000px invisíveis. */
+    #tab-preview.active {
+        display: flex;
+    }
+    .doc-edit-actions {
+        position: sticky;
+        bottom: 0;
+        z-index: 20;
+        background: #fff;
+        border-top: 1px solid #dee2e6;
+        margin: 1rem -1rem -1rem;
+        padding: .75rem 1rem;
+        border-radius: 0 0 .375rem .375rem;
     }
 </style>
 @endsection
@@ -22,10 +36,16 @@
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <span>Editar Documento Interno</span>
                         @if (config('app.feature_collab'))
-                            <a href="{{ route('documentos-internos.collab.editor', $documentoInterno) }}"
-                               class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-users me-1"></i> Editar em colaboração
-                            </a>
+                            @if (\App\Http\Controllers\DocumentoColaboracaoController::EDITOR_PRESERVA_ESTRUTURA || ! $documentoInterno->temConteudoEstruturado())
+                                <a href="{{ route('documentos-internos.collab.editor', $documentoInterno) }}"
+                                   class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-users me-1"></i> Editar em colaboração
+                                </a>
+                            @else
+                                <span class="text-muted small" title="O editor colaborativo ainda não preserva os campos deste modelo">
+                                    <i class="fas fa-users-slash me-1"></i> Colaboração indisponível para este modelo
+                                </span>
+                            @endif
                         @endif
                     </div>
 
@@ -88,26 +108,8 @@
                                         </div>
                                     </div>
 
-                                    <div class="mt-3">
-                                        <button class="btn btn-outline-info w-100 btn-sm" type="button"
-                                            data-bs-toggle="collapse" data-bs-target="#collapseVariables"
-                                            aria-expanded="false" aria-controls="collapseVariables">
-                                            <i class="fas fa-info-circle me-1"></i> Variáveis Disponíveis
-                                        </button>
-                                        <div class="collapse mt-2" id="collapseVariables">
-                                            <div class="card card-body bg-light small">
-                                                <ul class="list-unstyled mb-0">
-                                                    <li><strong>@{{DATA_ATUAL}}</strong>: 21/12/2025</li>
-                                                    <li><strong>@{{DATA_EXTENSO}}</strong>: 21 de Dezembro...</li>
-                                                    <li><strong>@{{USUARIO_NOME}}</strong>: Seu nome</li>
-                                                    <li><strong>@{{DEPARTAMENTO_NOME}}</strong>: Seu depto</li>
-                                                    <li><strong>@{{DESTINATARIO_NOME}}</strong>: Nome do destinatário</li>
-                                                    <li><strong>@{{DESTINATARIO_CARGO}}</strong>: Cargo do destinatário</li>
-                                                    <li><strong>@{{ASSUNTO}}</strong>: Título do documento</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    {{-- Sem painel de variáveis: na edição os marcadores {{...}} não são
+                                         resolvidos (o update() recusa-os), só na criação a partir do modelo. --}}
                                 </div>
 
                                 <!-- Right Column: Editor & Preview Tabs -->
@@ -129,6 +131,9 @@
                                         <div class="tab-pane fade show active" id="tab-editor" role="tabpanel" aria-labelledby="editor-tab">
                                             <div class="editor-container">
                                                 <label for="conteudo_final" class="form-label">Conteúdo do Documento</label>
+                                                @error('conteudo_final')
+                                                    <div class="alert alert-danger py-2 small">{{ $message }}</div>
+                                                @enderror
                                                 <textarea class="form-control" id="conteudo_final" name="conteudo_final" rows="20">{{ $documentoInterno->conteudo_final }}</textarea>
                                             </div>
                                         </div>
@@ -141,7 +146,7 @@
                                                     <div style="margin-top: 10px; font-family: 'Times New Roman', serif; font-size: 12pt; font-weight: bold; text-transform: uppercase;">
                                                         {{ $dadosInstituicao->cabecalho_linha1 }}<br>
                                                         {{ $dadosInstituicao->cabecalho_linha2 }}<br>
-                                                        <span id="preview-gabinete-nome">{{ mb_strtoupper($documentoInterno->departamento->gabinete->nome ?? ($documentoInterno->departamento->nome ?? 'GABINETE NÃO DEFINIDO')) }}</span>
+                                                        <span id="preview-gabinete-nome">{{ mb_strtoupper($documentoInterno->gabineteEmissor()?->nome ?? ($documentoInterno->departamento->nome ?? 'GABINETE NÃO DEFINIDO')) }}</span>
                                                     </div>
                                                 </div>
                                                 
@@ -174,9 +179,11 @@
                                 </div>
                             </div>
 
-                            <div class="mt-4 text-end">
+                            <div class="doc-edit-actions d-flex justify-content-end gap-2">
                                 <a href="{{ route('documentos-internos.index') }}" class="btn btn-secondary">Cancelar</a>
-                                <button type="submit" class="btn btn-success">Salvar Alterações</button>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-save me-1"></i> Salvar Alterações
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -186,18 +193,15 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.2/tinymce.min.js" referrerpolicy="origin"></script>
+    @include('documentos_internos.partials.campos-vinculados-js')
     <script>
         function updateLivePreview() {
             if (!tinymce.get('conteudo_final')) return;
             
+            // Assunto e destinatário já estão no editor (marcadores sincronizados por
+            // partials/campos-vinculados-js); aqui só se resolvem os restantes placeholders.
             let rawContent = tinymce.get('conteudo_final').getContent();
-            
-            const tituloVal = document.getElementById('titulo') ? document.getElementById('titulo').value : '';
-            const destNome = document.getElementById('destinatario_nome') ? document.getElementById('destinatario_nome').value : '';
-            const destCargo = document.getElementById('destinatario_cargo') ? document.getElementById('destinatario_cargo').value : '';
-            const destOrgao = document.getElementById('destinatario_orgao') ? document.getElementById('destinatario_orgao').value : '';
-            const destLocal = document.getElementById('destinatario_local') ? document.getElementById('destinatario_local').value : 'Moçâmedes';
-            
+
             const userName = "{{ auth()->user()->name }}";
             const userDept = "{{ auth()->user()->departamento->nome ?? 'Administração' }}";
             const userDeptSigla = "{{ auth()->user()->departamento->sigla ?? 'ADM' }}";
@@ -231,12 +235,7 @@
             cleanContent = cleanContent.replace(/\{\{DEPARTAMENTO_NOME\}\}/g, userDept);
             cleanContent = cleanContent.replace(/\{\{DEPARTAMENTO_SIGLA\}\}/g, userDeptSigla);
             cleanContent = cleanContent.replace(/\{\{ANO\}\}/g, ano);
-            cleanContent = cleanContent.replace(/\{\{ASSUNTO\}\}/g, tituloVal);
-            cleanContent = cleanContent.replace(/\{\{DESTINATARIO_NOME\}\}/g, destNome);
-            cleanContent = cleanContent.replace(/\{\{DESTINATARIO_CARGO\}\}/g, destCargo);
-            cleanContent = cleanContent.replace(/\{\{DESTINATARIO_ORGAO\}\}/g, destOrgao);
-            cleanContent = cleanContent.replace(/\{\{DESTINATARIO_LOCAL\}\}/g, destLocal);
-            
+
             Object.entries(dynamicReplacements).forEach(([key, val]) => {
                 const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
                 cleanContent = cleanContent.replace(regex, val);
@@ -252,9 +251,12 @@
             tinymce.init({
                 promotion: false,
                 selector: 'textarea#conteudo_final',
+                branding: false,
                 plugins: 'link lists table',
-                toolbar: 'undo redo | blocks | bold italic | alignleft aligncenter alignright | indent outdent | bullist numlist | table',
-                height: 600,
+                toolbar: 'undo redo | blocks | bold italic underline | alignleft aligncenter alignright alignjustify | indent outdent | bullist numlist | table | removeformat',
+                height: '75vh',
+                min_height: 500,
+                content_style: '.campo-vazio { color: #b45309; background: #fef3c7; }',
                 setup: function (editor) {
                     editor.on('NodeChange Change KeyUp', function () {
                         updateLivePreview();
@@ -262,17 +264,7 @@
                 }
             });
 
-            const inputsParaMonitorar = [
-                'titulo', 'destinatario_nome', 'destinatario_cargo',
-                'destinatario_orgao', 'destinatario_local'
-            ];
-
-            inputsParaMonitorar.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.addEventListener('input', updateLivePreview);
-                }
-            });
+            ligarCamposVinculados(updateLivePreview);
         });
     </script>
 @endsection

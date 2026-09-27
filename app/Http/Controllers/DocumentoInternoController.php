@@ -11,9 +11,14 @@ use App\Models\ModeloDocumento;
 use App\Models\User;
 use App\Services\DocumentoInternoService;
 use App\Services\DocumentoWorkflowService;
+use App\Services\EmissorDocumentoService;
 use App\Services\PdfRenderService;
+use App\Support\CamposVinculados;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 
 class DocumentoInternoController extends Controller
@@ -30,7 +35,8 @@ class DocumentoInternoController extends Controller
         DocumentoInternoService $service,
         \App\Services\SignatureService $signatureService,
         DocumentoWorkflowService $workflowService,
-        PdfRenderService $pdfService
+        PdfRenderService $pdfService,
+        protected EmissorDocumentoService $emissores
     ) {
         $this->service = $service;
         $this->signatureService = $signatureService;
@@ -47,7 +53,7 @@ class DocumentoInternoController extends Controller
 
         // Query com isolamento de visibilidade por perfil/hierarquia
         $query = DocumentoInterno::accessibleBy($user)
-            ->with(['especie', 'autor', 'departamento'])
+            ->with(['especie', 'autor', 'departamento', 'gabinete'])
             ->withExists(['favoritadoPor as is_favorited' => function ($q) use ($user) {
                 $q->where('user_id', $user->id);
             }]);
@@ -162,7 +168,7 @@ class DocumentoInternoController extends Controller
         $activeTab = $request->input('tab') ?: $this->service->getDefaultTabForProfile($profile);
 
         $query = DocumentoInterno::accessibleBy($user)
-            ->with(['especie', 'autor', 'departamento']);
+            ->with(['especie', 'autor', 'departamento', 'gabinete']);
 
         $this->service->applyRoleTabFilter($query, $activeTab, $user, $profile);
 
@@ -223,11 +229,12 @@ class DocumentoInternoController extends Controller
         $especies = DocumentoEspecie::where('ativo', true)->orderBy('nome')->get();
         $modelos = $this->service->getTemplatesForUser($user)->groupBy('documento_especie_id');
         $chefesDepartamento = $this->service->getChefesDepartamentoForUser($user);
-        $departamentos = ($user->isAdmin() || $user->isChefeGabinete() || $user->isSuperChefeGabinete() || ! $user->departamento_id)
-            ? \App\Models\Departamento::orderBy('nome')->get()
-            : collect();
 
-        return view('documentos_internos.create', compact('documentoEntrada', 'especies', 'modelos', 'chefesDepartamento', 'departamentos'));
+        // Quem pode emitir (departamentos e/ou o próprio gabinete) e a escolha por omissão.
+        $emissores = $this->emissores->opcoesPara($user);
+        $emissorPadrao = $this->emissores->padraoPara($user);
+
+        return view('documentos_internos.create', compact('documentoEntrada', 'especies', 'modelos', 'chefesDepartamento', 'emissores', 'emissorPadrao'));
     }
 
     public function preview(Request $request)
@@ -235,12 +242,22 @@ class DocumentoInternoController extends Controller
         $request->validate([
             'modelo_id' => 'required|exists:modelo_documentos,id',
             'documento_entrada_id' => 'nullable|exists:documentos_entradas,id',
+            'departamento_id' => 'nullable|integer',
+            'emissor' => 'nullable|string',
         ]);
 
         $modelo = ModeloDocumento::find($request->modelo_id);
         $docEntrada = $request->documento_entrada_id ? DocumentoEntrada::find($request->documento_entrada_id) : null;
+        $emissor = $this->emissores->resolver(Auth::user(), $request->input('emissor'), $request->input('departamento_id'), $modelo->especie);
 
-        $content = $this->service->processarTemplate($modelo->conteudo, $docEntrada, Auth::user(), $request->except(['modelo_id', 'documento_entrada_id', '_token']));
+        $content = $this->service->processarTemplate(
+            $modelo->conteudo,
+            $docEntrada,
+            Auth::user(),
+            $request->except(['modelo_id', 'documento_entrada_id', 'departamento_id', 'emissor', '_token', 'nossa_referencia']),
+            $emissor['departamento'] ?? $emissor['gabinete'],
+            $modelo->especie
+        );
 
         return response()->json(['content' => $content]);
     }
@@ -253,7 +270,8 @@ class DocumentoInternoController extends Controller
             'modelo_documento_id' => 'nullable|exists:modelo_documentos,id',
             'documento_entrada_id' => 'nullable|exists:documentos_entradas,id',
             'conteudo_final' => 'required|string',
-            'departamento_id' => 'nullable|exists:departamentos,id',
+            'departamento_id' => 'nullable|integer',
+            'emissor' => 'nullable|string',
             'destinatario_nome' => 'nullable|string|max:255',
             'destinatario_cargo' => 'nullable|string|max:255',
             'destinatario_orgao' => 'nullable|string|max:255',
@@ -261,30 +279,34 @@ class DocumentoInternoController extends Controller
         ]);
 
         $user = Auth::user();
-        $doc = new DocumentoInterno($validated);
+
+        // Departamento ou o próprio gabinete; valida que o utilizador pode emitir por ele.
+        $especie = DocumentoEspecie::find($validated['documento_especie_id']);
+        $emissor = $this->emissores->resolver($user, $request->input('emissor'), $request->input('departamento_id'), $especie);
+
+        $doc = new DocumentoInterno(Arr::except($validated, ['departamento_id', 'emissor']));
         $doc->criado_por = $user->id;
-
-        // Determinar departamento com fallback robusto
-        $deptId = $request->input('departamento_id')
-            ?: $user->departamento_id
-            ?: $user->departamentoPrincipal()?->id
-            ?: $user->departamentos()->first()?->id;
-
-        if (! $deptId) {
-            $deptId = \App\Models\Departamento::first()?->id;
-        }
-
-        $doc->departamento_id = $deptId;
+        $doc->departamento_id = $emissor['departamento']?->id;
+        $doc->gabinete_id = $emissor['gabinete']?->id;
         $doc->status = DocumentoStatus::RASCUNHO; // Default
 
-        // Generate Reference Number
-        $departamento = \App\Models\Departamento::find($deptId);
-        $doc->setRelation('especie', DocumentoEspecie::find($validated['documento_especie_id']));
-        $doc->setRelation('departamento', $departamento);
+        $doc->setRelation('especie', $especie);
+        $doc->setRelation('departamento', $emissor['departamento']);
+        $doc->setRelation('gabinete', $emissor['gabinete']);
 
-        $doc->numero_referencia = $this->service->gerarNumeroReferencia($doc);
+        // Reserva do número e gravação na mesma transacção: o bloqueio da sequência
+        // só é libertado depois de a referência existir na tabela.
+        DB::transaction(function () use ($doc, $validated, $user) {
+            $doc->conteudo_final = $this->service->prepararCamposVinculados($doc->conteudo_final, $validated);
+            $reserva = $this->service->reservarNumero($doc);
+            $doc->numero_referencia = $reserva['referencia'];
+            // Referência no corpo e, nas Ordens de Serviço, o "Nº" do título.
+            $doc->conteudo_final = $this->service->aplicarReferenciaDefinitiva($doc->conteudo_final, $reserva['referencia'], $reserva['numero']);
+            $doc->save();
 
-        $doc->save();
+            // O original fica no histórico: qualquer edição posterior pode ser revertida.
+            $this->service->garantirVersaoDoConteudoActual($doc, $user, 'Versão inicial');
+        });
 
         // Persistir Vínculo N:N automaticamente se gerado a partir de uma Entrada
         if (! empty($validated['documento_entrada_id'])) {
@@ -352,15 +374,47 @@ class DocumentoInternoController extends Controller
             'conteudo_final' => 'required|string',
             'change_type' => 'nullable|in:patch,minor,major',
             'change_log' => 'nullable|string',
+            'destinatario_nome' => 'nullable|string|max:255',
+            'destinatario_cargo' => 'nullable|string|max:255',
+            'destinatario_orgao' => 'nullable|string|max:255',
+            'destinatario_local' => 'nullable|string|max:255',
         ]);
 
-        $this->service->updateWithVersioning(
-            $documentoInterno,
-            $validated,
-            Auth::user(),
-            $request->input('change_type', 'patch'),
-            $request->input('change_log')
-        );
+        // Na edição os marcadores {{...}} não são resolvidos: gravá-los imprimi-los-ia literalmente.
+        if (preg_match_all('/\{\{\s*[\w.]+\s*\}\}/u', $validated['conteudo_final'], $marcadores)) {
+            throw ValidationException::withMessages([
+                'conteudo_final' => 'O documento contém marcadores por resolver: '
+                    .implode(', ', array_unique($marcadores[0])).'. Substitua-os pelo texto final.',
+            ]);
+        }
+
+        DB::transaction(function () use ($documentoInterno, $validated, $request) {
+            // O ecrã de edição envia o destinatário; antes era descartado em silêncio.
+            $destinatario = array_intersect_key($validated, array_flip([
+                'destinatario_nome', 'destinatario_cargo', 'destinatario_orgao', 'destinatario_local',
+            ]));
+            if ($destinatario !== []) {
+                $documentoInterno->update($destinatario);
+            }
+
+            $validated['conteudo_final'] = $this->service->prepararCamposVinculados(
+                $validated['conteudo_final'],
+                $validated + $documentoInterno->only(array_keys(CamposVinculados::MAPA))
+            );
+
+            $this->service->updateWithVersioning(
+                $documentoInterno,
+                $validated,
+                Auth::user(),
+                $request->input('change_type', 'patch'),
+                $request->input('change_log')
+            );
+
+            // O estado colaborativo (Yjs) passa a estar desactualizado: é descartado, e as
+            // sessões abertas antes desta gravação deixam de poder gravar HTML (revisao_classica).
+            $documentoInterno->collabUpdates()->delete();
+            DocumentoInterno::whereKey($documentoInterno->id)->increment('revisao_classica'); // sem eventos de auditoria
+        });
 
         return redirect()->route('documentos-internos.index')
             ->with('success', 'Documento atualizado com sucesso.');

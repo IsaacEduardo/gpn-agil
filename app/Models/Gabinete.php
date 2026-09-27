@@ -14,10 +14,21 @@ class Gabinete extends Model
     protected $fillable = [
         'nome',
         'sigla',
+        'codigo_oficios',
         'responsavel_id',
         'super_chefe_id',
         'sla_despacho_dias',
     ];
+
+    /**
+     * Código de ofícios (ex.: SEC.GOV.PROV.HLA): maiúsculas, sem espaços nem pontos nas pontas.
+     */
+    public function setCodigoOficiosAttribute($value): void
+    {
+        $codigo = mb_strtoupper(trim((string) $value, " .\t\n\r\0\x0B"));
+
+        $this->attributes['codigo_oficios'] = $codigo !== '' ? $codigo : null;
+    }
 
     public function responsavel()
     {

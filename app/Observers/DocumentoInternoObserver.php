@@ -24,10 +24,11 @@ class DocumentoInternoObserver
     {
         if ($documento->departamento_id) {
             DashboardCache::forgetDepartamento($documento->departamento_id);
+        }
 
-            if ($documento->departamento && $documento->departamento->gabinete_id) {
-                DashboardCache::forgetGabinete($documento->departamento->gabinete_id);
-            }
+        // Inclui documentos emitidos pelo próprio gabinete (sem departamento).
+        if ($gabineteId = $documento->gabineteEmissorId()) {
+            DashboardCache::forgetGabinete($gabineteId);
         }
     }
 }

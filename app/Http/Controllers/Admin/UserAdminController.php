@@ -8,6 +8,7 @@ use App\Models\Departamento;
 use App\Models\Gabinete;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\DepartamentoChefiaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -180,6 +181,10 @@ class UserAdminController extends Controller
             return back()->withErrors(['departamento_id' => 'Selecione o departamento para o chefe.'])->withInput();
         }
 
+        // Um departamento tem no máximo um Chefe de Departamento (antes: o anterior era
+        // despromovido em silêncio e ficava com o papel Spatie, podendo ainda assinar).
+        app(DepartamentoChefiaService::class)->validarDesignacao(null, $data['role_id'], $data['departamento_id'] ?? null);
+
         // Validação de escopo para Chefe de Gabinete na criação
         $currentUser = Auth::user();
         if ($currentUser && $currentUser->role && $currentUser->role->name === 'chefe-gabinete') {
@@ -248,17 +253,8 @@ class UserAdminController extends Controller
         Cache::forget("user_{$user->id}_departments");
         Cache::forget("user_{$user->id}_responsible_gabinetes");
 
-        // Garantir unicidade do chefe no departamento ao criar
-        if ($chefeRoleId && (int) $user->role_id === (int) $chefeRoleId && ! empty($user->departamento_id)) {
-            $userRoleId = Role::where('name', 'user')->value('id');
-            $chefeAtual = User::where('departamento_id', $user->departamento_id)
-                ->where('role_id', $chefeRoleId)
-                ->where('id', '!=', $user->id)
-                ->first();
-            if ($chefeAtual && $userRoleId) {
-                $chefeAtual->update(['role_id' => $userRoleId]);
-            }
-        }
+        // Responsável do departamento em sincronia com a designação (unicidade validada acima).
+        app(DepartamentoChefiaService::class)->sincronizar($user);
 
         AuditLog::create([
             'user_id' => Auth::id(),
@@ -410,6 +406,9 @@ class UserAdminController extends Controller
             return back()->withErrors(['departamento_id' => 'Selecione o departamento para o chefe.'])->withInput();
         }
 
+        // Um departamento tem no máximo um Chefe de Departamento.
+        app(DepartamentoChefiaService::class)->validarDesignacao($user, $data['role_id'], $data['departamento_id'] ?? null);
+
         $user->name = $data['name'];
         $user->email = $data['email'];
         if (! empty($data['password'])) {
@@ -444,17 +443,8 @@ class UserAdminController extends Controller
             $user->departamentos()->syncWithoutDetaching([$user->departamento_id]);
         }
 
-        // Garantir unicidade do chefe no departamento ao atualizar
-        if ($chefeDepRoleId && (int) $user->role_id === (int) $chefeDepRoleId && ! empty($user->departamento_id)) {
-            $userRoleId = Role::where('name', 'user')->value('id');
-            $chefeAtual = User::where('departamento_id', $user->departamento_id)
-                ->where('role_id', $chefeDepRoleId)
-                ->where('id', '!=', $user->id)
-                ->first();
-            if ($chefeAtual && $userRoleId) {
-                $chefeAtual->update(['role_id' => $userRoleId]);
-            }
-        }
+        // Responsável do departamento em sincronia (liberta o anterior se mudou de papel/departamento).
+        app(DepartamentoChefiaService::class)->sincronizar($user);
 
         // Chefia de Gabinete pelo usuário
         $chefeGabRoleId = Role::firstOrCreate(['name' => 'chefe-gabinete'])->id;
@@ -554,6 +544,7 @@ class UserAdminController extends Controller
             'user_agent' => request()->userAgent(),
         ]);
 
+        app(DepartamentoChefiaService::class)->libertar($user);
         $user->delete();
 
         return redirect()->route('admin.users.index')->with('success', 'Usuário excluído com sucesso.');

@@ -42,7 +42,12 @@ class AdminChefeUnicidadeTest extends TestCase
         $response->assertSessionHasErrors(['departamento_id']);
     }
 
-    public function test_promoting_new_chefe_demotes_previous(): void
+    /**
+     * Antes, promover um segundo chefe despromovia o anterior em silêncio (só role_id — o papel
+     * Spatie ficava, e ele podia continuar a assinar). Agora a designação é recusada até a
+     * anterior ser retirada (decisão: um departamento tem no máximo um Chefe de Departamento).
+     */
+    public function test_promover_segundo_chefe_e_recusado_ate_retirar_o_anterior(): void
     {
         $roles = $this->seedRoles();
         $adminUser = User::factory()->create([
@@ -69,19 +74,31 @@ class AdminChefeUnicidadeTest extends TestCase
             'departamento_id' => $dep->id,
         ]);
 
-        $response = $this->put(route('admin.users.update', $usuario), [
+        $promover = fn () => $this->put(route('admin.users.update', $usuario), [
             'name' => 'Novo Chefe',
             'email' => 'novo.chefe@example.com',
             'role_id' => $roles['chefe']->id,
             'departamento_id' => $dep->id,
             'departamentos' => [],
         ]);
-        $response->assertRedirect(route('admin.users.index'));
 
-        $chefeAtual->refresh();
-        $usuario->refresh();
+        $promover()->assertSessionHasErrors([
+            'role_id' => 'O departamento DL já tem Chefe de Departamento (Chefe Atual). Retire primeiro essa designação.',
+        ]);
+        $this->assertEquals($roles['chefe']->id, $chefeAtual->fresh()->role_id, 'Chefe atual mantém-se');
+        $this->assertEquals($roles['user']->id, $usuario->fresh()->role_id, 'Promoção não aplicada');
 
-        $this->assertEquals($roles['user']->id, $chefeAtual->role_id, 'Chefe anterior deve ser rebaixado a user');
-        $this->assertEquals($roles['chefe']->id, $usuario->role_id, 'Usuário promovido deve ser chefe');
+        // Retirada a designação anterior, a promoção passa e o espelho fica certo.
+        $this->put(route('admin.users.update', $chefeAtual), [
+            'name' => 'Chefe Atual',
+            'email' => 'chefe.atual@example.com',
+            'role_id' => $roles['user']->id,
+            'departamento_id' => $dep->id,
+            'departamentos' => [],
+        ])->assertSessionHasNoErrors();
+
+        $promover()->assertRedirect(route('admin.users.index'));
+        $this->assertEquals($roles['chefe']->id, $usuario->fresh()->role_id);
+        $this->assertEquals($usuario->id, $dep->fresh()->responsavel_id);
     }
 }

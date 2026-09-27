@@ -22,7 +22,7 @@ class DashboardCache
     public static function getGabineteStats(int $gabineteId): array
     {
         return Cache::remember("dashboard_gabinete_stats_{$gabineteId}", self::TTL_SECONDS, function () use ($gabineteId) {
-            $statusDistrib = DocumentoInterno::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabineteId))
+            $statusDistrib = DocumentoInterno::doGabinete($gabineteId)
                 ->select('status', DB::raw('count(*) as count'))
                 ->groupBy('status')
                 ->get()
@@ -31,7 +31,7 @@ class DashboardCache
                     return [$statusKey => $item->count];
                 });
 
-            $assinadosHoje = DocumentoInterno::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $gabineteId))
+            $assinadosHoje = DocumentoInterno::doGabinete($gabineteId)
                 ->where('status', DocumentoStatus::ASSINADO)
                 ->whereDate('assinado_em', today())
                 ->count();

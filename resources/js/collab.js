@@ -1,16 +1,11 @@
 import './bootstrap';
 import * as Y from 'yjs';
 import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
-import TextAlign from '@tiptap/extension-text-align';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableHeader from '@tiptap/extension-table-header';
-import TableCell from '@tiptap/extension-table-cell';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import YReverbProvider from './collab/YReverbProvider';
+import { extensoesDoDocumento } from './collab/extensoes';
+import { ligarCamposColaborativos } from './collab/campos';
 
 /**
  * Editor colaborativo de Documentos Internos (Tiptap + Yjs sobre Laravel Reverb).
@@ -69,19 +64,26 @@ document.addEventListener('DOMContentLoaded', () => {
             initEditor({ updates: [], html: '', hasState: false });
         });
 
+    // Revisão clássica com que a sessão abriu; o servidor recusa gravações se entretanto mudou.
+    let revisao = null;
+    let desactualizado = false;
+
+    function sessaoDesactualizada(e, editor) {
+        if (e.response?.status !== 409 || !e.response?.data?.versao_desactualizada) return false;
+        desactualizado = true;
+        editor?.setEditable(false);
+        banner(e.response.data.message, 'danger');
+        return true;
+    }
+
     function initEditor(state) {
+        revisao = Number.isInteger(state.revisao_classica) ? state.revisao_classica : null;
         const editor = new Editor({
             element: mount,
             editable: cfg.podeEditar,
             extensions: [
-                // History é fornecido pelo Yjs (UndoManager) — desligar o do StarterKit.
-                StarterKit.configure({ history: false }),
-                Underline,
-                TextAlign.configure({ types: ['heading', 'paragraph'] }),
-                Table.configure({ resizable: true }),
-                TableRow,
-                TableHeader,
-                TableCell,
+                // Esquema que preserva o HTML dos modelos (ver collab/extensoes.js).
+                ...extensoesDoDocumento(),
                 Collaboration.configure({ document: ydoc }),
                 CollaborationCursor.configure({
                     provider,
@@ -91,14 +93,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Seed inicial: só o primeiro a abrir (documento Yjs vazio) semeia a partir do HTML canónico.
+        // O update do seed é emitido de forma síncrona, antes de wireDurability escutar o ydoc;
+        // por isso é enviado aqui, explicitamente e SEM html (abrir não altera o documento).
         if (!state.hasState && editor.isEmpty && state.html) {
             editor.commands.setContent(state.html, false);
+            enviarSeed();
         }
 
         wireToolbar(editor);
         wireDurability(editor);
         wireCheckpoint(editor);
+        ligarCamposColaborativos(editor, cfg, http, () => revisao);
         // NÃO afirmamos "ligado" aqui: o estado real vem de wireConnectionStatus()/renderPresence().
+    }
+
+    // Regista o estado inicial no log durável, para quem abrir depois partir da mesma base.
+    // O servidor só o aceita com o log vazio: se outra pessoa semeou ao mesmo tempo, recarrega-se.
+    function enviarSeed() {
+        if (!cfg.podeEditar) return;
+        http.post(cfg.urls.sync, { update: toBase64(Y.encodeStateAsUpdate(ydoc)), seed: true, revisao })
+            .catch((e) => {
+                if (e.response?.data?.seed_rejeitado) {
+                    banner('Outra pessoa abriu este documento ao mesmo tempo. A recarregar…', 'warning');
+                    setTimeout(() => window.location.reload(), 1500);
+                }
+            });
+    }
+
+    function avisarHtmlRejeitado() {
+        banner('As últimas alterações não foram gravadas no documento: removeriam campos do modelo '
+            + '(Assunto, destinatário ou referência). Use o editor clássico para alterar esses campos.', 'danger');
     }
 
     // --- Barra de ferramentas de formatação (negrito, títulos, listas, alinhamento, tabela) ---
@@ -174,20 +198,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function flush() {
             timer = null;
-            if (!pending.length) return;
+            if (!pending.length || desactualizado) return;
             const merged = Y.mergeUpdates(pending);
             pending = [];
             http.post(cfg.urls.sync, {
                 update: toBase64(merged),
                 html: editor.getHTML(),
-            }).catch(() => {/* re-tentado no próximo flush/checkpoint */});
+                revisao,
+            }).then(({ data }) => {
+                if (data?.html_rejeitado) avisarHtmlRejeitado();
+            }).catch((e) => {
+                sessaoDesactualizada(e, editor); /* outros erros: re-tentado no próximo flush/checkpoint */
+            });
         }
 
         // Flush final ao sair (best-effort) para não perder as últimas edições.
         window.addEventListener('beforeunload', () => {
-            if (!pending.length) return;
+            if (!pending.length || desactualizado) return;
             const merged = Y.mergeUpdates(pending);
-            const payload = JSON.stringify({ update: toBase64(merged), html: editor.getHTML() });
+            const payload = JSON.stringify({ update: toBase64(merged), html: editor.getHTML(), revisao });
             navigator.sendBeacon(
                 cfg.urls.sync,
                 new Blob([payload], { type: 'application/json' }),
@@ -200,17 +229,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = document.getElementById('collab-checkpoint');
         if (!btn) return;
         btn.addEventListener('click', () => {
-            if (!cfg.podeEditar) return;
+            if (!cfg.podeEditar || desactualizado) return;
             btn.disabled = true;
             http.post(cfg.urls.checkpoint, {
                 html: editor.getHTML(),
                 change_type: document.getElementById('collab-change-type')?.value || 'minor',
                 change_log: document.getElementById('collab-change-log')?.value || null,
                 snapshot: toBase64(Y.encodeStateAsUpdate(ydoc)),
+                revisao,
             }).then(({ data }) => {
                 banner(`Versão ${data.versao} guardada no histórico.`, 'success');
-            }).catch(() => {
-                banner('Falha ao guardar versão.', 'danger');
+            }).catch((e) => {
+                if (sessaoDesactualizada(e, editor)) return;
+                banner(e.response?.data?.message || 'Falha ao guardar versão.', 'danger');
             }).finally(() => {
                 btn.disabled = false;
             });

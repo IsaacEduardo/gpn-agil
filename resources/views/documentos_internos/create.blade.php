@@ -41,8 +41,11 @@
         padding: 20px;
         border-radius: 8px;
         border: 1px solid #dee2e6;
-        display: flex;
         justify-content: center;
+    }
+    /* Só o separador activo é flex (o display no seletor de ID anulava o display:none do Bootstrap). */
+    #tab-preview.active {
+        display: flex;
     }
 </style>
 @endsection
@@ -107,16 +110,31 @@
                                             <label for="titulo">Título / Assunto</label>
                                         </div>
 
-                                        @if (isset($departamentos) && $departamentos->isNotEmpty())
+                                        @if (isset($emissores) && $emissores->isNotEmpty())
+                                            {{-- Quem emite: um departamento ou o próprio gabinete (Chefe de Gabinete).
+                                                 O servidor valida a escolha (EmissorDocumentoService). --}}
                                             <div class="form-floating mb-3">
-                                                <select class="form-select" id="departamento_id" name="departamento_id" required>
-                                                    @foreach ($departamentos as $dep)
-                                                        <option value="{{ $dep->id }}" {{ (Auth::user()->departamento_id == $dep->id || $loop->first) ? 'selected' : '' }}>
-                                                            {{ $dep->sigla ? $dep->sigla . ' — ' : '' }}{{ $dep->nome }}
-                                                        </option>
+                                                <select class="form-select @error('emissor') is-invalid @enderror" id="emissor" name="emissor" required>
+                                                    @if (! $emissorPadrao)
+                                                        <option value="" selected disabled>Selecione quem emite…</option>
+                                                    @endif
+                                                    @foreach ($emissores as $grupo)
+                                                        <optgroup label="{{ $grupo['grupo'] }}">
+                                                            @foreach ($grupo['opcoes'] as $opcao)
+                                                                <option value="{{ $opcao['valor'] }}" @selected(old('emissor', $emissorPadrao) === $opcao['valor'])>
+                                                                    {{ $opcao['rotulo'] }}
+                                                                </option>
+                                                            @endforeach
+                                                        </optgroup>
                                                     @endforeach
                                                 </select>
-                                                <label for="departamento_id"><i class="fas fa-building me-1 text-primary"></i> Departamento Emissor / Origem</label>
+                                                <label for="emissor"><i class="fas fa-building me-1 text-primary"></i> Emissor (departamento ou gabinete)</label>
+                                                @error('emissor')
+                                                    <div class="invalid-feedback">{{ $message }}</div>
+                                                @enderror
+                                            </div>
+                                            <div id="aviso-nota-emissor" class="alert alert-warning py-2 small d-none">
+                                                {{ \App\Services\EmissorDocumentoService::MENSAGEM_NOTA_SO_DEPARTAMENTO }}
                                             </div>
                                         @endif
 
@@ -194,7 +212,7 @@
                                                     <label for="destinatario_orgao">Instituição/Órgão</label>
                                                 </div>
                                                 <div class="form-floating">
-                                                    <input type="text" class="form-control form-control-sm" id="destinatario_local" name="destinatario_local" value="Moçâmedes" placeholder="Local">
+                                                    <input type="text" class="form-control form-control-sm" id="destinatario_local" name="destinatario_local" value="{{ optional($dadosInstituicao ?? null)->cidade ?: 'Lubango' }}" placeholder="Local">
                                                     <label for="destinatario_local">Local</label>
                                                 </div>
                                             </div>
@@ -264,7 +282,7 @@
                                                     <div style="margin-top: 10px; font-family: 'Times New Roman', serif; font-size: 12pt; font-weight: bold; text-transform: uppercase;">
                                                         {{ $dadosInstituicao->cabecalho_linha1 }}<br>
                                                         {{ $dadosInstituicao->cabecalho_linha2 }}<br>
-                                                        <span id="preview-gabinete-nome">{{ mb_strtoupper(auth()->user()->departamento->gabinete->nome ?? (auth()->user()->departamento->nome ?? 'GABINETE NÃO DEFINIDO')) }}</span>
+                                                        <span id="preview-gabinete-nome">{{ mb_strtoupper(app(\App\Services\DocumentoInternoService::class)->gabineteDoUtilizador(auth()->user())?->nome ?? (auth()->user()->departamento->nome ?? 'GABINETE NÃO DEFINIDO')) }}</span>
                                                     </div>
                                                 </div>
                                                 
@@ -304,6 +322,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.2/tinymce.min.js" referrerpolicy="origin"></script>
+    @include('documentos_internos.partials.campos-vinculados-js')
     <script>
         const modelos = @json($modelos);
         const chefesDepartamento = @json($chefesDepartamento ?? []);
@@ -329,14 +348,10 @@
         function updateLivePreview() {
             if (!tinymce.get('conteudo_final')) return;
             
+            // Assunto e destinatário já estão no editor (marcadores sincronizados por
+            // partials/campos-vinculados-js); aqui só se resolvem os restantes placeholders.
             let rawContent = tinymce.get('conteudo_final').getContent();
-            
-            const tituloVal = document.getElementById('titulo') ? document.getElementById('titulo').value : '';
-            const destNome = document.getElementById('destinatario_nome') ? document.getElementById('destinatario_nome').value : '';
-            const destCargo = document.getElementById('destinatario_cargo') ? document.getElementById('destinatario_cargo').value : '';
-            const destOrgao = document.getElementById('destinatario_orgao') ? document.getElementById('destinatario_orgao').value : '';
-            const destLocal = document.getElementById('destinatario_local') ? document.getElementById('destinatario_local').value : 'Moçâmedes';
-            
+
             const userName = "{{ auth()->user()->name }}";
             const userDept = "{{ auth()->user()->departamento->nome ?? 'Administração' }}";
             const userDeptSigla = "{{ auth()->user()->departamento->sigla ?? 'ADM' }}";
@@ -379,12 +394,7 @@
             cleanContent = cleanContent.replace(/\{\{DEPARTAMENTO_NOME\}\}/g, userDept);
             cleanContent = cleanContent.replace(/\{\{DEPARTAMENTO_SIGLA\}\}/g, userDeptSigla);
             cleanContent = cleanContent.replace(/\{\{ANO\}\}/g, ano);
-            cleanContent = cleanContent.replace(/\{\{ASSUNTO\}\}/g, tituloVal);
-            cleanContent = cleanContent.replace(/\{\{DESTINATARIO_NOME\}\}/g, destNome);
-            cleanContent = cleanContent.replace(/\{\{DESTINATARIO_CARGO\}\}/g, destCargo);
-            cleanContent = cleanContent.replace(/\{\{DESTINATARIO_ORGAO\}\}/g, destOrgao);
-            cleanContent = cleanContent.replace(/\{\{DESTINATARIO_LOCAL\}\}/g, destLocal);
-            
+
             // Placeholders específicos Ordem de Serviço
             const dataInicioAusenciaExtenso = formatarDataPorExtenso(dynamicReplacements['DATA_INICIO_AUSENCIA']);
             const substitutoNome = dynamicReplacements['SUBSTITUTO_NOME'] || 'Eduardo Chivangulula Gabriel';
@@ -398,7 +408,7 @@
             cleanContent = cleanContent.replace(/\{\{\s*insignia_nacional_url\s*\}\}/g, dynamicReplacements['INSIGNIA_NACIONAL_URL'] || '{{ $dadosInstituicao->logo_url }}');
             cleanContent = cleanContent.replace(/\{\{\s*governo_provincial_nome\s*\}\}/g, dynamicReplacements['GOVERNO_PROVINCIAL_NOME'] || 'Governo Provincial da Huíla');
             cleanContent = cleanContent.replace(/\{\{\s*gabinete_secretaria_nome\s*\}\}/g, dynamicReplacements['GABINETE_SECRETARIA_NOME'] || 'Secretaria Geral');
-            cleanContent = cleanContent.replace(/\{\{\s*numero_ordem\s*\}\}/g, dynamicReplacements['NUMERO_ORDEM'] || '06');
+            // numero_ordem: marcador do servidor, preenchido com o número reservado ao gravar.
             cleanContent = cleanContent.replace(/\{\{\s*sigla_gabinete\s*\}\}/g, dynamicReplacements['SIGLA_GABINETE'] || 'SEC.GER.GOV.PROV.HLA');
             cleanContent = cleanContent.replace(/\{\{\s*ano_corrente\s*\}\}/g, ano);
             cleanContent = cleanContent.replace(/\{\{\s*preambulo_motivo\s*\}\}/g, dynamicReplacements['PREAMBULO_MOTIVO'] || 'Ausentando-me para cumprimento de missão de Serviço Oficial...');
@@ -430,6 +440,7 @@
             // de licença em falta. Numa instalação governamental não tem lugar.
             tinymce.init({
                 promotion: false,
+                branding: false,
                 selector: 'textarea#conteudo_final',
                 language: 'pt_BR', // Assuming pt_BR exists, otherwise default en
                 plugins: 'preview importcss searchreplace autolink autosave save directionality code visualblocks visualchars fullscreen image link media template codesample table charmap pagebreak nonbreaking anchor insertdatetime advlist lists wordcount help charmap quickbars emoticons',
@@ -440,7 +451,7 @@
                 quickbars_selection_toolbar: 'bold italic | quicklink h2 h3 blockquote quickimage quicktable',
                 noneditable_noneditable_class: 'mceNonEditable',
                 contextmenu: 'link image imagetools table',
-                content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px; margin: 2rem; }',
+                content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px; margin: 2rem; } .campo-vazio { color: #b45309; background: #fef3c7; }',
                 setup: function (editor) {
                     editor.on('init', function () {
                         // Optional: Load initial content if needed
@@ -457,10 +468,32 @@
             const dynamicFieldsContainer = document.getElementById('dynamicFieldsContainer');
             const dynamicFieldsBody = document.getElementById('dynamicFieldsBody');
 
-            const inputsParaMonitorar = [
-                'titulo', 'destinatario_nome', 'destinatario_cargo',
-                'destinatario_orgao', 'destinatario_local'
-            ];
+            // Assunto e destinatário não pedem "Atualizar Template": actualizam os seus
+            // marcadores no editor directamente (ligarCamposVinculados, mais abaixo).
+            const inputsParaMonitorar = ['emissor'];
+
+            // O cabeçalho da pré-visualização acompanha o gabinete do emissor escolhido
+            // (o grupo da opção é o gabinete, excepto em "O meu departamento").
+            const emissorSelect = document.getElementById('emissor');
+
+            // A Nota é sempre de um departamento: avisa se o emissor escolhido for um gabinete
+            // (o servidor recusa; o aviso só evita o erro).
+            const avisoNota = document.getElementById('aviso-nota-emissor');
+            const verificarNotaPeloGabinete = () => {
+                if (!avisoNota || !emissorSelect) return;
+                const especie = (especieSelect.selectedOptions[0]?.textContent || '').trim().toLowerCase();
+                avisoNota.classList.toggle('d-none', !(especie === 'nota' && emissorSelect.value.startsWith('gab:')));
+            };
+            especieSelect.addEventListener('change', verificarNotaPeloGabinete);
+            if (emissorSelect) emissorSelect.addEventListener('change', verificarNotaPeloGabinete);
+
+            if (emissorSelect) {
+                emissorSelect.addEventListener('change', () => {
+                    const grupo = emissorSelect.selectedOptions[0]?.parentElement?.label;
+                    const alvo = document.getElementById('preview-gabinete-nome');
+                    if (alvo && grupo && grupo !== 'O meu departamento') alvo.textContent = grupo.toUpperCase();
+                });
+            }
 
             // Helper para criar inputs dinâmicos
             function createDynamicInput(key, typeDef) {
@@ -546,6 +579,8 @@
                     }
                 }
             }
+
+            ligarCamposVinculados(updateLivePreview);
 
             // Monitor changes to show update hint and update live preview
             inputsParaMonitorar.forEach(id => {
@@ -651,6 +686,7 @@
                 const payload = {
                     modelo_id: modeloId,
                     documento_entrada_id: '{{ $documentoEntrada ? $documentoEntrada->id : '' }}',
+                    emissor: document.getElementById('emissor') ? document.getElementById('emissor').value : '',
                     titulo: document.getElementById('titulo').value || '',
                     destinatario_nome: document.getElementById('destinatario_nome') ? document.getElementById('destinatario_nome').value : '',
                     destinatario_cargo: document.getElementById('destinatario_cargo') ? document.getElementById('destinatario_cargo').value : '',

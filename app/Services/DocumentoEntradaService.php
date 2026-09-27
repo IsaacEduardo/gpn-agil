@@ -303,13 +303,10 @@ class DocumentoEntradaService
 
     protected function processCreation(array $data, $mainFile, $attachments)
     {
-        $ano = (int) date('Y');
-
-        $lastDoc = DocumentoEntrada::withTrashed()
-            ->where('ano_referencia', $ano)
-            ->orderBy('numero_sequencial', 'desc')
-            ->lockForUpdate()
-            ->first();
+        // Livro de entrada: série ENT/ano (hora de Luanda), com número inicial configurável
+        // no ecrã "Numeração". Números de registos apagados nunca são reutilizados.
+        $ano = NumeracaoDocumentoService::anoCorrente();
+        $seq = app(NumeracaoDocumentoService::class)->reservarEntrada($ano);
 
         $procedenciaId = $data['procedencia_id'] ?? null;
         $procedenciaNome = $data['procedencia'] ?? null;
@@ -325,9 +322,6 @@ class DocumentoEntradaService
                 $procedenciaId = $pObj->id;
             }
         }
-
-        $lastSeq = $lastDoc ? $lastDoc->numero_sequencial : 0;
-        $seq = $lastSeq + 1;
 
         $doc = DocumentoEntrada::create([
             'numero_sequencial' => $seq,

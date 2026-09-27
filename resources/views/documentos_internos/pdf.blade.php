@@ -85,6 +85,13 @@
             vertical-align: top;
         }
 
+        /* O editor colaborativo (Tiptap) põe um <p> em cada célula; sem margem, as tabelas
+           ficam iguais às do editor clássico. */
+        .paper-content td > p,
+        .paper-content th > p {
+            margin: 0;
+        }
+
         .page-break {
             page-break-after: always;
             break-after: page;
@@ -110,6 +117,9 @@
 
 <body>
     @php
+        // Guarda: a view pode ser renderizada várias vezes no mesmo processo (exportação em
+        // lote, testes); redeclarar a função era erro fatal a partir do segundo documento.
+        if (! function_exists('base64_encode_image')) {
         function base64_encode_image($filename)
         {
             if ($filename && file_exists($filename)) {
@@ -120,6 +130,7 @@
             }
             return null;
         }
+        }
     @endphp
 
     <div class="paper-container">
@@ -127,14 +138,14 @@
         <div class="text-center mb-4">
             @include('partials.document-header', [
                 'logoSrc' => base64_encode_image($dadosInstituicao->logo_absolute_path),
-                'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->departamento?->gabinete),
+                'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->gabineteEmissor()),
                 'documentoInterno' => $documentoInterno,
             ])
         </div>
 
         <!-- Content -->
         <div class="paper-content">
-            {!! \App\Support\Sanitizer::clean($documentoInterno->conteudo_final) !!}
+            {!! $documentoInterno->conteudoParaApresentacao() !!}
         </div>
 
         <!-- Footer -->

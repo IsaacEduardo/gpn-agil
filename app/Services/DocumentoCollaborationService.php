@@ -71,17 +71,27 @@ class DocumentoCollaborationService
      *
      * @return array{updates: array<int, string>, html: string, hasState: bool}
      */
-    public function estadoInicial(DocumentoInterno $doc): array
+    public function estadoInicial(DocumentoInterno $doc, ?User $user = null): array
     {
         $updates = DocumentoCollabUpdate::where('documento_interno_id', $doc->id)
             ->orderBy('id')
             ->pluck('update')
             ->all();
 
+        // Primeira abertura colaborativa: o conteúdo actual fica no histórico antes de
+        // qualquer edição, para ser sempre possível voltar atrás.
+        if ($updates === [] && $user && $this->podeEditar($user, $doc)) {
+            $this->documentoService->garantirVersaoDoConteudoActual(
+                $doc, $user, 'Salvaguarda antes da edição colaborativa'
+            );
+        }
+
         return [
             'updates' => $updates,
             'html' => $doc->conteudo_final ?? '',
             'hasState' => count($updates) > 0,
+            // A sessão devolve-o em sync/checkpoint; se mudou, houve gravação clássica entretanto.
+            'revisao_classica' => (int) $doc->revisao_classica,
         ];
     }
 
@@ -94,6 +104,44 @@ class DocumentoCollaborationService
             'is_snapshot' => false,
             'created_at' => now(),
         ]);
+    }
+
+    /**
+     * Estado inicial (seed) enviado por quem abriu primeiro. Só é aceite com o log vazio:
+     * dois seeds concorrentes duplicariam o conteúdo no CRDT.
+     */
+    public function registarSeed(DocumentoInterno $doc, User $user, string $base64Update): bool
+    {
+        return DB::transaction(function () use ($doc, $user, $base64Update) {
+            DocumentoInterno::whereKey($doc->id)->lockForUpdate()->first();
+
+            if (DocumentoCollabUpdate::where('documento_interno_id', $doc->id)->exists()) {
+                return false;
+            }
+
+            $this->registarUpdate($doc, $user, $base64Update);
+
+            return true;
+        });
+    }
+
+    /**
+     * Verdadeiro se a sessão abriu antes da última gravação no editor clássico.
+     * Sem valor enviado (clientes antigos) não se bloqueia.
+     */
+    public function sessaoDesactualizada(DocumentoInterno $doc, ?int $revisaoDaSessao): bool
+    {
+        return $revisaoDaSessao !== null && $revisaoDaSessao !== (int) $doc->fresh()->revisao_classica;
+    }
+
+    /**
+     * Verdadeiro se o HTML perderia marcadores estruturados face ao conteúdo gravado
+     * (ex.: editor sem suporte para eles). Nesse caso o HTML não pode substituir o gravado.
+     */
+    public function degradaConteudo(DocumentoInterno $doc, string $html): bool
+    {
+        return DocumentoInterno::contarMarcadoresEstruturados($html)
+            < DocumentoInterno::contarMarcadoresEstruturados($doc->conteudo_final);
     }
 
     /**
@@ -112,6 +160,16 @@ class DocumentoCollaborationService
     public function salvarTitulo(DocumentoInterno $doc, string $titulo): void
     {
         $doc->titulo = $titulo;
+        $doc->saveQuietly();
+    }
+
+    /**
+     * Persiste os dados do destinatário sem criar versão (last-write-wins, como o título).
+     */
+    public function salvarDestinatario(DocumentoInterno $doc, array $campos): void
+    {
+        $permitidos = ['destinatario_nome', 'destinatario_cargo', 'destinatario_orgao', 'destinatario_local'];
+        $doc->forceFill(array_intersect_key($campos, array_flip($permitidos)));
         $doc->saveQuietly();
     }
 
@@ -191,7 +249,7 @@ class DocumentoCollaborationService
      */
     public function mesmoGabinete(DocumentoInterno $doc, User $user): bool
     {
-        $docGab = optional($doc->departamento)->gabinete_id;
+        $docGab = $doc->gabineteEmissorId();
         $userGab = optional($user->departamento)->gabinete_id;
 
         return $docGab !== null && $userGab !== null && (int) $docGab === (int) $userGab;

@@ -49,7 +49,7 @@ class DocumentIndexer
 
         return $this->persist(DocumentoInterno::class, $doc->id, $this->chunker->chunkInterno($doc), [
             'departamento_id' => $doc->departamento_id,
-            'gabinete_id' => optional($doc->departamento)->gabinete_id,
+            'gabinete_id' => $doc->gabineteEmissorId(),
         ]);
     }
 

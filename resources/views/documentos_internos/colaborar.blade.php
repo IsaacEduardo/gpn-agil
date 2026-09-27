@@ -43,6 +43,9 @@
     #collab-editor .ProseMirror td, #collab-editor .ProseMirror th { border: 1px solid #999; padding: 4px 8px; }
     #collab-editor .ProseMirror:focus { outline: none; }
     #collab-editor .ProseMirror p { margin: 0 0 .5rem; }
+    /* O Tiptap põe um <p> em cada célula; sem margem, a tabela de referências fica compacta. */
+    #collab-editor .ProseMirror td > p, #collab-editor .ProseMirror th > p { margin: 0; }
+    #collab-editor .ProseMirror .campo-vazio { color: #b45309; background: #fef3c7; }
 
     /* Barra de ferramentas */
     #collab-toolbar .btn.active { background-color: #0d6efd; border-color: #0d6efd; color: #fff; }
@@ -115,7 +118,10 @@
                         'sync' => route('documentos-internos.collab.sync', $documentoInterno),
                         'checkpoint' => route('documentos-internos.collab.checkpoint', $documentoInterno),
                         'titulo' => route('documentos-internos.collab.titulo', $documentoInterno),
+                        'campos' => route('documentos-internos.collab.campos', $documentoInterno),
                     ],
+                    // Mesmas classes/textos-guia do editor clássico (App\Support\CamposVinculados).
+                    'campos' => \App\Support\CamposVinculados::paraJs(optional($dadosInstituicao ?? null)->cidade ?: 'Lubango'),
                 ];
             @endphp
             @if ($podeEditar)
@@ -125,6 +131,19 @@
                            value="{{ $documentoInterno->titulo }}" maxlength="255"
                            placeholder="Assunto do documento">
                 </div>
+
+                <details class="mb-2" @if ($documentoInterno->temConteudoEstruturado()) open @endif>
+                    <summary class="small text-muted mb-1">Dados do destinatário</summary>
+                    <div class="row g-2">
+                        @foreach (['destinatario_nome' => 'Nome', 'destinatario_cargo' => 'Cargo', 'destinatario_orgao' => 'Instituição/Órgão', 'destinatario_local' => 'Local'] as $campo => $rotulo)
+                            <div class="col-md-6">
+                                <label for="collab-{{ $campo }}" class="form-label small mb-0">{{ $rotulo }}</label>
+                                <input id="collab-{{ $campo }}" type="text" class="form-control form-control-sm"
+                                       value="{{ $documentoInterno->{$campo} }}" maxlength="255">
+                            </div>
+                        @endforeach
+                    </div>
+                </details>
             @endif
 
             @if ($podeEditar)
@@ -164,7 +183,7 @@
             <div class="collab-paper-wrapper">
                 <div class="collab-paper">
                     @include('partials.document-header', [
-                        'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->departamento?->gabinete),
+                        'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->gabineteEmissor()),
                     ])
 
                     <div id="collab-editor" data-config='@json($collabConfig)'></div>

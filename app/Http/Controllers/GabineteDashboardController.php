@@ -72,7 +72,7 @@ class GabineteDashboardController extends Controller
                 $qu->whereHas('departamento', fn ($qd) => $qd->where('gabinete_id', $gabinete->id));
             })->orWhere(function ($qu) use ($gabinete) {
                 $qu->where('auditable_type', DocumentoInterno::class)
-                    ->whereIn('auditable_id', DocumentoInterno::whereHas('departamento', fn ($qd) => $qd->where('gabinete_id', $gabinete->id))->select('id'));
+                    ->whereIn('auditable_id', DocumentoInterno::doGabinete($gabinete->id)->select('id'));
             });
         })->with(['user', 'auditable'])->latest()->take(5)->get();
 

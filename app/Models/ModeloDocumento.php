@@ -9,6 +9,16 @@ class ModeloDocumento extends Model
 {
     use HasFactory;
 
+    /**
+     * Modelos que só a Secretaria Geral (ou Admin) pode usar.
+     */
+    public const CODIGOS_EXCLUSIVOS_SEC_GERAL = [
+        'ORDEM_DE_SERVICO_SEC_GERAL',
+        'OFICIO_SEC_GERAL',
+        'NOTA_SEC_GERAL',
+        'INFORMACAO_PARECER_SEC_GERAL',
+    ];
+
     protected $fillable = [
         'nome',
         'codigo',

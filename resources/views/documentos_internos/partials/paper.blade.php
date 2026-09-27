@@ -2,14 +2,14 @@
 <div class="text-center mb-4">
     @include('partials.document-header', [
         'logoSrc' => $dadosInstituicao->logo_url,
-        'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->departamento?->gabinete),
+        'gabineteNome' => \App\Support\CabecalhoDocumento::linhaGabinete($documentoInterno->gabineteEmissor()),
         'documentoInterno' => $documentoInterno,
     ])
 </div>
 
 <div class="paper-content">
     @if ($documentoInterno->conteudo_final)
-        {!! \App\Support\Sanitizer::clean($documentoInterno->conteudo_final) !!}
+        {!! $documentoInterno->conteudoParaApresentacao() !!}
 
         @if ($documentoInterno->assinado_em)
             <div style="margin-top: 50px; page-break-inside: avoid;">

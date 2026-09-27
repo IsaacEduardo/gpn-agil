@@ -34,6 +34,30 @@ class Departamento extends Model
         return $this->belongsTo(User::class, 'responsavel_id');
     }
 
+    /**
+     * Chefe de Departamento designado: o utilizador com o papel "chefe-departamento" designado
+     * para este departamento na ficha do utilizador. responsavel_id é o espelho mantido por
+     * DepartamentoChefiaService; sem espelho (utilizadores criados por outros caminhos), conta
+     * o único utilizador com o papel. Com zero ou vários, não há chefe — ao contrário do acessor
+     * $this->chefe, nunca escolhe "um qualquer". É quem assina as Notas.
+     */
+    public function chefeDesignado(): ?User
+    {
+        if ($this->responsavel_id) {
+            return $this->responsavel;
+        }
+
+        $candidatos = User::where('departamento_id', $this->id)
+            ->where(function ($q) {
+                $q->whereHas('role', fn ($r) => $r->where('name', 'chefe-departamento'))
+                    ->orWhereHas('roles', fn ($r) => $r->where('name', 'chefe-departamento'));
+            })
+            ->limit(2)
+            ->get();
+
+        return $candidatos->count() === 1 ? $candidatos->first() : null;
+    }
+
     public function parent()
     {
         return $this->belongsTo(Departamento::class, 'parent_id');

@@ -11,6 +11,7 @@ use App\Models\UserCertificate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use App\Support\SeriesNumeracao;
 
 class SignatureService
 {
@@ -298,25 +299,46 @@ class SignatureService
             return $doc->criado_por === $user->id;
         }
 
+        // INFORMAÇÃO/PARECER: Chefe de Gabinete do gabinete emissor (emitida por um departamento
+        // ou pelo próprio gabinete). Identificada pela abreviatura do catálogo: strtoupper() não
+        // converte acentos, pelo que "Informação" nunca coincidiria com uma lista de nomes.
+        if (SeriesNumeracao::abreviaturaEspecie($doc->especie) === 'INF') {
+            $gabinete = $doc->gabineteEmissor();
+
+            return $gabinete !== null && (int) $gabinete->responsavel_id === (int) $user->id;
+        }
+
         // OFICIAIS (Gabinete): Chefe de Gabinete
         $oficiais = ['OFÍCIO', 'OFICIO', 'CARTA', 'MEMORANDO', 'CIRCULAR', 'DESPACHO'];
         if (in_array($especie, $oficiais)) {
-            if (! $doc->departamento || ! $doc->departamento->gabinete) {
+            // Gabinete emissor: inclui os documentos emitidos pelo próprio gabinete.
+            $gabinete = $doc->gabineteEmissor();
+            if (! $gabinete) {
                 return false;
             }
 
-            return $doc->departamento->gabinete->responsavel_id === $user->id;
+            return (int) $gabinete->responsavel_id === (int) $user->id;
         }
 
-        // NOTA / REQUERIMENTO / DECLARAÇÃO: Chefe de Departamento
-        if (in_array($especie, ['NOTA', 'REQUERIMENTO', 'DECLARAÇÃO', 'DECLARACAO'])) {
+        // NOTA: só o Chefe de Departamento designado para o departamento emissor
+        // (Gestão de Utilizadores → departamentos.responsavel_id). Sem chefe designado, ninguém
+        // (além do Admin, tratado acima) assina — o ecrã do documento explica porquê.
+        if ($especie === 'NOTA') {
+            $chefe = $doc->departamento?->chefeDesignado();
+
+            return $chefe !== null && (int) $chefe->id === (int) $user->id;
+        }
+
+        // REQUERIMENTO / DECLARAÇÃO: Chefe de Departamento (regra anterior)
+        if (in_array($especie, ['REQUERIMENTO', 'DECLARAÇÃO', 'DECLARACAO'])) {
             return $user->hasRole(UserRole::CHEFE_DEPARTAMENTO->value) &&
                    ($user->departamento_id === $doc->departamento_id ||
                     $user->departamentos->contains($doc->departamento_id));
         }
 
         // Fallback: Se o usuário for Chefe de Gabinete e o documento pertencer ao gabinete dele, permitir assinatura (override)
-        if ($doc->departamento && $doc->departamento->gabinete && $doc->departamento->gabinete->responsavel_id === $user->id) {
+        $gabinete = $doc->gabineteEmissor();
+        if ($gabinete && (int) $gabinete->responsavel_id === (int) $user->id) {
             return true;
         }
 

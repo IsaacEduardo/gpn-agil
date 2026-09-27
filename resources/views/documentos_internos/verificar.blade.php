@@ -267,7 +267,7 @@
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Gabinete / Órgão</span>
-                        <span class="detail-value">{{ $documento->departamento->gabinete->nome ?? ($documento->departamento->nome ?? 'Não Definido') }}</span>
+                        <span class="detail-value">{{ $documento->gabineteEmissor()?->nome ?? ($documento->departamento->nome ?? 'Não Definido') }}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Tipo de Validação</span>

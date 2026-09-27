@@ -46,6 +46,7 @@
                         <tr>
                             <th class="ps-4 py-3 border-bottom text-uppercase small fw-bold text-muted">Gabinete</th>
                             <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Sigla</th>
+                            <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Código de ofícios</th>
                             <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Responsável</th>
                             <th class="py-3 border-bottom text-uppercase small fw-bold text-muted">Super Chefe</th>
                             <th class="py-3 border-bottom text-uppercase small fw-bold text-muted text-end pe-4">Ações</th>
@@ -64,6 +65,13 @@
                                     </div>
                                 </td>
                                 <td><span class="badge bg-light text-secondary border">{{ $gabinete->sigla }}</span></td>
+                                <td>
+                                    @if ($gabinete->codigo_oficios)
+                                        <code class="small">{{ $gabinete->codigo_oficios }}</code>
+                                    @else
+                                        <span class="text-muted small">—</span>
+                                    @endif
+                                </td>
                                 <td>
                                     @if ($gabinete->responsavel)
                                         <div class="d-flex align-items-center">
@@ -122,7 +130,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="text-center py-5">
+                                <td colspan="6" class="text-center py-5">
                                     <div class="d-flex flex-column align-items-center justify-content-center">
                                         <div class="bg-light rounded-circle p-4 mb-3">
                                             <i class="fas fa-building-user fa-3x text-muted opacity-50"></i>

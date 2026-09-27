@@ -26,6 +26,14 @@
                     @enderror
                 </div>
                 <div class="mb-3">
+                    <label for="codigo_oficios" class="form-label">Código de ofícios <span class="text-muted">(opcional)</span></label>
+                    <input type="text" name="codigo_oficios" id="codigo_oficios" class="form-control text-uppercase @error('codigo_oficios') is-invalid @enderror" value="{{ old('codigo_oficios') }}" maxlength="40" placeholder="SEC.GOV.PROV.HLA">
+                    <div class="form-text">Ex.: SEC.GOV.PROV.HLA. É usado nas referências dos ofícios: 585/SEC.GOV.PROV.HLA.DLP/{{ now()->year }}.</div>
+                    @error('codigo_oficios')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+                <div class="mb-3">
                     <label for="responsavel_id" class="form-label">Responsável <span class="text-muted">(opcional)</span></label>
                     <select name="responsavel_id" id="responsavel_id" class="form-select @error('responsavel_id') is-invalid @enderror">
                         <option value="">— Selecione (opcional) —</option>

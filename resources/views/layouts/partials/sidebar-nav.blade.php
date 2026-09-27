@@ -130,6 +130,8 @@
                             class="nav-link {{ request()->routeIs('admin.instituicao.*') ? 'active' : '' }}">Instituição</a>
                         <a href="{{ route('admin.documento-especies.index') }}"
                             class="nav-link {{ request()->routeIs('admin.documento-especies.*') ? 'active' : '' }}">Espécies e Prazos</a>
+                        <a href="{{ route('admin.numeracao.index') }}"
+                            class="nav-link {{ request()->routeIs('admin.numeracao.*') ? 'active' : '' }}">Numeração</a>
                         <a href="{{ route('modelos-despacho.index') }}"
                             class="nav-link {{ request()->routeIs('modelos-despacho.*') ? 'active' : '' }}">Modelos de Despacho</a>
                     @endif

@@ -587,7 +587,7 @@
 
                                 @if ($isChefeGabinete)
                                     <td>
-                                        <span class="text-dark small fw-medium">{{ $doc->departamento->nome ?? '—' }}</span>
+                                        <span class="text-dark small fw-medium">{{ $doc->departamento->nome ?? ($doc->gabinete?->nome ?? '—') }}</span>
                                     </td>
                                 @endif
 

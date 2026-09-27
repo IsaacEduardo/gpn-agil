@@ -489,7 +489,7 @@ TXT;
                 $fonte = $this->fonteInterno($doc);
                 $fontesColetadas[$key] = $fonte;
 
-                $corpoTexto = trim(strip_tags((string) $doc->conteudo_final));
+                $corpoTexto = trim(strip_tags($doc->conteudoSemCamposVazios()));
 
                 $resultados[] = [
                     'id' => $doc->id,
@@ -599,7 +599,7 @@ TXT;
             'status' => (string) ($doc->status?->value ?? $doc->status),
             'assinado_por' => optional($doc->assinadoPor)->name,
             'assinado_em' => optional($doc->assinado_em)->format('d/m/Y H:i'),
-            'conteudo_texto_integral' => Str::limit(trim(strip_tags((string) $doc->conteudo_final)), 4000, '… [conteúdo truncado]'),
+            'conteudo_texto_integral' => Str::limit(trim(strip_tags($doc->conteudoSemCamposVazios())), 4000, '… [conteúdo truncado]'),
             'anexos_ocr' => $doc->anexos->map(fn ($a) => [
                 'arquivo' => $a->nome_original,
                 'status_ocr' => $a->ocr_status,
@@ -667,7 +667,7 @@ TXT;
     private function buildInternoContextDetailed(DocumentoInterno $doc): string
     {
         $doc->loadMissing(['especie', 'departamento', 'assinadoPor', 'versoes']);
-        $corpo = trim(strip_tags((string) $doc->conteudo_final));
+        $corpo = trim(strip_tags($doc->conteudoSemCamposVazios()));
 
         $lines = [
             "DOCUMENTO INTERNO: ".($doc->numero_referencia ?? 'Ref: '.$doc->id),

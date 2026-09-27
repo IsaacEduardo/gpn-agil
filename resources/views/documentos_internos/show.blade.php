@@ -2,6 +2,15 @@
 
 @section('content')
     <div class="container">
+        @if (! $documentoInterno->assinado_em
+            && \App\Support\SeriesNumeracao::abreviaturaEspecie($documentoInterno->especie) === 'NOTA'
+            && ! $documentoInterno->departamento?->chefeDesignado())
+            <div class="alert alert-warning d-print-none">
+                <i class="fas fa-user-slash me-1"></i>
+                Este departamento não tem Chefe de Departamento designado: a Nota não pode ser assinada até ser designado na Gestão de Utilizadores.
+            </div>
+        @endif
+
         <div class="d-flex justify-content-between align-items-center mb-4 d-print-none">
             <div>
                 <a href="{{ route('documentos-internos.index') }}" class="btn btn-secondary">
@@ -323,7 +332,7 @@
                                                                         <div class="mx-auto bg-white p-5 shadow-sm"
                                                                             style="max-width: 210mm; min-height: 297mm; font-family: 'Times New Roman', serif;">
                                                                             <div class="paper-content">
-                                                                                {!! \App\Support\Sanitizer::clean($versao->conteudo_final) !!}
+                                                                                {!! \App\Models\DocumentoInterno::htmlParaApresentacao($versao->conteudo_final) !!}
                                                                             </div>
                                                                         </div>
                                                                     </div>
@@ -374,6 +383,12 @@
         .paper-content table {
             width: 100%;
             border-collapse: collapse;
+        }
+
+        /* <p> criado pelo editor colaborativo dentro das células. */
+        .paper-content td > p,
+        .paper-content th > p {
+            margin: 0;
         }
 
         .paper-content img {
