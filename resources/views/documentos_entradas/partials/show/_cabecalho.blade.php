@@ -118,6 +118,7 @@
                     </li>
                 @endif
 
+                @can('verProtocolo', $doc)
                 <li><hr class="dropdown-divider my-1"></li>
                 <li><h6 class="dropdown-header text-uppercase small fw-bold">Protocolo</h6></li>
                 @if ($etiquetaDesatualizada ?? false)
@@ -149,6 +150,7 @@
                         <i class="fas fa-eye me-2 text-secondary"></i> Visualizar Protocolo Completo
                     </a>
                 </li>
+                @endcan
 
                 <li><hr class="dropdown-divider my-1"></li>
                 <li><h6 class="dropdown-header text-uppercase small fw-bold">Exportar</h6></li>
@@ -173,7 +175,7 @@
                     </li>
                 @endif
 
-                @if (! $doc->arquivado)
+                @if (! $doc->arquivado && auth()->user()->can('archive', $doc))
                     <li><hr class="dropdown-divider my-1"></li>
                     <li>
                         <button class="dropdown-item py-2 text-danger" data-bs-toggle="modal" data-bs-target="#modalArquivarDocumento">

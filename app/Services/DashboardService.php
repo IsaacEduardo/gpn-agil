@@ -219,26 +219,31 @@ class DashboardService
         $dept = $user->departamentoPrincipal();
         $deptId = $dept?->id;
 
-        // 1. Contagens agregadas do departamento
-        $entradasAgg = DocumentoEntrada::query()
-            ->when($deptId, fn ($q) => $q->where('departamento_id', $deptId))
-            ->selectRaw("
-                COUNT(CASE WHEN status IN ('registrado', 'recebido', 'pendente_tratamento', 'em_andamento') AND arquivado = 0 THEN 1 END) as novas_entradas,
-                COUNT(*) as total_entradas
-            ")
-            ->first();
+        // 1. Contagens das entradas: as mesmas regras (visibilidade + separador)
+        // da lista para onde cada cartão aponta. Antes o painel tinha critério
+        // próprio — só departamento_id, que muda apenas no recebimento, e um
+        // estado 'em_andamento' que não existe —, pelo que os documentos
+        // encaminhados ao sector nunca eram contados e o número não batia com
+        // a lista.
+        $entradas = app(DocumentoEntradaService::class);
+        $entradasVisiveis = function () use ($entradas, $user) {
+            $query = DocumentoEntrada::query();
+            $entradas->applyVisibilityScope($query, $user);
 
-        $tarefasAgg = DocumentoTarefa::query()
-            ->when($deptId, function ($q) use ($deptId, $user) {
-                $q->where(function ($sub) use ($deptId, $user) {
-                    $sub->where('assigned_to_departamento_id', $deptId)
-                        ->orWhere('assigned_by_id', $user->id);
-                });
-            })
-            ->selectRaw("
-                COUNT(CASE WHEN status = 'pendente' THEN 1 END) as tarefas_andamento
-            ")
-            ->first();
+            return $query;
+        };
+        $contarSeparador = function (string $separador) use ($entradas, $entradasVisiveis, $user): int {
+            $query = $entradasVisiveis()->where('arquivado', false);
+            $entradas->applyRoleTabFilter($query, $separador, $user, 'chefe_departamento');
+
+            return $query->count();
+        };
+
+        $entradasAgg = (object) [
+            'novas_entradas' => $contarSeparador('novos_departamento'),
+            'total_entradas' => $entradasVisiveis()->count(),
+        ];
+        $tarefasAgg = (object) ['tarefas_andamento' => $contarSeparador('delegados')];
 
         $internosAgg = DocumentoInterno::query()
             ->when($deptId, fn ($q) => $q->where('departamento_id', $deptId))
@@ -254,8 +259,7 @@ class DashboardService
         $totalAcervo = ((int) ($entradasAgg->total_entradas ?? 0)) + ((int) ($internosAgg->total_internos ?? 0));
 
         // 2. Entradas Recentes no Departamento
-        $entradasRecentes = DocumentoEntrada::with(['usuario'])
-            ->when($deptId, fn ($q) => $q->where('departamento_id', $deptId))
+        $entradasRecentes = $entradasVisiveis()->with(['usuario'])
             ->orderBy('created_at', 'desc')
             ->limit(6)
             ->get()
@@ -312,16 +316,16 @@ class DashboardService
                     'alerta' => 'Aguardando tramitação',
                     'icone' => 'fas fa-inbox',
                     'cor' => 'primary',
-                    'link' => route('documentos-entradas.index', ['tab' => 'todos_departamento']),
+                    'link' => route('documentos-entradas.index', ['tab' => 'novos_departamento']),
                 ],
                 [
                     'id' => 'tarefas_delegadas',
-                    'label' => 'Tarefas Delegadas',
+                    'label' => 'Delegados / Em Andamento',
                     'valor' => $tarefasAndamento,
                     'alerta' => 'Em execução pela equipe',
                     'icone' => 'fas fa-user-clock',
                     'cor' => 'warning',
-                    'link' => route('documentos-entradas.index'),
+                    'link' => route('documentos-entradas.index', ['tab' => 'delegados']),
                 ],
                 [
                     'id' => 'minutas_revisao',

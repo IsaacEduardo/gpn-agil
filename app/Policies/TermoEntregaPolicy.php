@@ -2,8 +2,10 @@
 
 namespace App\Policies;
 
+use App\Models\Departamento;
 use App\Models\TermoEntrega;
 use App\Models\User;
+use App\Services\DocumentoPermissionService;
 
 class TermoEntregaPolicy
 {
@@ -44,11 +46,21 @@ class TermoEntregaPolicy
     }
 
     /**
-     * Determine whether the user can create Credenciais.
+     * Emitir credenciais: só os utilizadores do Departamento de Logística e
+     * Património (sigla em config('documentos.credenciais_departamento_sigla'))
+     * e o admin. Decisão do cliente, 2026-09-29.
      */
     public function createCredencial(User $user): bool
     {
-        return $user->can('credenciais.gerir') || $user->isAdmin();
+        if ($user->isAdmin()) {
+            return true;
+        }
+
+        $sigla = (string) config('documentos.credenciais_departamento_sigla', 'DLP');
+        $meus = app(DocumentoPermissionService::class)->getUserDepartments($user);
+
+        return $sigla !== '' && $meus !== []
+            && Departamento::whereIn('id', $meus)->where('sigla', $sigla)->exists();
     }
 
     /**

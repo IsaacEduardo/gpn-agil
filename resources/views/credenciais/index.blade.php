@@ -19,9 +19,11 @@
             <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 text-primary fw-bold"><i class="fas fa-id-card me-2"></i>Credenciais de Viatura</h5>
                 <div class="d-flex gap-2">
-                    <a href="{{ route('credenciais.create') }}" class="btn btn-primary">
+                    @can('createCredencial', \App\Models\TermoEntrega::class)
+<a href="{{ route('credenciais.create') }}" class="btn btn-primary">
                         <i class="fas fa-plus me-1"></i> Nova Credencial
                     </a>
+                    @endcan
                 </div>
             </div>
             <div class="card-body p-4">
@@ -139,9 +141,11 @@
                         </div>
                         <h5 class="text-muted">Nenhuma credencial encontrada</h5>
                         <p class="text-muted mb-3">Tente ajustar os filtros ou crie uma nova credencial.</p>
-                        <a href="{{ route('credenciais.create') }}" class="btn btn-primary">
+                        @can('createCredencial', \App\Models\TermoEntrega::class)
+<a href="{{ route('credenciais.create') }}" class="btn btn-primary">
                             <i class="fas fa-plus me-1"></i> Nova Credencial
                         </a>
+                    @endcan
                     </div>
                 @endif
             </div>

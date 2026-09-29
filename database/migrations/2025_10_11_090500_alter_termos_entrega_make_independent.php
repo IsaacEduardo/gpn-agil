@@ -10,6 +10,13 @@ return new class extends Migration
     public function up(): void
     {
         $driver = Schema::getConnection()->getDriverName();
+        if ($driver === 'sqlite') {
+            // Base de testes: sem isto nenhum termo autónomo (credencial) era
+            // gravável — requisicao_id ficava NOT NULL só no SQLite.
+            Schema::table('termos_entrega', function (Blueprint $table) {
+                $table->unsignedBigInteger('requisicao_id')->nullable()->change();
+            });
+        }
         if ($driver === 'mysql') {
             // Remover constraint da chave estrangeira e tornar requisicao_id opcional
             try {

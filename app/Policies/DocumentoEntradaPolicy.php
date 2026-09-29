@@ -266,35 +266,35 @@ class DocumentoEntradaPolicy
 
     /**
      * Determina se o utilizador pode arquivar um documento de entrada.
+     * Regra única em DocumentoPermissionService::podeArquivar (só técnicos com
+     * a guarda do documento — decisão provisória de 2026-09-29).
      */
     public function archive(User $user, DocumentoEntrada $documento): bool
     {
-        if ($user->isAdmin() || ($user->role && $user->role->name === 'admin')) {
-            return true;
-        }
-        $permissionService = app(DocumentoPermissionService::class);
-        $deps = $permissionService->getUserDepartments($user);
+        return app(DocumentoPermissionService::class)->podeArquivar($user, $documento);
+    }
 
-        // Quem registou o documento
+    /**
+     * Protocolo (recibo, etiqueta, comprovativo A4): Expediente, Secretário e
+     * admin (DocumentoPermissionService::podeVerProtocolo). Quem registou vê o
+     * protocolo desse documento, para a etiqueta sair no acto do registo.
+     */
+    public function verProtocolo(User $user, DocumentoEntrada $documento): bool
+    {
         if ((int) $documento->user_id === (int) $user->id) {
             return true;
         }
 
-        // Chefe de departamento do documento
-        if (($user->hasRole('chefe-departamento') || $user->hasRole('chefe_departamento'))
-            && in_array((int) $documento->departamento_id, array_map('intval', $deps), true)) {
-            return true;
-        }
+        return app(DocumentoPermissionService::class)->podeVerProtocolo($user);
+    }
 
-        // Chefe de gabinete responsável pelo gabinete do departamento do documento
-        $gabId = optional($documento->departamento)->gabinete_id;
-        if ($gabId) {
-            $gab = Gabinete::find($gabId);
-            if ($gab && (int) $gab->responsavel_id === (int) $user->id) {
-                return true;
-            }
-        }
-
-        return false;
+    /**
+     * Desarquivar: a mesma regra de arquivar (técnicos com a guarda do
+     * documento e admin). Decisão do cliente, 2026-09-29 — antes não havia
+     * verificação nenhuma e qualquer utilizador autenticado desarquivava.
+     */
+    public function unarchive(User $user, DocumentoEntrada $documento): bool
+    {
+        return app(DocumentoPermissionService::class)->podeArquivar($user, $documento);
     }
 }

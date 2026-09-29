@@ -2,24 +2,87 @@
 
 namespace App\Http\Controllers;
 
-use App\Application\RequisitionFleet\Commands\CriarViaturaCommand;
-use App\Application\RequisitionFleet\DTOs\CriarViaturaDTO;
-use App\Application\RequisitionFleet\Handlers\CriarViaturaHandler;
-use App\Domain\RequisitionFleet\Entities\ViaturaEntity;
-use App\Domain\RequisitionFleet\Repositories\ViaturaRepositoryInterface;
-use App\Domain\RequisitionFleet\ValueObjects\MatriculaViaturaValueObject;
 use App\Models\Viatura;
 use App\Models\ViaturaFoto;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class ViaturaController extends Controller
 {
-    public function __construct(
-        private readonly CriarViaturaHandler       $criarViaturaHandler,
-        private readonly ViaturaRepositoryInterface $viaturaRepository
-    ) {}
+    /** Colunas gravadas a partir do formulário (create e edit). */
+    private const CAMPOS = [
+        'identificacao', 'placa', 'modelo', 'marca', 'ano', 'tipo', 'motor_numero',
+        'cor', 'status_operacional', 'afetacao', 'observacoes',
+    ];
+
+    private const TIPOS = ['Carro', 'Caminhão', 'Moto', 'Outro'];
+
+    /**
+     * Regras comuns ao cadastro e à edição. $id exclui a própria viatura das
+     * verificações de unicidade.
+     */
+    private function regras(?int $id = null): array
+    {
+        $unica = fn (string $coluna) => 'unique:viaturas,'.$coluna.($id ? ','.$id : '');
+
+        return [
+            'identificacao' => ['required', 'string', 'max:50', $unica('identificacao')],
+            'placa' => [
+                'required',
+                'string',
+                'max:12',
+                $unica('placa'),
+                'regex:/^(?:[A-Za-z]{2}-\d{2}-\d{2}(?:-[A-Za-z]{2})?|[A-Za-z]{3}-\d{2}-\d{2}(?:-[A-Za-z]{2})?)$/',
+            ],
+            'modelo' => 'required|string|max:100',
+            'marca' => 'required|string|max:100',
+            'ano' => 'required|integer|min:1900|max:'.(date('Y') + 1),
+            'tipo' => 'required|in:'.implode(',', self::TIPOS),
+            'status_operacional' => 'required|in:Operacional,Em manutenção,Inoperante',
+            'afetacao' => 'nullable|string|max:255',
+            'motor_numero' => 'nullable|string|max:100',
+            'cor' => 'nullable|string|max:50',
+            'observacoes' => 'nullable|string',
+            'fotos.*' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'documentos.*' => 'nullable|mimes:pdf,doc,docx|max:5120',
+            'remover_fotos.*' => 'nullable|exists:viatura_fotos,id',
+        ];
+    }
+
+    private function mensagens(): array
+    {
+        return [
+            'placa.regex' => 'Formato inválido. Use LL-00-00, LL-00-00-LL, LLL-00-00 ou LLL-00-00-LL',
+            'placa.max' => 'A matrícula deve ter no máximo 12 caracteres (ex.: LDA-00-00-XX)',
+            'placa.unique' => 'Já existe uma viatura com esta matrícula.',
+            'identificacao.unique' => 'Já existe uma viatura com esta identificação.',
+            'tipo.in' => 'Escolha um tipo da lista (Carro, Caminhão, Moto ou Outro).',
+            'fotos.*.image' => 'Os arquivos devem ser imagens (jpeg, png, jpg, gif)',
+            'fotos.*.max' => 'O tamanho máximo para cada foto é 2MB',
+            'documentos.*.mimes' => 'Os documentos devem estar nos formatos PDF, DOC ou DOCX',
+            'documentos.*.max' => 'O tamanho máximo para cada documento é 5MB',
+        ];
+    }
+
+    /** Guarda fotos e documentos com nome seguro (UUID + extensão do MIME). */
+    private function guardarAnexos(Request $request, Viatura $viatura): void
+    {
+        foreach (['fotos' => ['foto', 'jpg'], 'documentos' => ['documento', 'pdf']] as $campo => [$tipo, $extensao]) {
+            foreach ($request->file($campo, []) as $ficheiro) {
+                $nome = (string) Str::uuid().'.'.($ficheiro->extension() ?: $extensao);
+                $caminho = $ficheiro->storeAs('viaturas/'.$campo, $nome, 'public');
+
+                ViaturaFoto::create([
+                    'viatura_id' => $viatura->id,
+                    'caminho_arquivo' => $caminho,
+                    'tipo' => $tipo,
+                ]);
+            }
+        }
+    }
     /**
      * Display a listing of the resource.
      */
@@ -93,94 +156,33 @@ class ViaturaController extends Controller
     public function store(Request $request)
     {
         $this->authorize('create', Viatura::class);
-        // Gerar identificação automática se for "AUTO"
-        if ($request->input('identificacao') === 'AUTO') {
-            $request->merge(['identificacao' => 'V-'.time()]);
-        }
 
-        // Padronizar matrícula para maiúsculas
+        // Identificação automática: data + sufixo aleatório. Com 'V-'.time()
+        // dois cadastros no mesmo segundo colidiam na unicidade.
+        if ($request->input('identificacao') === 'AUTO') {
+            $request->merge(['identificacao' => 'V-'.date('Ymd').'-'.Str::upper(Str::random(4))]);
+        }
         if ($request->filled('placa')) {
             $request->merge(['placa' => strtoupper($request->input('placa'))]);
         }
 
-        $validator = Validator::make($request->all(), [
-            'identificacao' => 'required|string|max:50|unique:viaturas',
-            'placa' => [
-                'required',
-                'string',
-                'max:12',
-                'unique:viaturas',
-                'regex:/^(?:[A-Za-z]{2}-\d{2}-\d{2}(?:-[A-Za-z]{2})?|[A-Za-z]{3}-\d{2}-\d{2}(?:-[A-Za-z]{2})?)$/',
-            ],
-            'modelo' => 'required|string|max:100',
-            'marca' => 'required|string|max:100',
-            'ano' => 'required|integer|min:1900|max:'.(date('Y') + 1),
-            'status_operacional' => 'required|in:Operacional,Em manutenção,Inoperante',
-            'observacoes' => 'nullable|string',
-            'fotos.*' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-            'documentos.*' => 'nullable|mimes:pdf,doc,docx|max:5120',
-        ], [
-            'placa.regex' => 'Formato inválido. Use LL-00-00, LL-00-00-LL, LLL-00-00 ou LLL-00-00-LL',
-            'placa.max' => 'A matrícula deve ter no máximo 12 caracteres (ex.: LDA-00-00-XX)',
-            'fotos.*.image' => 'Os arquivos devem ser imagens (jpeg, png, jpg, gif)',
-            'fotos.*.max' => 'O tamanho máximo para cada foto é 2MB',
-            'documentos.*.mimes' => 'Os documentos devem estar nos formatos PDF, DOC ou DOCX',
-            'documentos.*.max' => 'O tamanho máximo para cada documento é 5MB',
-        ]);
-
+        $validator = Validator::make($request->all(), $this->regras(), $this->mensagens());
         if ($validator->fails()) {
             return redirect()->route('viaturas.create')
                 ->withErrors($validator)
                 ->withInput();
         }
 
-        // ── Camada de Domínio (DDD) ───────────────────────────────────────────
-        // O Handler valida invariantes (matrícula não vazia, marca/modelo obrigatório)
-        // e persiste o Aggregate Root via EloquentViaturaRepository.
-        $dto    = CriarViaturaDTO::fromArray($request->all());
-        $entity = $this->criarViaturaHandler->handle(new CriarViaturaCommand($dto));
+        // Gravação directa de todas as colunas. O caminho anterior (camada de
+        // domínio RequisitionFleet) inseria só matrícula, "marca modelo" na
+        // coluna modelo e estado — sem marca nem ano, que são NOT NULL —, pelo
+        // que todos os cadastros falhavam com erro 500.
+        $viatura = DB::transaction(function () use ($request, $validator) {
+            $viatura = Viatura::create(collect($validator->validated())->only(self::CAMPOS)->all());
+            $this->guardarAnexos($request, $viatura);
 
-        // ── Campos complementares (infra-estrutura) ───────────────────────────
-        // Actualizamos identificacao, marca, ano, tipo e outros campos não capturados
-        // pelo Aggregate Root de domínio.
-        $viatura = Viatura::findOrFail($entity->getId());
-        $viatura->update(array_filter([
-            'identificacao'    => $request->input('identificacao'),
-            'marca'            => $request->input('marca'),
-            'ano'              => $request->input('ano'),
-            'tipo'             => $request->input('tipo'),
-            'observacoes'      => $request->input('observacoes'),
-        ], fn($v) => $v !== null));
-
-        // Processa o upload de fotos com nomenclatura segura (UUID + MIME extension)
-        if ($request->hasFile('fotos')) {
-            foreach ($request->file('fotos') as $foto) {
-                $ext = $foto->extension() ?: 'jpg';
-                $nomeArquivo = (string) Str::uuid().'.'.$ext;
-                $caminho = $foto->storeAs('viaturas/fotos', $nomeArquivo, 'public');
-
-                ViaturaFoto::create([
-                    'viatura_id' => $viatura->id,
-                    'caminho_arquivo' => $caminho,
-                    'tipo' => 'foto',
-                ]);
-            }
-        }
-
-        // Processa o upload de documentos com nomenclatura segura
-        if ($request->hasFile('documentos')) {
-            foreach ($request->file('documentos') as $documento) {
-                $ext = $documento->extension() ?: 'pdf';
-                $nomeArquivo = (string) Str::uuid().'.'.$ext;
-                $caminho = $documento->storeAs('viaturas/documentos', $nomeArquivo, 'public');
-
-                ViaturaFoto::create([
-                    'viatura_id' => $viatura->id,
-                    'caminho_arquivo' => $caminho,
-                    'tipo' => 'documento',
-                ]);
-            }
-        }
+            return $viatura;
+        });
 
         return redirect()->route('viaturas.show', $viatura->id)
             ->with('success', 'Viatura cadastrada com sucesso!');
@@ -213,64 +215,20 @@ class ViaturaController extends Controller
     public function update(Request $request, Viatura $viatura)
     {
         $this->authorize('update', $viatura);
-        // Padronizar matrícula para maiúsculas
         if ($request->filled('placa')) {
             $request->merge(['placa' => strtoupper($request->input('placa'))]);
         }
-        $validator = Validator::make($request->all(), [
-            'identificacao' => 'required|string|max:50|unique:viaturas,identificacao,'.$viatura->id,
-            'placa' => [
-                'required',
-                'string',
-                'max:12',
-                'unique:viaturas,placa,'.$viatura->id,
-                'regex:/^(?:[A-Za-z]{2}-\d{2}-\d{2}(?:-[A-Za-z]{2})?|[A-Za-z]{3}-\d{2}-\d{2}(?:-[A-Za-z]{2})?)$/',
-            ],
-            'modelo' => 'required|string|max:100',
-            'marca' => 'required|string|max:100',
-            'ano' => 'required|integer|min:1900|max:'.(date('Y') + 1),
-            'status_operacional' => 'required|in:Operacional,Em manutenção,Inoperante',
-            'observacoes' => 'nullable|string',
-            'fotos.*' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-            'documentos.*' => 'nullable|mimes:pdf,doc,docx|max:5120',
-            'remover_fotos.*' => 'nullable|exists:viatura_fotos,id',
-        ], [
-            'placa.regex' => 'Formato inválido. Use LL-00-00, LL-00-00-LL, LLL-00-00 ou LLL-00-00-LL',
-            'placa.max' => 'A matrícula deve ter no máximo 12 caracteres (ex.: LDA-00-00-XX)',
-            'fotos.*.image' => 'Os arquivos devem ser imagens (jpeg, png, jpg, gif)',
-            'fotos.*.max' => 'O tamanho máximo para cada foto é 2MB',
-            'documentos.*.mimes' => 'Os documentos devem estar nos formatos PDF, DOC ou DOCX',
-            'documentos.*.max' => 'O tamanho máximo para cada documento é 5MB',
-        ]);
 
+        $validator = Validator::make($request->all(), $this->regras($viatura->id), $this->mensagens());
         if ($validator->fails()) {
             return redirect()->route('viaturas.edit', $viatura->id)
                 ->withErrors($validator)
                 ->withInput();
         }
 
-        // ── Camada de Domínio (DDD) — update ─────────────────────────────────
-        // Reconstrói a entidade de domínio com os dados actualizados e persiste
-        // via repositório de domínio.
-        $statusMap = [
-            'Operacional'   => 'operacional',
-            'Em manutenção' => 'manutencao',
-            'Inoperante'    => 'inoperante',
-        ];
-        $domainStatus = $statusMap[$request->input('status_operacional', 'Operacional')] ?? 'operacional';
-
-        $novaEntity = new ViaturaEntity(
-            id: $viatura->id,
-            matricula: new MatriculaViaturaValueObject(strtoupper($request->input('placa', $viatura->placa))),
-            marcaModelo: trim($request->input('marca', '') . ' ' . $request->input('modelo', '')),
-            statusOperacional: $domainStatus,
-            departamentoId: null,
-        );
-        $this->viaturaRepository->save($novaEntity);
-
-        // ── Campos complementares (infra-estrutura) ───────────────────────────
-        // Atualiza apenas os campos validados (evita mass assignment de campos extra)
-        $viatura->update($validator->validated());
+        // Todas as colunas do formulário (antes o tipo e a afectação não eram
+        // validados e perdiam-se sem aviso).
+        $viatura->update(collect($validator->validated())->only(self::CAMPOS)->all());
 
         // Processa as fotos para remover
         if ($request->has('remover_fotos')) {
@@ -287,35 +245,7 @@ class ViaturaController extends Controller
             }
         }
 
-        // Processa o upload de novas fotos com nomenclatura segura
-        if ($request->hasFile('fotos')) {
-            foreach ($request->file('fotos') as $foto) {
-                $ext = $foto->extension() ?: 'jpg';
-                $nomeArquivo = (string) Str::uuid().'.'.$ext;
-                $caminho = $foto->storeAs('viaturas/fotos', $nomeArquivo, 'public');
-
-                ViaturaFoto::create([
-                    'viatura_id' => $viatura->id,
-                    'caminho_arquivo' => $caminho,
-                    'tipo' => 'foto',
-                ]);
-            }
-        }
-
-        // Processa o upload de novos documentos com nomenclatura segura
-        if ($request->hasFile('documentos')) {
-            foreach ($request->file('documentos') as $documento) {
-                $ext = $documento->extension() ?: 'pdf';
-                $nomeArquivo = (string) Str::uuid().'.'.$ext;
-                $caminho = $documento->storeAs('viaturas/documentos', $nomeArquivo, 'public');
-
-                ViaturaFoto::create([
-                    'viatura_id' => $viatura->id,
-                    'caminho_arquivo' => $caminho,
-                    'tipo' => 'documento',
-                ]);
-            }
-        }
+        $this->guardarAnexos($request, $viatura);
 
         return redirect()->route('viaturas.show', $viatura->id)
             ->with('success', 'Viatura atualizada com sucesso!');

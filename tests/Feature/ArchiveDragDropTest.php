@@ -57,10 +57,9 @@ class ArchiveDragDropTest extends TestCase
     }
 
     /**
-     * Cria um documento interno. Por omissão fica em RASCUNHO porque, segundo a
-     * regra de perfil existente (DocumentoInternoPolicy::archive), o AUTOR só pode
-     * arquivar os seus próprios rascunhos — documentos assinados exigem
-     * chefe de departamento / gabinete / admin.
+     * Cria um documento interno (por omissão em RASCUNHO). Quem arquiva são os
+     * técnicos do departamento que tem o documento à guarda
+     * (DocumentoPermissionService::podeArquivar).
      */
     private function internoDe(User $dono, Departamento $dep, bool $arquivado = false, DocumentoStatus $status = DocumentoStatus::RASCUNHO): DocumentoInterno
     {

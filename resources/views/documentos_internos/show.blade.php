@@ -71,7 +71,7 @@
                     </button>
                 @endif
 
-                @if ($documentoInterno->status === \App\Enums\DocumentoStatus::ASSINADO && !$documentoInterno->arquivado)
+                @if ($documentoInterno->status === \App\Enums\DocumentoStatus::ASSINADO && !$documentoInterno->arquivado && auth()->user()->can('archive', $documentoInterno))
                     <button class="btn btn-secondary ms-2" data-bs-toggle="modal" data-bs-target="#modalArquivarInterno">
                         <i class="fas fa-archive me-2"></i>Arquivar
                     </button>

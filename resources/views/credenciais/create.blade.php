@@ -171,7 +171,7 @@
                                             <select id="viatura_id" name="viatura_id" class="form-select" required>
                                                 <option value="">Selecione a viatura da frota...</option>
                                                 @foreach ($viaturas as $v)
-                                                    <option value="{{ $v->id }}"
+                                                    <option value="{{ $v->id }}" @selected(old('viatura_id') == $v->id)
                                                             data-marca="{{ $v->marca }}"
                                                             data-modelo="{{ $v->modelo }}"
                                                             data-placa="{{ $v->placa }}"
@@ -298,21 +298,25 @@
             radioViagem.addEventListener('change', toggleTipoCredencial);
             toggleTipoCredencial();
 
-            // 2. Autopreenchimento de Metadados da Viatura
-            selectViatura.addEventListener('change', function () {
-                const opt = this.options[this.selectedIndex];
-                if (opt && opt.value) {
-                    const motor = opt.getAttribute('data-motor');
-                    const cor = opt.getAttribute('data-cor');
-
-                    if (motor && !inputMotor.value) {
-                        inputMotor.value = motor;
+            // 2. Nº do motor e cor vêm do cadastro da viatura: preenchidos e só de
+            // leitura quando a viatura já os tem; editáveis (e gravados na viatura)
+            // só quando faltam. Trocar de viatura nunca deixa o valor da anterior.
+            const aplicarDadosViatura = (inicial = false) => {
+                const opt = selectViatura.options[selectViatura.selectedIndex];
+                [[inputMotor, 'data-motor'], [inputCor, 'data-cor']].forEach(([input, atributo]) => {
+                    const registado = opt && opt.value ? (opt.getAttribute(atributo) || '') : '';
+                    if (registado) {
+                        input.value = registado;
+                    } else if (!inicial || input.readOnly) {
+                        input.value = '';
                     }
-                    if (cor && !inputCor.value) {
-                        inputCor.value = cor;
-                    }
-                }
-            });
+                    input.readOnly = registado !== '';
+                    input.classList.toggle('bg-light', registado !== '');
+                    input.title = registado ? 'Valor do cadastro da viatura. Para alterar, edite a viatura.' : '';
+                });
+            };
+            selectViatura.addEventListener('change', () => aplicarDadosViatura());
+            aplicarDadosViatura(true);
 
             // 3. Autopreenchimento por Funcionário
             if (selectFuncionario) {

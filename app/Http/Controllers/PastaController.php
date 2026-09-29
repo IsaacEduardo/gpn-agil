@@ -162,7 +162,7 @@ class PastaController extends Controller
             : DocumentoEntrada::findOrFail($documentoId);
 
         // Autorização por perfil — mesma Policy 'archive' do fluxo drag-and-drop
-        // (admin / dono de rascunho / chefe de departamento / chefe de gabinete).
+        // (admin e técnicos com a guarda do documento — DocumentoPermissionService::podeArquivar).
         if (Gate::denies('archive', $documento)) {
             abort(403, 'Você não tem permissão para arquivar este documento.');
         }
@@ -224,6 +224,10 @@ class PastaController extends Controller
     public function desarquivar($documentoId)
     {
         $documento = DocumentoEntrada::findOrFail($documentoId);
+
+        if (Gate::denies('unarchive', $documento)) {
+            abort(403, 'Você não tem permissão para desarquivar este documento.');
+        }
 
         // Repõe o estado anterior ao arquivamento, gravado em status_pre_arquivo.
         // Antes repunha sempre 'registrado' — o valor legado do estado de nascença —

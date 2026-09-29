@@ -417,9 +417,11 @@
                                             <td><span class="small text-muted">{{ optional($docEnt->departamento)->nome ?? 'N/D' }}</span></td>
                                             <td><span class="small text-muted">{{ $docEnt->created_at ? $docEnt->created_at->format('d/m/Y H:i') : '-' }}</span></td>
                                             <td class="text-end pe-4">
+                                                @can('archive', $docEnt)
                                                 <button class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#arquivarEntradaModal{{ $docEnt->id }}">
                                                     <i class="fas fa-archive me-1"></i> Classificar & Arquivar
                                                 </button>
+                                                @endcan
                                             </td>
                                         </tr>
 
@@ -470,9 +472,11 @@
                                             <td><span class="small text-muted">{{ optional($docInt->departamento)->nome ?? 'N/D' }}</span></td>
                                             <td><span class="small text-muted">{{ $docInt->updated_at ? $docInt->updated_at->format('d/m/Y H:i') : '-' }}</span></td>
                                             <td class="text-end pe-4">
+                                                @can('archive', $docInt)
                                                 <button class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#arquivarInternoModal{{ $docInt->id }}">
                                                     <i class="fas fa-archive me-1"></i> Classificar & Arquivar
                                                 </button>
+                                                @endcan
                                             </td>
                                         </tr>
 

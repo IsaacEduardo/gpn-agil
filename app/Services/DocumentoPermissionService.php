@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Enums\UserRole;
+use App\Models\Departamento;
 use App\Models\DocumentoEncaminhamento;
 use App\Models\DocumentoEntrada;
+use App\Models\DocumentoInterno;
 use App\Models\Gabinete;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
@@ -192,6 +194,63 @@ class DocumentoPermissionService
                 ->all();
 
         return array_values(array_unique(array_merge($deps, $pendentes)));
+    }
+
+    /**
+     * Protocolo de entrada (recibo, etiqueta, comprovativo): só o Expediente
+     * (departamentos com is_area_expediente) e o Secretário — responsável ou
+     * super-chefe do gabinete a que pertence um departamento de expediente
+     * (a Secretaria Geral) —, além do admin. Decisão do cliente, 2026-09-29.
+     */
+    public function podeVerProtocolo(User $user): bool
+    {
+        if ($user->isAdmin() || $this->isUserInAreaExpediente($user)) {
+            return true;
+        }
+
+        return Gabinete::whereHas('departamentos', fn ($q) => $q->where('is_area_expediente', true))
+            ->where(fn ($q) => $q->where('responsavel_id', $user->id)->orWhere('super_chefe_id', $user->id))
+            ->exists();
+    }
+
+    /**
+     * Regra ÚNICA de quem pode arquivar (entradas e internos); as policies
+     * delegam aqui.
+     *
+     * Decisão provisória do cliente (2026-09-29): "por enquanto" arquivar fica
+     * a cargo dos técnicos do departamento/gabinete que tem o documento à sua
+     * guarda. Chefes de departamento, chefes de gabinete e quem registou deixam
+     * de arquivar. Para alargar a outro perfil, acrescentar a condição aqui.
+     */
+    public function podeArquivar(User $user, DocumentoEntrada|DocumentoInterno $documento): bool
+    {
+        if ($user->isAdmin() || $this->isAdmin($user)) {
+            return true;
+        }
+
+        if (! $user->isTecnico() || $this->isChefeDepartamento($user)) {
+            return false;
+        }
+
+        $meus = $this->getUserDepartments($user);
+        if ($meus === []) {
+            return false;
+        }
+
+        if ($documento instanceof DocumentoEntrada) {
+            return array_intersect($meus, $this->departamentosComCustodia($documento)) !== [];
+        }
+
+        if ($documento->departamento_id) {
+            return in_array((int) $documento->departamento_id, $meus, true);
+        }
+
+        // Interno emitido pelo gabinete (sem departamento): guarda do gabinete,
+        // logo dos técnicos dos seus departamentos.
+        $gabineteId = $documento->gabineteEmissorId();
+
+        return $gabineteId !== null
+            && Departamento::whereIn('id', $meus)->where('gabinete_id', $gabineteId)->exists();
     }
 
     /**

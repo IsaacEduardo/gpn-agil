@@ -302,9 +302,11 @@
         </span>
     @endif
 
+    @can('verProtocolo', $doc)
     <a href="{{ route('documentos-entradas.protocolo.etiqueta', [$doc, 'auto_print' => 1]) }}" target="_blank" class="btn btn-outline-dark fw-semibold py-2" title="Imprimir Etiqueta Adesiva (100x50mm)">
         <i class="fas fa-barcode"></i>
     </a>
+    @endcan
 
     <a href="{{ route('documentos-entradas.show', $doc) }}" class="btn btn-outline-secondary fw-semibold py-2" title="Abrir Detalhes Completos">
         <i class="fas fa-external-link-alt me-1"></i> Detalhes

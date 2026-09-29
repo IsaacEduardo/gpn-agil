@@ -147,32 +147,13 @@ class DocumentoInternoPolicy
     }
 
     /**
-     * Determine if the user may archive the document.
+     * Determina se o utilizador pode arquivar o documento.
+     * Regra única em DocumentoPermissionService::podeArquivar (só técnicos com
+     * a guarda do documento — decisão provisória de 2026-09-29).
      */
     public function archive(User $user, DocumentoInterno $doc)
     {
-        // Owner can archive own draft
-        if ($doc->criado_por === $user->id && ($doc->status === DocumentoStatus::RASCUNHO || $doc->status === 'rascunho')) {
-            return true;
-        }
-
-        $permissionService = app(DocumentoPermissionService::class);
-        $userDeps = $permissionService->getUserDepartments($user);
-
-        // Department head can archive documents of their department
-        if ($permissionService->isChefeDepartamento($user) && in_array((int) $doc->departamento_id, $userDeps, true)) {
-            return true;
-        }
-
-        // Chefe de Gabinete can archive documents belonging to his gabinete
-        if ($user->isChefeGabinete()) {
-            $gabinete = $user->gabineteGerenciado;
-            if ($gabinete && $doc->gabineteEmissorId() === (int) $gabinete->id) {
-                return true;
-            }
-        }
-
-        return false;
+        return app(DocumentoPermissionService::class)->podeArquivar($user, $doc);
     }
 
     // Edição colaborativa em tempo real

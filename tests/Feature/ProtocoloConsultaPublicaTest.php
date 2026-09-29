@@ -168,14 +168,27 @@ class ProtocoloConsultaPublicaTest extends TestCase
         $this->assertStringStartsWith('/protocolo/', $novo->protocolo->url_consulta);
     }
 
+    /**
+     * Desde 2026-09-29 o protocolo só é visível ao Expediente e ao Secretário
+     * (DocumentoEntradaPolicy::verProtocolo): o operador é do expediente e
+     * registou a entrada.
+     */
     private function operadorDoDepartamento(): User
     {
         $papel = Role::where('name', 'user')->firstOrFail();
+        $expediente = Departamento::create([
+            'nome' => 'Área do Expediente',
+            'gabinete_id' => $this->doc->departamento->gabinete_id,
+            'is_area_expediente' => true,
+        ]);
         $operador = User::factory()->create([
             'role_id' => $papel->id,
-            'departamento_id' => $this->doc->departamento_id,
+            'departamento_id' => $expediente->id,
         ]);
         $operador->assignRole($papel);
+        // O balcão do expediente que registou a entrada (ver o documento continua
+        // a exigir DocumentoEntradaPolicy::view).
+        $this->doc->update(['user_id' => $operador->id]);
 
         return $operador;
     }

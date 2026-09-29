@@ -58,12 +58,14 @@
                                         <a href="{{ route('documentos-entradas.show', $documento->id) }}" class="btn btn-sm btn-info text-white" title="Visualizar">
                                             <i class="fas fa-eye"></i>
                                         </a>
+                                        @can('unarchive', $documento)
                                         <form action="{{ route('documentos-entradas.desarquivar', $documento->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Deseja desarquivar este documento?');">
                                             @csrf
                                             <button type="submit" class="btn btn-sm btn-warning text-white" title="Desarquivar">
                                                 <i class="fas fa-box-open"></i>
                                             </button>
                                         </form>
+                                        @endcan
                                     </td>
                                 </tr>
                             @endforeach

@@ -20,6 +20,10 @@ return [
     // Nº máximo de documentos por ação em lote (receber/encaminhar).
     'limite_lote' => (int) env('DOCS_LIMITE_LOTE', 200),
 
+    // Sigla do departamento cujos utilizadores emitem credenciais de viatura
+    // (Logística e Património). Decisão do cliente, 2026-09-29.
+    'credenciais_departamento_sigla' => env('CREDENCIAIS_DEPARTAMENTO_SIGLA', 'DLP'),
+
     /*
     |--------------------------------------------------------------------------
     | Prazos de tratamento (SLA)

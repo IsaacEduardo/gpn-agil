@@ -487,7 +487,7 @@ tr.keyboard-selected {
                                 data-doc-type="entrada"
                                 data-dept-id="{{ $doc->departamento_id }}"
                                 data-show-url="{{ route('documentos-entradas.show', $doc) }}"
-                                draggable="true"
+                                draggable="{{ auth()->user()->can('archive', $doc) ? 'true' : 'false' }}"
                                 style="cursor: pointer; transition: background-color 0.2s;">
 
                                 <td class="ps-4" onclick="event.stopPropagation()">

@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use PDF;
 
 class CredencialController extends Controller
@@ -41,6 +42,8 @@ class CredencialController extends Controller
      */
     public function create()
     {
+        $this->authorize('createCredencial', TermoEntrega::class);
+
         $viaturas = Viatura::orderBy('identificacao')->get();
         $users = \App\Models\User::with('departamento')->orderBy('name')->get();
 
@@ -52,6 +55,8 @@ class CredencialController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorize('createCredencial', TermoEntrega::class);
+
         $validated = $request->validate([
             'tipo_credencial' => 'required|in:utilizacao_normal,seguir_viagem',
             'beneficiario_nome' => 'required|string|max:255',
@@ -69,6 +74,21 @@ class CredencialController extends Controller
         ]);
 
         $viatura = Viatura::find($validated['viatura_id']);
+
+        // A viatura é a fonte do nº do motor e da cor. Um valor diferente do
+        // registado é recusado: o termo não pode dizer uma coisa e o cadastro
+        // outra, e a viatura nunca é reescrita em silêncio a partir daqui.
+        $divergencias = [];
+        foreach (['motor_numero' => ['motor_numero', 'O número do motor'], 'cor_viatura' => ['cor', 'A cor']] as $campo => [$coluna, $rotulo]) {
+            $registado = trim((string) $viatura->{$coluna});
+            $indicado = trim((string) ($validated[$campo] ?? ''));
+            if ($registado !== '' && $indicado !== '' && mb_strtoupper($indicado) !== mb_strtoupper($registado)) {
+                $divergencias[$campo] = "{$rotulo} indicado não coincide com o registado na viatura ({$registado}). Corrija-o no cadastro da viatura.";
+            }
+        }
+        if ($divergencias !== []) {
+            throw ValidationException::withMessages($divergencias);
+        }
 
         // Se o número do motor ou cor foram fornecidos e a viatura não possuía, salvar na viatura
         if (! empty($validated['motor_numero']) && empty($viatura->motor_numero)) {
@@ -99,8 +119,8 @@ class CredencialController extends Controller
             'origem_viagem' => $validated['origem_viagem'] ?? null,
             'destino_viagem' => $validated['destino_viagem'] ?? null,
             'instituicao_vinculo' => $validated['instituicao_vinculo'] ?? ($validated['beneficiario_setor'] ?? null),
-            'motor_numero' => $validated['motor_numero'] ?? ($viatura->motor_numero ?? null),
-            'cor_viatura' => $validated['cor_viatura'] ?? ($viatura->cor ?? null),
+            'motor_numero' => $viatura->motor_numero ?: ($validated['motor_numero'] ?? null),
+            'cor_viatura' => $viatura->cor ?: ($validated['cor_viatura'] ?? null),
             'nome_signatario' => $nomeSignatario,
             'cargo_signatario' => $request->input('cargo_signatario', 'O Secretário Geral'),
             'observacoes' => $validated['observacoes'] ?? null,
@@ -134,8 +154,8 @@ class CredencialController extends Controller
                 'origem_viagem' => $validated['origem_viagem'] ?? null,
                 'destino_viagem' => $validated['destino_viagem'] ?? null,
                 'instituicao_vinculo' => $validated['instituicao_vinculo'] ?? null,
-                'motor_numero' => $validated['motor_numero'] ?? ($viatura->motor_numero ?? null),
-                'cor_viatura' => $validated['cor_viatura'] ?? ($viatura->cor ?? null),
+                'motor_numero' => $viatura->motor_numero ?: ($validated['motor_numero'] ?? null),
+                'cor_viatura' => $viatura->cor ?: ($validated['cor_viatura'] ?? null),
                 'observacoes' => $validated['observacoes'] ?? null,
                 'viatura_id' => $validated['viatura_id'],
             ]);

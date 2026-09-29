@@ -85,6 +85,8 @@
                 <th>Marca</th>
                 <th>Ano</th>
                 <th>Tipo</th>
+                <th>Nº Motor</th>
+                <th>Cor</th>
                 <th>Status</th>
                 <th>Afetação</th>
             </tr>
@@ -99,6 +101,8 @@
                     <td>{{ $viatura->marca }}</td>
                     <td>{{ $viatura->ano }}</td>
                     <td>{{ $viatura->tipo }}</td>
+                    <td>{{ $viatura->motor_numero }}</td>
+                    <td>{{ $viatura->cor }}</td>
                     <td>
                         @if($viatura->status_operacional == 'Operacional')
                             <span class="status-operacional status-operacional-operacional">{{ $viatura->status_operacional }}</span>
@@ -112,7 +116,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="9" style="text-align: center;">Nenhuma viatura encontrada</td>
+                    <td colspan="11" style="text-align: center;">Nenhuma viatura encontrada</td>
                 </tr>
             @endforelse
         </tbody>

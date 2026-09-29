@@ -513,11 +513,13 @@
                     </thead>
                     <tbody>
                         @forelse($documentos as $doc)
-                            <tr class="clickable-row" data-href="{{ route('documentos-internos.show', $doc) }}" data-preview-url="{{ route('documentos-internos.show', $doc) }}" data-doc-id="{{ $doc->id }}" data-doc-type="interno" tabindex="0" draggable="true">
+                            <tr class="clickable-row" data-href="{{ route('documentos-internos.show', $doc) }}" data-preview-url="{{ route('documentos-internos.show', $doc) }}" data-doc-id="{{ $doc->id }}" data-doc-type="interno" tabindex="0" draggable="{{ auth()->user()->can('archive', $doc) ? 'true' : 'false' }}">
                                 <td class="ps-3 text-center" onclick="event.stopPropagation()">
+                                    @can('archive', $doc)
                                     <input type="checkbox" class="form-check-input archive-select"
                                         data-doc-id="{{ $doc->id }}" data-doc-type="interno"
                                         title="Selecionar documento">
+                                    @endcan
                                 </td>
                                 <td class="ps-2">
                                     <div class="d-flex align-items-center">

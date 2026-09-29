@@ -23,7 +23,7 @@
                                     <label for="identificacao" class="form-label">Identificação <span
                                             class="text-danger">*</span></label>
                                     <input type="text" class="form-control @error('identificacao') is-invalid @enderror"
-                                        id="identificacao" name="identificacao" value="{{ $viatura->identificacao }}"
+                                        id="identificacao" name="identificacao" value="{{ old('identificacao', $viatura->identificacao) }}"
                                         required>
                                     @error('identificacao')
                                         <div class="invalid-feedback">{{ $message }}</div>
@@ -101,6 +101,25 @@
                                         @enderror
                                     </div>
                                 </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-7">
+                                        <label for="motor_numero" class="form-label">Nº do Motor</label>
+                                        <input type="text" class="form-control @error('motor_numero') is-invalid @enderror"
+                                            id="motor_numero" name="motor_numero" value="{{ old('motor_numero', $viatura->motor_numero) }}" maxlength="100">
+                                        @error('motor_numero')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+                                    <div class="col-md-5">
+                                        <label for="cor" class="form-label">Cor</label>
+                                        <input type="text" class="form-control @error('cor') is-invalid @enderror"
+                                            id="cor" name="cor" value="{{ old('cor', $viatura->cor) }}" maxlength="50">
+                                        @error('cor')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -138,17 +157,6 @@
                                         id="afetacao" name="afetacao" value="{{ old('afetacao', $viatura->afetacao) }}"
                                         placeholder="Informe onde a viatura está afetada">
                                     @error('afetacao')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="quilometragem" class="form-label">Quilometragem</label>
-                                    <input type="number"
-                                        class="form-control @error('quilometragem') is-invalid @enderror"
-                                        id="quilometragem" name="quilometragem"
-                                        value="{{ old('quilometragem', $viatura->quilometragem ?? '') }}" min="0">
-                                    @error('quilometragem')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                 </div>

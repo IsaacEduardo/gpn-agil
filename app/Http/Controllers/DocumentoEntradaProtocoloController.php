@@ -28,6 +28,7 @@ class DocumentoEntradaProtocoloController extends Controller
     public function protocolo(DocumentoEntrada $documento)
     {
         $this->authorize('view', $documento);
+        $this->authorize('verProtocolo', $documento);
 
         $documento->load(['departamento', 'usuario', 'protocolo']);
 
@@ -42,6 +43,7 @@ class DocumentoEntradaProtocoloController extends Controller
     public function protocoloEtiqueta(DocumentoEntrada $documento, Request $request)
     {
         $this->authorize('view', $documento);
+        $this->authorize('verProtocolo', $documento);
 
         $documento->load(['departamento.gabinete', 'usuario', 'protocolo']);
 
@@ -71,6 +73,7 @@ class DocumentoEntradaProtocoloController extends Controller
     public function protocoloPdf(DocumentoEntrada $documento)
     {
         $this->authorize('view', $documento);
+        $this->authorize('verProtocolo', $documento);
 
         $documento->load(['departamento', 'usuario', 'protocolo']);
 
@@ -117,6 +120,7 @@ class DocumentoEntradaProtocoloController extends Controller
         // impressão legítima, não uma alteração do documento. Quem pode ver o
         // protocolo pode imprimi-lo — incluindo reimprimir depois do despacho.
         $this->authorize('view', $documento);
+        $this->authorize('verProtocolo', $documento);
 
         $documento->load('protocolo');
         if (! $documento->protocolo) {

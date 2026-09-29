@@ -52,6 +52,14 @@
                                         <th>Ano:</th>
                                         <td>{{ $viatura->ano }}</td>
                                     </tr>
+                                    <tr>
+                                        <th>Nº do Motor:</th>
+                                        <td>{{ $viatura->motor_numero ?: '—' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Cor:</th>
+                                        <td>{{ $viatura->cor ?: '—' }}</td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
