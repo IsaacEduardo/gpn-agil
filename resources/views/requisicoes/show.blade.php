@@ -35,6 +35,7 @@
                         </a>
                     @endif
                     @if (
+                        auth()->user()->can('update', $requisicao) &&
                         $statusValue != 'aprovada' &&
                             $statusValue != 'aprovado' &&
                             $statusValue != 'assinada' &&
@@ -422,6 +423,7 @@
                                     </a>
                                 </div>
 
+                                @can('delete', $requisicao)
                                 <form action="{{ route('requisicoes.destroy', $requisicao) }}" method="POST"
                                     class="d-inline"
                                     onsubmit="return confirm('Tem certeza que deseja excluir esta requisição?');">
@@ -431,6 +433,7 @@
                                         <i class="fas fa-trash"></i> Excluir
                                     </button>
                                 </form>
+                                @endcan
                             </div>
                         </div>
                     </div>

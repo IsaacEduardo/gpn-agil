@@ -116,7 +116,7 @@ class RequisicaoServicoController extends Controller
         $requisicao = Requisicao::where('tipo', TipoRequisicao::SERVICO)
             ->with('servicos')
             ->findOrFail($id);
-        $this->authorize('view', $requisicao);
+        $this->authorize('update', $requisicao);
 
         $empresas = \App\Support\CatalogCache::empresasList();
 
@@ -126,7 +126,7 @@ class RequisicaoServicoController extends Controller
     public function update(Request $request, $id)
     {
         // Antes do try: o catch genérico engoliria a AuthorizationException.
-        $this->authorize('view', Requisicao::where('tipo', Requisicao::TIPO_SERVICO)->findOrFail($id));
+        $this->authorize('update', Requisicao::where('tipo', Requisicao::TIPO_SERVICO)->findOrFail($id));
 
         $request->validate([
             'empresa_id' => 'required|exists:empresas,id',
@@ -211,7 +211,7 @@ class RequisicaoServicoController extends Controller
     public function destroy($id)
     {
         // Antes do try: o catch genérico engoliria a AuthorizationException.
-        $this->authorize('view', Requisicao::where('tipo', Requisicao::TIPO_SERVICO)->findOrFail($id));
+        $this->authorize('delete', Requisicao::where('tipo', Requisicao::TIPO_SERVICO)->findOrFail($id));
 
         try {
             $requisicao = Requisicao::where('tipo', Requisicao::TIPO_SERVICO)->findOrFail($id);

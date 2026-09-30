@@ -135,7 +135,7 @@
                                                     class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Ver Detalhes">
                                                     <i class="fas fa-eye"></i>
                                                 </a>
-                                                @if ($requisicao->status === \App\Enums\StatusRequisicao::PENDENTE)
+                                                @if ($requisicao->status === \App\Enums\StatusRequisicao::PENDENTE && auth()->user()->can('update', $requisicao))
                                                     <a href="{{ route('requisicoes.oficina.edit', $requisicao->id) }}"
                                                         class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Editar">
                                                         <i class="fas fa-edit"></i>

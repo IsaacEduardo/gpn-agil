@@ -61,6 +61,21 @@ class RequisicaoPolicy
         return false;
     }
 
+    /**
+     * Só o requerente altera a sua requisição: colegas e chefias vêem-na
+     * (view), mas intervêm pelo visto, aprovação ou rejeição. A regra de
+     * estado (aprovada não se edita) fica no controller/service.
+     */
+    public function update(User $user, Requisicao $requisicao): bool
+    {
+        return (int) $requisicao->usuario_id === (int) $user->id;
+    }
+
+    public function delete(User $user, Requisicao $requisicao): bool
+    {
+        return $this->update($user, $requisicao);
+    }
+
     public function create(User $user): Response
     {
         // Admin can do everything

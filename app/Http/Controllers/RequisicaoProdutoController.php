@@ -151,7 +151,7 @@ class RequisicaoProdutoController extends Controller
         $requisicao = Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)
             ->with('produtos')
             ->findOrFail($id);
-        $this->authorize('view', $requisicao);
+        $this->authorize('update', $requisicao);
 
         $empresas = \App\Support\CatalogCache::empresasList();
 
@@ -161,7 +161,7 @@ class RequisicaoProdutoController extends Controller
     public function update(Request $request, $id)
     {
         // Antes do try: o catch genérico engoliria a AuthorizationException.
-        $this->authorize('view', Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)->findOrFail($id));
+        $this->authorize('update', Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)->findOrFail($id));
 
         $hasMultiple = $request->has('produtos') && is_array($request->input('produtos'));
 
@@ -268,7 +268,7 @@ class RequisicaoProdutoController extends Controller
     public function destroy($id)
     {
         // Antes do try: o catch genérico engoliria a AuthorizationException.
-        $this->authorize('view', Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)->findOrFail($id));
+        $this->authorize('delete', Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)->findOrFail($id));
 
         try {
             $requisicao = Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)->findOrFail($id);

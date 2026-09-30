@@ -122,9 +122,11 @@
                                             <a href="{{ route('requisicoes.show', $requisicao->id) }}" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Ver Detalhes">
                                                 <i class="fas fa-eye"></i>
                                             </a>
-                                            <a href="{{ route('requisicoes.passagem.edit', $requisicao->id) }}" class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Editar">
-                                                <i class="fas fa-edit"></i>
-                                            </a>
+                                            @can('update', $requisicao)
+                                                <a href="{{ route('requisicoes.passagem.edit', $requisicao->id) }}" class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Editar">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                            @endcan
                                             <a href="{{ route('requisicoes.passagem.pdf', $requisicao->id) }}" target="_blank" class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Gerar PDF">
                                                 <i class="fas fa-file-pdf"></i>
                                             </a>

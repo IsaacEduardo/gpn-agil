@@ -148,7 +148,7 @@ class RequisicaoController extends Controller
      */
     public function edit(Requisicao $requisicao)
     {
-        $this->authorize('view', $requisicao);
+        $this->authorize('update', $requisicao);
 
         if ($requisicao->status === StatusRequisicao::APROVADO) {
             return redirect()->route('requisicoes.show', $requisicao->id)
@@ -163,7 +163,7 @@ class RequisicaoController extends Controller
      */
     public function update(Request $request, Requisicao $requisicao)
     {
-        $this->authorize('view', $requisicao);
+        $this->authorize('update', $requisicao);
 
         // A validação de status já é feita no service, mas mantemos aqui para UX rápida
         if ($requisicao->status === StatusRequisicao::APROVADO) {
@@ -197,7 +197,7 @@ class RequisicaoController extends Controller
      */
     public function destroy(Requisicao $requisicao)
     {
-        $this->authorize('view', $requisicao);
+        $this->authorize('delete', $requisicao);
 
         try {
             $this->service->delete($requisicao);

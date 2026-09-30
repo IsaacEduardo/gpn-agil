@@ -17,7 +17,8 @@ use Tests\TestCase;
  * Editar, gravar, apagar e gerar o PDF de uma requisição exigia só sessão:
  * qualquer autenticado alterava pedidos de outros departamentos pelo ID
  * (auditoria de 2026-09-30, A4). Passa a valer a regra de visibilidade da
- * RequisicaoPolicy::view.
+ * RequisicaoPolicy::view; editar e apagar ficam só para o requerente
+ * (decisão de 2026-09-30).
  */
 class RequisicaoEdicaoAutorizacaoTest extends TestCase
 {
@@ -26,6 +27,8 @@ class RequisicaoEdicaoAutorizacaoTest extends TestCase
     private User $dono;
 
     private User $intruso;
+
+    private User $colega;
 
     protected function setUp(): void
     {
@@ -38,6 +41,7 @@ class RequisicaoEdicaoAutorizacaoTest extends TestCase
 
         $this->dono = User::factory()->create(['role_id' => $role->id, 'departamento_id' => $depA->id]);
         $this->intruso = User::factory()->create(['role_id' => $role->id, 'departamento_id' => $depB->id]);
+        $this->colega = User::factory()->create(['role_id' => $role->id, 'departamento_id' => $depA->id]);
     }
 
     public static function tipos(): array
@@ -74,6 +78,30 @@ class RequisicaoEdicaoAutorizacaoTest extends TestCase
         $resposta = $this->actingAs($this->intruso)->get(route($rota.'pdf.noid'));
 
         $this->assertStringNotContainsString($req->codigo_sequencial, (string) $resposta->headers->get('content-disposition'));
+    }
+
+    #[DataProvider('tipos')]
+    public function test_colega_do_departamento_ve_mas_nao_edita(string $tipo, string $rota): void
+    {
+        $req = $this->requisicao($tipo);
+
+        $this->actingAs($this->colega)->get(route('requisicoes.show', $req->id))->assertOk()
+            ->assertDontSee('<i class="fas fa-edit"></i> Editar', false);
+        $this->actingAs($this->dono)->get(route('requisicoes.show', $req->id))->assertOk()
+            ->assertSee('<i class="fas fa-edit"></i> Editar', false);
+        $this->actingAs($this->colega)->get(route($rota.'pdf', $req->id))->assertOk();
+        $this->actingAs($this->colega)->get(route($rota.'edit', $req->id))->assertForbidden();
+        $this->actingAs($this->colega)->put(route($rota.'update', $req->id), $this->dadosUpdate())->assertForbidden();
+
+        $this->assertDatabaseHas('requisicoes', ['id' => $req->id, 'observacoes' => 'original']);
+    }
+
+    public function test_colega_do_departamento_nao_apaga(): void
+    {
+        $req = $this->requisicao('produto');
+
+        $this->actingAs($this->colega)->delete(route('requisicoes.destroy', $req->id))->assertForbidden();
+        $this->assertDatabaseHas('requisicoes', ['id' => $req->id]);
     }
 
     #[DataProvider('tipos')]
