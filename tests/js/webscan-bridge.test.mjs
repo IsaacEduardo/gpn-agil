@@ -9,8 +9,17 @@ const source = await readFile(new URL('../../public/js/webscan-bridge.js', impor
  * Carrega o cliente num contexto isolado, com o `fetch` que o teste quiser.
  * Assim exercitamos o bridge real sem browser e sem agente instalado.
  */
-const load = (fetch, options = {}) => {
-  const window = { sessionStorage: { getItem: () => '', setItem: () => {}, removeItem: () => {} } };
+const memoria = (inicial = {}) => {
+  const dados = { ...inicial };
+  return {
+    dados,
+    getItem: (chave) => (chave in dados ? dados[chave] : null),
+    setItem: (chave, valor) => { dados[chave] = String(valor); },
+    removeItem: (chave) => { delete dados[chave]; },
+  };
+};
+
+const load = (fetch, options = {}, window = { localStorage: memoria(), sessionStorage: memoria() }) => {
   const objectUrls = [];
   const context = {
     window, fetch, AbortController, Headers, setTimeout, clearTimeout, atob, Uint8Array, TextDecoder, Blob,
@@ -89,6 +98,32 @@ test('envia o token de pareamento nos cabeçalhos', async () => {
   bridge.pairingToken = 'segredo-local';
   await bridge.checkStatus();
   assert.equal(seen.get('X-WebScan-Pairing'), 'segredo-local');
+});
+
+test('guarda o código no computador, não só no separador', () => {
+  const localStorage = memoria();
+  const bridge = load(async () => jsonResponse({}), {}, { localStorage, sessionStorage: memoria() });
+  bridge.setPairingToken('  codigo-do-posto  ');
+  assert.equal(localStorage.dados['webscan.pairing-token'], 'codigo-do-posto');
+
+  const outraJanela = load(async () => jsonResponse({}), {}, { localStorage, sessionStorage: memoria() });
+  assert.equal(outraJanela.pairingToken, 'codigo-do-posto');
+});
+
+test('aproveita o código introduzido antes, ainda na sessão', () => {
+  const localStorage = memoria();
+  const sessionStorage = memoria({ 'webscan.pairing-token': 'antigo' });
+  const bridge = load(async () => jsonResponse({}), {}, { localStorage, sessionStorage });
+  assert.equal(bridge.pairingToken, 'antigo');
+  assert.equal(localStorage.dados['webscan.pairing-token'], 'antigo');
+});
+
+test('funciona com o armazenamento do browser bloqueado', () => {
+  const bloqueado = { getItem: () => { throw new Error('SecurityError'); }, setItem: () => { throw new Error('SecurityError'); }, removeItem: () => {} };
+  const bridge = load(async () => jsonResponse({}), {}, { localStorage: bloqueado, sessionStorage: bloqueado });
+  assert.equal(bridge.pairingToken, '');
+  bridge.setPairingToken('x');
+  assert.equal(bridge.pairingToken, 'x');
 });
 
 // --- 3. lista vazia ----------------------------------------------------------

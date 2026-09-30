@@ -1,8 +1,8 @@
 """Servidor HTTP local do WebScan Bridge.
 
-Escuta apenas em loopback e so aceita pedidos que passem quatro filtros
-independentes: Host esperado, Origin na allowlist, token de pareamento valido e
-payload dentro dos limites. Um site externo falha logo no Origin - o browser
+Escuta apenas em loopback e so aceita pedidos que passem os filtros
+independentes: Host esperado, Origin na allowlist, payload dentro dos limites e,
+se o posto o exigir, codigo de pareamento valido. Um site externo falha logo no Origin - o browser
 envia sempre esse cabecalho em pedidos cross-origin e nao permite falsifica-lo.
 """
 
@@ -97,6 +97,7 @@ class ScanService:
             'agent': 'WebScanBridgeDaemon',
             'os': PLATFORM_NAME,
             'drivers_available': [self.adapter.driver],
+            'pairing_required': self.config.require_pairing,
         }
 
     def scan(self, payload: dict) -> dict:
@@ -268,11 +269,12 @@ class WebScanRequestHandler(BaseHTTPRequestHandler):
             raise OriginRejected('Esta origem nao esta autorizada a usar o scanner.')
 
     def _check_pairing(self) -> None:
-        expected = self.config.pairing_token
-        if not expected:
+        if not self.config.require_pairing:
             return
+        expected = self.config.pairing_token
         provided = self.headers.get('X-WebScan-Pairing') or ''
-        if not hmac.compare_digest(provided, expected):
+        # Pareamento exigido sem codigo configurado: recusa, nunca abre.
+        if not expected or not hmac.compare_digest(provided, expected):
             raise NotAuthorised('Introduza o codigo de pareamento do scanner.')
 
     def _read_json(self) -> dict:
@@ -349,10 +351,23 @@ class WebScanRequestHandler(BaseHTTPRequestHandler):
             self._send_error(WebScanError('Erro interno do agente: %s' % type(error).__name__))
 
 
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    """Servidor que nao partilha a porta com outro processo.
+
+    O HTTPServer liga SO_REUSEADDR, e no Windows isso deixa um segundo processo
+    escutar a mesma porta: num PC com varias contas, o agente de cada sessao
+    ficava na 18090 e o browser falava ora com um, ora com outro. Sem essa
+    opcao o segundo bind falha (WinError 10048) e o agente espera pela vez.
+    Nao se usa SO_EXCLUSIVEADDRUSE: recusa a porta enquanto houver ligacoes em
+    TIME_WAIT, e o agente nao conseguiria voltar a arrancar logo apos parar.
+    """
+
+    allow_reuse_address = False
+    daemon_threads = True
+
+
 def build_server(config: AgentConfig, adapter: ScannerAdapter) -> ThreadingHTTPServer:
     """Cria o servidor ligado exclusivamente ao loopback."""
     service = ScanService(adapter, config)
     handler = type('BoundWebScanHandler', (WebScanRequestHandler,), {'config': config, 'service': service})
-    server = ThreadingHTTPServer((config.host, config.port), handler)
-    server.daemon_threads = True
-    return server
+    return LoopbackHTTPServer((config.host, config.port), handler)

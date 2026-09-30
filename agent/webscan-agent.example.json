@@ -5,6 +5,7 @@
     "http://localhost",
     "http://127.0.0.1:8000"
   ],
+  "require_pairing": false,
   "pairing_token": "",
   "driver": "wia",
   "max_pages": 100,

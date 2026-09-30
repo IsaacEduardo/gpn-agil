@@ -15,7 +15,7 @@
                 <div id="webscanPairingPanel" class="alert alert-warning d-none">
                     <label for="webscanPairingToken" class="form-label fw-semibold">Código de pareamento do scanner</label>
                     <div class="input-group"><input id="webscanPairingToken" class="form-control" type="password" autocomplete="off" placeholder="Introduza o código configurado no agente"><button id="btnSaveWebscanPairing" class="btn btn-warning" type="button">Conectar</button></div>
-                    <div class="form-text">O código fica apenas nesta sessão do navegador.</div>
+                    <div class="form-text">Só é pedido nos computadores configurados para o exigir. Fica guardado neste navegador.</div>
                 </div>
                 <div class="card border-0 bg-light rounded-3 p-3 mb-3">
                     <div class="row g-3 align-items-end">

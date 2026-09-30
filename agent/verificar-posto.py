@@ -71,10 +71,13 @@ def main() -> int:
 
     origem = args.origem.rstrip('/')
     token = args.token
+    exige_pareamento = None
     if token is None:
         sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent))
         from webscan_bridge.config import load_config
-        token = load_config(create_missing=False).pairing_token
+        config = load_config(create_missing=False)
+        token = config.pairing_token if config.require_pairing else None
+        exige_pareamento = config.require_pairing
 
     print(f'\nWebScan Bridge — verificacao do posto')
     print(f'{CINZA}origem={origem}  porta={args.porta}{FIM}\n')
@@ -88,15 +91,23 @@ def main() -> int:
     registar('Agente a escutar no loopback', True, f'127.0.0.1:{args.porta}')
 
     estado, corpo, _ = pedir(args.porta, 'GET', '/status', origem, token)
-    registar('Responde online com o codigo correcto', estado == 200 and corpo.get('status') == 'online',
+    registar('Responde online', estado == 200 and corpo.get('status') == 'online',
              f"versao {corpo.get('version', '?')}, driver {','.join(corpo.get('drivers_available', []))}")
+    if exige_pareamento is None:
+        # Codigo passado a mao (--token): o agente diz se o exige.
+        exige_pareamento = bool(corpo.get('pairing_required', True))
 
     # Caso 3 — pareamento
     print('\nPareamento')
-    estado, corpo, _ = pedir(args.porta, 'GET', '/status', origem, 'codigo-errado')
-    registar('Recusa codigo de pareamento errado', estado == 401 and corpo.get('error_code') == 'PAIRING_REQUIRED')
-    estado, corpo, _ = pedir(args.porta, 'GET', '/scanners', origem, None)
-    registar('Recusa pedido sem codigo', estado == 401)
+    if exige_pareamento:
+        estado, corpo, _ = pedir(args.porta, 'GET', '/status', origem, 'codigo-errado')
+        registar('Recusa codigo de pareamento errado', estado == 401 and corpo.get('error_code') == 'PAIRING_REQUIRED')
+        estado, corpo, _ = pedir(args.porta, 'GET', '/scanners', origem, None)
+        registar('Recusa pedido sem codigo', estado == 401)
+    else:
+        estado, corpo, _ = pedir(args.porta, 'GET', '/scanners', origem, None)
+        registar('Funciona sem codigo (posto sem pareamento)', estado == 200,
+                 'a protecao vem da origem autorizada e do loopback')
 
     # Caso 18 — origem
     print('\nSeguranca de origem')

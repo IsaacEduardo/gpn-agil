@@ -19,8 +19,11 @@
         constructor(options = {}) {
             this.baseUrl = (options.baseUrl || 'http://127.0.0.1:18090').replace(/\/$/, '');
             this.timeoutMs = options.timeoutMs || 8000;
-            this.storage = global.sessionStorage;
-            this.pairingToken = options.pairingToken || this.storage?.getItem('webscan.pairing-token') || '';
+            // localStorage e nao sessionStorage: o codigo (so pedido nos postos que o
+            // exigem) vale para o computador, e por separador tinha de ser reintroduzido
+            // a cada janela nova ou reabertura do browser.
+            this.storage = WebScanBridge.armazenamento(global);
+            this.pairingToken = options.pairingToken || this.lerCodigoGuardado(global);
             this.isOnline = false;
             this.scanners = [];
             this.pages = [];
@@ -28,10 +31,32 @@
             this.onProgressCallback = null;
         }
 
+        // Em janela privada ou com dados do site bloqueados, o acesso lanca excepcao.
+        static armazenamento(global) {
+            try { return global.localStorage || null; } catch (_) { return null; }
+        }
+
+        lerCodigoGuardado(global) {
+            try {
+                const guardado = this.storage?.getItem('webscan.pairing-token');
+                if (guardado) return guardado;
+                // Codigo introduzido antes da mudanca, ainda na sessao: passa a permanente.
+                const daSessao = global.sessionStorage?.getItem('webscan.pairing-token') || '';
+                if (daSessao) this.storage?.setItem('webscan.pairing-token', daSessao);
+                return daSessao;
+            } catch (_) {
+                return '';
+            }
+        }
+
         setPairingToken(token) {
             this.pairingToken = (token || '').trim();
-            if (this.pairingToken) this.storage?.setItem('webscan.pairing-token', this.pairingToken);
-            else this.storage?.removeItem('webscan.pairing-token');
+            try {
+                if (this.pairingToken) this.storage?.setItem('webscan.pairing-token', this.pairingToken);
+                else this.storage?.removeItem('webscan.pairing-token');
+            } catch (_) {
+                // Sem armazenamento o codigo vale ate fechar a pagina; o scanner funciona na mesma.
+            }
         }
 
         async request(path, options = {}) {

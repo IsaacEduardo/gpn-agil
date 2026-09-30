@@ -103,14 +103,18 @@ Da raiz do projeto: `npm run test:agent`.
 
 ## 5. Configuração
 
-Ficheiro em `%APPDATA%\WebScanBridge\webscan-agent.json`, criado no primeiro
-arranque. Modelo em [`agent/webscan-agent.example.json`](../agent/webscan-agent.example.json).
+Ficheiro da **máquina** em `%ProgramData%\WebScanBridge\webscan-agent.json`,
+escrito pelo instalador e partilhado por todas as contas do Windows desse PC. Se
+não existir, o agente usa o antigo ficheiro por utilizador em
+`%APPDATA%\WebScanBridge\` (postos instalados antes de 2026-09-30). Modelo em
+[`agent/webscan-agent.example.json`](../agent/webscan-agent.example.json).
 
 | Chave | Omissão | Função |
 |---|---|---|
 | `port` | `18090` | Porta loopback. |
 | `allowed_origins` | `[]` | **Origens exactas** do EDMS autorizadas. Sem isto o agente recusa tudo. |
-| `pairing_token` | gerado | Segredo local. Gerado na 1.ª execução se vazio. |
+| `require_pairing` | `false` | Exige o código de pareamento. Desligado por omissão (ver §6). |
+| `pairing_token` | vazio | Código, só usado com `require_pairing`. O instalador gera-o. |
 | `driver` | `wia` | `wia` ou `mock`. |
 | `max_pages` | `100` | Tecto de páginas por lote. |
 | `max_body_bytes` | `65536` | Tamanho máximo do pedido. |
@@ -118,25 +122,30 @@ arranque. Modelo em [`agent/webscan-agent.example.json`](../agent/webscan-agent.
 | `preview_max_edge` | `320` | Lado maior das miniaturas, em píxeis. |
 
 Variáveis de ambiente sobrepõem-se ao ficheiro: `WEBSCAN_PORT`,
-`WEBSCAN_ALLOWED_ORIGINS`, `WEBSCAN_PAIRING_TOKEN`, `WEBSCAN_DRIVER`, `WEBSCAN_CONFIG`.
+`WEBSCAN_ALLOWED_ORIGINS`, `WEBSCAN_REQUIRE_PAIRING`, `WEBSCAN_PAIRING_TOKEN`,
+`WEBSCAN_DRIVER`, `WEBSCAN_CONFIG`.
 
-O agente **não guarda credenciais do EDMS**. O token de pareamento só serve para
-falar com este agente, nesta máquina, e não dá acesso a nada na aplicação.
+O agente **não guarda credenciais do EDMS**. O código de pareamento, quando ligado,
+só serve para falar com este agente, nesta máquina, e não dá acesso a nada na aplicação.
 
 ---
 
 ## 6. Modelo de segurança
 
-Quatro filtros independentes, todos obrigatórios para `/scanners` e `/scan`:
+Filtros independentes, obrigatórios para `/scanners` e `/scan`:
 
 1. **Host** — tem de ser `127.0.0.1`, `localhost` ou `::1`. Bloqueia *DNS
    rebinding*, em que um domínio hostil resolve para o loopback.
 2. **Origin** — tem de constar de `allowed_origins`, comparada por igualdade
    exacta. O browser define este cabeçalho em pedidos cross-origin e a página
    não o pode falsificar. É isto que impede um site externo de acionar o scanner.
-3. **Token de pareamento** — `X-WebScan-Pairing`, comparado com
-   `hmac.compare_digest` (tempo constante). Protege contra software local hostil
-   que não passe por um browser.
+3. **Código de pareamento (opcional, desligado por omissão)** — `X-WebScan-Pairing`,
+   comparado com `hmac.compare_digest`. Não acrescenta nada contra sites externos
+   (os filtros 1 e 2 já os travam) nem contra software local (lê o ficheiro de
+   configuração). Com a configuração por máquina seria o mesmo para todas as
+   contas, pelo que também não as distingue. Desde 2026-09-30 fica desligado: o
+   custo — funcionários a precisar de um técnico para reintroduzir o código —
+   não tinha contrapartida. Liga-se com `-ExigirPareamento` no instalador.
 4. **Payload** — `Content-Type` JSON, `Content-Length` dentro do limite, e cada
    parâmetro validado **contra as capacidades reais** do scanner selecionado.
 
@@ -153,9 +162,10 @@ Garantias adicionais:
 
 ### O que o agente não protege
 
-Um utilizador com sessão iniciada na própria máquina pode sempre correr o
-executável e ler o token. O agente defende o scanner de **páginas web** e de
-**outros dispositivos na rede**, não do dono da máquina.
+Um utilizador com sessão iniciada na própria máquina pode sempre usar o scanner
+— tal como pode usá-lo fisicamente. O agente defende o scanner de **páginas web**
+e de **outros dispositivos na rede**, não de quem está sentado ao PC. Não guarda
+documentos: digitaliza o papel que está no scanner e entrega-o a quem pediu.
 
 ---
 
@@ -164,15 +174,34 @@ executável e ler o token. O agente defende o scanner de **páginas web** e de
 ```powershell
 cd agent
 .\build.ps1                                    # corre testes e gera dist\webscan-bridge.exe
+# PowerShell como Administrador:
 .\install-servico.ps1                          # produção: https://ondaka-gph.ao
 .\install-servico.ps1 -Origem https://ondaka-gph.ao, http://localhost   # + desenvolvimento
 ```
 
-Sem `-Origem`, o instalador usa a produção (`https://ondaka-gph.ao`).
-`install-servico.ps1` copia o executável para `%LOCALAPPDATA%\WebScanBridge`,
-escreve a configuração com as origens indicadas, regista o arranque automático em
-`HKCU:\...\Run` e imprime o código de pareamento. Não precisa de privilégios de
-administrador — o agente serve apenas o próprio posto.
+**Instala-se uma vez por PC**, não por conta. Sem `-Origem`, usa a produção
+(`https://ondaka-gph.ao`). O instalador exige Administrador e:
+
+- copia o executável para `%ProgramFiles%\WebScanBridge`;
+- escreve a configuração da máquina em `%ProgramData%\WebScanBridge`;
+- regista o arranque em `HKLM:\...\Run` — **todas as contas** do PC ficam com o
+  scanner ao entrar no Windows, sem instalar nem introduzir nada;
+- retira as instalações antigas por utilizador (`%LOCALAPPDATA%`), que num PC
+  partilhado disputavam a porta;
+- sem `-ExigirPareamento`, não há código: o scanner liga-se sozinho no EDMS.
+
+#### PCs com várias contas do Windows
+
+O agente arranca em cada sessão, mas só um pode ter a porta 18090. Quem a tem
+serve todas as contas (a configuração é da máquina). Os outros ficam **de
+reserva** — tentam de 10 em 10 segundos e assumem quando a sessão que a tinha
+termina, sem ninguém reiniciar nada. O agente já não liga `SO_REUSEADDR`, que no
+Windows deixava dois agentes escutar a mesma porta e o browser falar ora com um,
+ora com outro.
+
+Recomenda-se que nesses PCs se **termine sessão** em vez de "Trocar de
+utilizador" (pode impor-se por GPO com `HideFastUserSwitching`): com a sessão
+anterior aberta, a digitalização corre no agente dessa sessão.
 
 Origens configuradas actualmente (ver `webscan-agent.example.json`):
 
@@ -213,8 +242,8 @@ Chrome**. As opções que se consideraram, por ordem de preferência (foi adopta
 
 ### Atualização
 
-Substituir o `.exe` e reiniciar. A configuração e o token vivem noutra pasta e
-sobrevivem. Para um parque grande, distribuir por GPO ou pelo gestor de
+Voltar a correr o instalador (pára os agentes, substitui o `.exe` e mantém o
+código, se houver). A configuração vive noutra pasta e sobrevive. Para um parque grande, distribuir por GPO ou pelo gestor de
 software, mantendo `allowed_origins` no ficheiro de configuração.
 
 ---
@@ -260,7 +289,7 @@ fila está documentado no [GUIA_HOSPEDAGEM.md §5.4](GUIA_HOSPEDAGEM.md).
 | Sintoma | Causa provável | Verificação |
 |---|---|---|
 | "Scanner Offline" com o agente a correr | CSP do EDMS ou origem não autorizada | Consola do browser: erro de CSP ou `ORIGIN_REJECTED`. Confirmar `connect-src` e `allowed_origins`. |
-| Pede código de pareamento sempre | Token divergente | `webscan-bridge.exe --print-token` e reintroduzir. |
+| Pede código de pareamento | Posto instalado antes de 2026-09-30 ou com `-ExigirPareamento` | Reinstalar com o instalador actual (sem código); com código, `webscan-bridge.exe --print-token` e introduzir uma vez por browser. |
 | "Nenhum scanner detetado" | Driver WIA ausente ou equipamento desligado | Painel de Controlo → Dispositivos e Impressoras. Testar com a app Digitalizar do Windows. |
 | Agente não arranca | Porta ocupada | `netstat -ano | findstr 18090` |
 | Erro `DRIVER_UNAVAILABLE` | pywin32 em falta | Reinstalar o agente; `python -c "import win32com.client"`. |
@@ -290,7 +319,7 @@ antes de aprovar o agente num parque novo. Registar modelo, driver e resultado.
 |---|---|---|
 | 1 | Agente parado, abrir o registo de entrada | Indicador "Scanner Offline"; botão **Digitalizar do Scanner** desativado |
 | 2 | Arrancar o agente, recarregar | Indicador "Scanner ativo"; botão ativo |
-| 3 | Abrir o modal com código errado | Painel de pareamento visível; início bloqueado |
+| 3 | Abrir o modal (posto sem código) / com código errado (posto com `-ExigirPareamento`) | Scanner pronto sem pedir nada / painel de pareamento visível e início bloqueado |
 | 4 | Introduzir o código correto | Lista com o nome real do equipamento e o driver |
 | 5 | Verificar as opções | DPI, cor, ADF e duplex refletem o equipamento; duplex desativado em scanner simplex |
 | 6 | Desligar o scanner e recarregar | "Nenhum scanner detetado"; início bloqueado |

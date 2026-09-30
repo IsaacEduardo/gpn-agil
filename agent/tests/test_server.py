@@ -25,11 +25,14 @@ class ServerTestCase(unittest.TestCase):
     pages = 2
     fault = None
     max_pages = 100
+    #: Os testes de base correm com pareamento, o modo mais restritivo.
+    require_pairing = True
 
     def setUp(self):
         self.config = AgentConfig(
             port=0,
             allowed_origins=(ORIGIN,),
+            require_pairing=self.require_pairing,
             pairing_token=TOKEN,
             driver='mock',
             max_pages=self.max_pages,
@@ -87,6 +90,50 @@ class StatusTests(ServerTestCase):
         status, body, _ = self.call('GET', '/status', token='errado')
         self.assertEqual(status, 401)
         self.assertEqual(body['error_code'], 'PAIRING_REQUIRED')
+
+
+class SemPareamentoTests(ServerTestCase):
+    """Modo por omissao desde 2026-09-30: sem codigo, a allowlist continua a proteger."""
+
+    require_pairing = False
+
+    def test_funciona_sem_codigo(self):
+        status, body, _ = self.call('GET', '/status', token=None)
+        self.assertEqual(status, 200)
+        self.assertFalse(body['pairing_required'])
+        status, _, _ = self.call('GET', '/scanners', token=None)
+        self.assertEqual(status, 200)
+
+    def test_origem_estranha_continua_recusada(self):
+        status, body, _ = self.call('GET', '/scanners', origin='https://site-malicioso.example', token=None)
+        self.assertEqual(status, 403)
+        self.assertEqual(body['error_code'], 'ORIGIN_REJECTED')
+
+    def test_host_estranho_continua_recusado(self):
+        status, _, _ = self.call('GET', '/status', host='site-malicioso.example', token=None)
+        self.assertEqual(status, 403)
+
+
+class PareamentoSemCodigoConfiguradoTests(ServerTestCase):
+    """Pareamento exigido mas sem codigo gravado: fecha, nunca abre."""
+
+    def setUp(self):
+        super().setUp()
+        self.config.pairing_token = ''
+
+    def test_recusa_mesmo_sem_cabecalho(self):
+        status, body, _ = self.call('GET', '/status', token=None)
+        self.assertEqual(status, 401)
+        self.assertEqual(body['error_code'], 'PAIRING_REQUIRED')
+
+
+class PortaExclusivaTests(ServerTestCase):
+    """Num PC com varias contas, dois agentes nao podem partilhar a porta."""
+
+    def test_segundo_agente_nao_ocupa_a_mesma_porta(self):
+        config = AgentConfig(port=self.port, allowed_origins=(ORIGIN,), driver='mock')
+        with self.assertRaises(OSError):
+            build_server(config, MockScannerAdapter())
 
 
 class OriginAndHostTests(ServerTestCase):

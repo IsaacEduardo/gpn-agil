@@ -1,8 +1,14 @@
 """Configuracao do agente, lida de ficheiro JSON e do ambiente.
 
-O agente nunca guarda credenciais da aplicacao: o unico segredo que conhece e o
-token de pareamento, gerado localmente na primeira execucao e valido apenas
-para falar com este agente, nesta maquina.
+A instalacao normal e por maquina: um ficheiro em %PROGRAMDATA% partilhado por
+todas as contas do Windows desse PC. A configuracao por utilizador (%APPDATA%)
+fica como recurso para postos antigos.
+
+O agente nunca guarda credenciais da aplicacao. O codigo de pareamento e
+opcional e vem desligado: quem protege o scanner de outros sites e a allowlist
+de origens (o browser nao deixa falsificar o Origin) e o Host em loopback. O
+codigo so acrescenta alguma coisa quando se quer distinguir contas do Windows,
+e com uma configuracao por maquina nem isso — seria o mesmo para todas.
 """
 
 from __future__ import annotations
@@ -27,13 +33,27 @@ DEFAULT_SCAN_TIMEOUT = 180
 CONFIG_FILENAME = 'webscan-agent.json'
 
 
+def machine_config_path() -> Path | None:
+    """Configuracao partilhada pelas contas do PC (instalacao por maquina)."""
+    base = os.environ.get('PROGRAMDATA')
+    return Path(base) / 'WebScanBridge' / CONFIG_FILENAME if base else None
+
+
+def user_config_path() -> Path:
+    """Configuracao por utilizador, usada pelos postos instalados antes de 2026-09-30."""
+    base = os.environ.get('APPDATA') or os.environ.get('XDG_CONFIG_HOME') or str(Path.home())
+    return Path(base) / 'WebScanBridge' / CONFIG_FILENAME
+
+
 def default_config_path() -> Path:
-    """Local do ficheiro de configuracao, por utilizador do Windows."""
+    """A da maquina, se existir; senao a do utilizador."""
     override = os.environ.get('WEBSCAN_CONFIG')
     if override:
         return Path(override)
-    base = os.environ.get('APPDATA') or os.environ.get('XDG_CONFIG_HOME') or str(Path.home())
-    return Path(base) / 'WebScanBridge' / CONFIG_FILENAME
+    machine = machine_config_path()
+    if machine is not None and machine.is_file():
+        return machine
+    return user_config_path()
 
 
 @dataclass
@@ -41,6 +61,8 @@ class AgentConfig:
     port: int = DEFAULT_PORT
     #: Origens exactas do EDMS autorizadas a falar com o agente.
     allowed_origins: tuple[str, ...] = ()
+    #: So com isto ligado o agente exige o cabecalho X-WebScan-Pairing.
+    require_pairing: bool = False
     pairing_token: str = ''
     driver: str = 'wia'
     max_pages: int = DEFAULT_MAX_PAGES
@@ -62,6 +84,7 @@ class AgentConfig:
         return {
             'port': self.port,
             'allowed_origins': list(self.allowed_origins),
+            'require_pairing': self.require_pairing,
             'pairing_token': self.pairing_token,
             'driver': self.driver,
             'max_pages': self.max_pages,
@@ -88,8 +111,14 @@ def _as_tuple(value) -> tuple[str, ...]:
     return tuple(item for item in items if item)
 
 
+def _as_bool(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in ('1', 'true', 'yes', 'sim', 'on')
+    return bool(value)
+
+
 def load_config(path: Path | None = None, *, create_missing: bool = True) -> AgentConfig:
-    """Le a configuracao; gera token e ficheiro na primeira execucao."""
+    """Le a configuracao; com pareamento ligado e sem codigo, gera-o e grava-o."""
     target = Path(path or default_config_path())
     data: dict = {}
     ilegivel = False
@@ -108,6 +137,7 @@ def load_config(path: Path | None = None, *, create_missing: bool = True) -> Age
     config = AgentConfig(
         port=int(os.environ.get('WEBSCAN_PORT') or data.get('port') or DEFAULT_PORT),
         allowed_origins=_as_tuple(os.environ.get('WEBSCAN_ALLOWED_ORIGINS') or data.get('allowed_origins')),
+        require_pairing=_as_bool(os.environ.get('WEBSCAN_REQUIRE_PAIRING') or data.get('require_pairing')),
         pairing_token=str(os.environ.get('WEBSCAN_PAIRING_TOKEN') or data.get('pairing_token') or ''),
         driver=str(os.environ.get('WEBSCAN_DRIVER') or data.get('driver') or 'wia').lower(),
         max_pages=int(data.get('max_pages') or DEFAULT_MAX_PAGES),
@@ -118,8 +148,7 @@ def load_config(path: Path | None = None, *, create_missing: bool = True) -> Age
     )
 
     changed = False
-    if not config.pairing_token:
-        # Sem token, qualquer pagina aberta no browser falaria com o scanner.
+    if config.require_pairing and not config.pairing_token:
         config.pairing_token = secrets.token_urlsafe(24)
         changed = True
         logger.info('Token de pareamento gerado. Consulte-o em %s', target)

@@ -9,11 +9,13 @@ passava a recusar todos os pedidos do browser, sem que ninguem percebesse porque
 """
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from webscan_bridge.config import load_config
+from webscan_bridge.config import default_config_path, load_config
 
 
 class ConfigComBomTests(unittest.TestCase):
@@ -63,15 +65,57 @@ class ConfigComBomTests(unittest.TestCase):
         # ...mas o ficheiro do posto fica intacto, para poder ser corrigido.
         self.assertEqual(original, self.caminho.read_text(encoding='utf-8'))
 
-    def test_primeira_execucao_cria_ficheiro_com_token(self):
-        self.assertFalse(self.caminho.exists())
+    def test_por_omissao_nao_exige_pareamento(self):
+        """Postos antigos tinham codigo gravado mas nenhum require_pairing: deixam de o pedir."""
+        self.escrever(self.payload(), 'utf-8')
 
         config = load_config(self.caminho)
 
-        self.assertTrue(self.caminho.is_file())
+        self.assertFalse(config.require_pairing)
+
+    def test_primeira_execucao_sem_pareamento_nao_gera_codigo(self):
+        config = load_config(self.caminho)
+
+        self.assertFalse(config.require_pairing)
+        self.assertEqual('', config.pairing_token)
+
+    def test_pareamento_exigido_sem_codigo_gera_e_grava(self):
+        self.escrever(json.dumps({'allowed_origins': ['https://ondaka-gph.ao'], 'require_pairing': True}), 'utf-8')
+
+        config = load_config(self.caminho)
+
+        self.assertTrue(config.require_pairing)
         self.assertTrue(config.pairing_token)
         gravado = json.loads(self.caminho.read_text(encoding='utf-8-sig'))
         self.assertEqual(config.pairing_token, gravado['pairing_token'])
+        self.assertEqual(['https://ondaka-gph.ao'], gravado['allowed_origins'])
+
+
+class LocalDaConfiguracaoTests(unittest.TestCase):
+    """A configuracao da maquina (%PROGRAMDATA%) prevalece sobre a do utilizador."""
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        base = Path(self._dir.name)
+        self.programdata = base / 'ProgramData'
+        self.appdata = base / 'AppData'
+        self._env = mock.patch.dict(os.environ, {'PROGRAMDATA': str(self.programdata), 'APPDATA': str(self.appdata)})
+        self._env.start()
+        os.environ.pop('WEBSCAN_CONFIG', None)
+
+    def tearDown(self):
+        self._env.stop()
+        self._dir.cleanup()
+
+    def test_sem_configuracao_da_maquina_usa_a_do_utilizador(self):
+        self.assertEqual(self.appdata / 'WebScanBridge' / 'webscan-agent.json', default_config_path())
+
+    def test_configuracao_da_maquina_prevalece(self):
+        maquina = self.programdata / 'WebScanBridge' / 'webscan-agent.json'
+        maquina.parent.mkdir(parents=True)
+        maquina.write_text('{}', encoding='utf-8')
+
+        self.assertEqual(maquina, default_config_path())
 
 
 if __name__ == '__main__':
