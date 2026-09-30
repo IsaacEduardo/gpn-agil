@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use Smalot\PdfParser\Parser;
 use Symfony\Component\Process\Process;
 use thiagoalessio\TesseractOCR\TesseractOCR;
+use thiagoalessio\TesseractOCR\UnsuccessfulCommandException;
 
 class OcrService
 {
@@ -113,15 +114,7 @@ class OcrService
 
         // 1. Image Files
         if (str_starts_with($mime, 'image/')) {
-            $rawText = $this->runTesseract($fullPath);
-            $cleanText = $this->sanitizeText($rawText);
-            $wordsCount = $this->countWords($cleanText);
-
-            return [
-                'text' => $cleanText,
-                'method' => 'IMAGEM_OCR',
-                'words_count' => $wordsCount,
-            ];
+            return $this->lerImagem($fullPath);
         }
 
         // 2. PDF Files (Smart Fallback Pipeline)
@@ -428,9 +421,145 @@ class OcrService
     }
 
     /**
-     * Execute Tesseract OCR with optimal language and engine flags.
+     * OCR de uma imagem enviada como anexo.
+     *
+     * Os PDF digitalizados chegam ao Tesseract rasterizados a 300 DPI; as imagens
+     * chegavam tal como vieram — fotos do WhatsApp, recortes de ecrã de 300 px — e
+     * muitas não davam texto nenhum. Se a primeira leitura render pouco, a imagem
+     * é preparada (fundo branco, cinzento, ampliada, contraste) e relida; fica a
+     * leitura com mais palavras. Uma imagem boa não paga a segunda passagem.
+     *
+     * @return array{text: string, method: string, words_count: int}
      */
-    public function runTesseract(string $imagePath): string
+    protected function lerImagem(string $caminho): array
+    {
+        $melhor = $this->sanitizeText($this->runTesseract($caminho));
+        $palavras = $this->countWords($melhor);
+        $metodo = 'IMAGEM_OCR';
+
+        if ($palavras < (int) config('services.ocr.min_image_words', 20)) {
+            $preparada = $this->prepararImagem($caminho);
+
+            if ($preparada !== null) {
+                try {
+                    // psm 3: página automática; psm 6: bloco único, o que melhor
+                    // lê recortes pequenos. O psm 11 (texto esparso) ficou de fora:
+                    // numa foto sem texto "reconhece" ruído como palavras.
+                    foreach ([3, 6] as $psm) {
+                        try {
+                            $texto = $this->sanitizeText($this->runTesseract($preparada, $psm));
+                        } catch (\Throwable $e) {
+                            Log::warning("OCR: releitura da imagem preparada falhou (psm {$psm}): ".Str::limit($e->getMessage(), 200));
+
+                            continue;
+                        }
+
+                        $contagem = $this->countWords($texto);
+                        if ($contagem > $palavras) {
+                            [$melhor, $palavras, $metodo] = [$texto, $contagem, 'IMAGEM_OCR_PREPARADA'];
+                        }
+                    }
+                } finally {
+                    @unlink($preparada);
+                }
+            }
+        }
+
+        return [
+            'text' => $melhor,
+            'method' => $metodo,
+            'words_count' => $palavras,
+        ];
+    }
+
+    /**
+     * Cópia da imagem pronta para OCR, ou null sem ImageMagick ou se a conversão falhar.
+     */
+    protected function prepararImagem(string $caminho): ?string
+    {
+        $magick = $this->resolveMagickBinary();
+        if (! $magick) {
+            return null;
+        }
+
+        // Ampliar só o que é pequeno: o Tesseract lê mal letras com menos de ~20 px
+        // de altura, e ampliar uma foto grande só gasta tempo.
+        $dimensoes = @getimagesize($caminho);
+        $ladoMaior = $dimensoes ? max($dimensoes[0], $dimensoes[1]) : 0;
+        $fator = $ladoMaior > 0 && $ladoMaior < 2000 ? min(4, (int) ceil(2000 / $ladoMaior)) : 1;
+
+        $destino = tempnam(sys_get_temp_dir(), 'ocrprep_');
+        @unlink($destino);
+        $destino .= '.png';
+
+        $comando = [
+            $magick, $caminho,
+            '-background', 'white', '-alpha', 'remove', '-alpha', 'off',
+            '-colorspace', 'Gray',
+        ];
+        if ($fator > 1) {
+            array_push($comando, '-resize', ($fator * 100).'%');
+        }
+        array_push($comando, '-normalize', '-sharpen', '0x1', '-density', '300', $destino);
+
+        try {
+            $processo = new Process($comando);
+            $processo->setTimeout(60);
+            $processo->run();
+
+            if ($processo->isSuccessful() && is_file($destino) && filesize($destino) > 0) {
+                return $destino;
+            }
+
+            Log::warning('OCR: não foi possível preparar a imagem: '.Str::limit($processo->getErrorOutput(), 200));
+        } catch (\Throwable $e) {
+            Log::warning('OCR: não foi possível preparar a imagem: '.Str::limit($e->getMessage(), 200));
+        }
+
+        @unlink($destino);
+
+        return null;
+    }
+
+    /**
+     * A excepção da biblioteca junta dois casos: o Tesseract correu e não achou
+     * texto (imagem sem texto — resultado válido) e o Tesseract falhou. Só o
+     * segundo é erro. Distinguem-se pelo que ele escreveu no stderr: no primeiro
+     * caso, apenas avisos informativos.
+     */
+    public function saidaVaziaSemErro(string $mensagem): bool
+    {
+        if (! str_starts_with($mensagem, 'Error! The command did not produce any output.')) {
+            return false;
+        }
+
+        $marcador = 'Returned message:';
+        $posicao = strpos($mensagem, $marcador);
+        if ($posicao === false) {
+            return false;
+        }
+
+        $informativas = '/^(Estimating resolution as \d+|Empty page!*|Warning:?\s*Invalid resolution.*'
+            .'|Detected \d+ diacritics|Tesseract Open Source OCR Engine.*|Page \d+'
+            .'|Too few characters.*|Image too small to scale!*.*|Line cannot be recognized!*.*)$/i';
+
+        foreach (preg_split('/\R/', substr($mensagem, $posicao + strlen($marcador))) as $linha) {
+            $linha = trim($linha);
+            if ($linha !== '' && ! preg_match($informativas, $linha)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Execute Tesseract OCR with optimal language and engine flags.
+     *
+     * Devolve '' quando o Tesseract corre mas não encontra texto; lança excepção
+     * só quando ele falha de facto.
+     */
+    public function runTesseract(string $imagePath, int $psm = 3): string
     {
         $tesseract = new TesseractOCR($imagePath);
 
@@ -457,10 +586,18 @@ class OcrService
 
         // 4. Configure OCR Engine Mode (LSTM) and Page Segmentation Mode
         $tesseract->oem(1); // LSTM neural network engine
-        $tesseract->psm(3); // Fully automatic page segmentation without OSD
+        $tesseract->psm($psm); // 3 = página automática, sem OSD
         $tesseract->config('preserve_interword_spaces', '1');
 
-        return (string) $tesseract->run();
+        try {
+            return (string) $tesseract->run();
+        } catch (UnsuccessfulCommandException $e) {
+            if ($this->saidaVaziaSemErro($e->getMessage())) {
+                return '';
+            }
+
+            throw $e;
+        }
     }
 
     /**
@@ -613,7 +750,19 @@ class OcrService
             return $configPath;
         }
 
-        return $this->findInPath('magick') ?: $this->findInPath('convert');
+        $magick = $this->findInPath('magick');
+        if ($magick) {
+            return $magick;
+        }
+
+        // No Windows, o `convert` do PATH é o C:\Windows\System32\convert.exe, que
+        // converte volumes FAT em NTFS — não é o ImageMagick e nunca deve ser chamado.
+        $convert = $this->findInPath('convert');
+        if ($convert && str_contains(strtolower(str_replace('/', '\\', $convert)), '\\windows\\system32\\')) {
+            return null;
+        }
+
+        return $convert;
     }
 
     /**

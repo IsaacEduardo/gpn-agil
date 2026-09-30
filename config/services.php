@@ -40,6 +40,8 @@ return [
         'tessdata_path' => env('OCR_TESSDATA_PATH', storage_path('app/tessdata')),
         'languages' => env('OCR_LANGUAGES', 'por+eng'),
         'min_native_words' => (int) env('OCR_MIN_NATIVE_WORDS', 50),
+        // Abaixo disto, uma imagem é preparada (ampliada, cinzento, contraste) e relida.
+        'min_image_words' => (int) env('OCR_MIN_IMAGE_WORDS', 20),
         'pdftoppm_path' => env('OCR_PDFTOPPM_PATH'),
         'gs_path' => env('OCR_GS_PATH'),
         'magick_path' => env('OCR_MAGICK_PATH'),

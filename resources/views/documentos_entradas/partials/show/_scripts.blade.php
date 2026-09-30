@@ -322,6 +322,8 @@
                             metodoTexto = 'Tesseract OCR (PDF Escaneado)';
                         } else if (data.ocr_metodo === 'IMAGEM_OCR') {
                             metodoTexto = 'Tesseract OCR (Imagem)';
+                        } else if (data.ocr_metodo === 'IMAGEM_OCR_PREPARADA') {
+                            metodoTexto = 'Tesseract OCR (Imagem melhorada)';
                         } else if (data.ocr_metodo) {
                             metodoTexto = data.ocr_metodo;
                         }
