@@ -25,7 +25,7 @@ from .errors import (
     InvalidRequest, NotAuthorised, OriginRejected, ScanBusy, ScannerNotFound,
     ScanTimeout, WebScanError,
 )
-from .pdf import build_pdf
+from .pdf import build_pdf, ensure_jpeg
 from .scanners.base import ScannerAdapter, ScanRequest
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,7 @@ class ScanService:
             raise ScannerNotFound('O scanner nao devolveu nenhuma pagina.')
         if len(pages) > self.config.max_pages:
             pages = pages[:self.config.max_pages]
+        pages = [ensure_jpeg(page) for page in pages]
 
         pdf = build_pdf(pages, dpi=request.dpi, title='Documento digitalizado')
         previews = []

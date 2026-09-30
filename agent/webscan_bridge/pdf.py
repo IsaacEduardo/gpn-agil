@@ -73,6 +73,41 @@ def read_jpeg_info(data: bytes) -> JpegInfo:
     raise InvalidJpeg('Nao foi encontrado o segmento SOF com as dimensoes.')
 
 
+def ensure_jpeg(data: bytes, quality: int = 85) -> bytes:
+    """Devolve a pagina em JPEG embebivel, convertendo-a se o driver nao o fez.
+
+    Pedimos JPEG ao WIA, mas varios drivers (HP incluidos) ignoram o pedido em
+    "Preto e branco": uma imagem de 1 bit nao cabe em JPEG e chega BMP ou TIFF.
+    Um JPEG valido segue intacto; o resto e convertido pelo Pillow.
+    """
+    try:
+        read_jpeg_info(data).colour_space
+        return data
+    except InvalidJpeg:
+        pass
+
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+    except ImportError:
+        raise InvalidJpeg('O scanner devolveu uma imagem que nao e JPEG e o Pillow nao esta disponivel.') from None
+
+    try:
+        image = Image.open(BytesIO(data))
+        image.load()
+    except Exception as error:  # noqa: BLE001 - qualquer falha de leitura e imagem invalida
+        raise InvalidJpeg('O scanner devolveu uma imagem num formato desconhecido.') from error
+
+    if image.mode in ('1', 'L', 'LA', 'I', 'I;16', 'F'):
+        image = image.convert('L')
+    elif image.mode != 'RGB':
+        image = image.convert('RGB')
+    buffer = BytesIO()
+    image.save(buffer, 'JPEG', quality=quality)
+    return buffer.getvalue()
+
+
 def _points(pixels: int, dpi: int) -> float:
     """Converte pixeis para pontos PDF (1 ponto = 1/72 polegada)."""
     return pixels * 72.0 / float(dpi)

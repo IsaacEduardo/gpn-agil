@@ -6,7 +6,7 @@ folha digitalizada, e que lixo nao passa por JPEG.
 
 import unittest
 
-from webscan_bridge.pdf import InvalidJpeg, build_pdf, read_jpeg_info
+from webscan_bridge.pdf import InvalidJpeg, build_pdf, ensure_jpeg, read_jpeg_info
 from webscan_bridge.scanners.mock import MockScannerAdapter
 from webscan_bridge.scanners.base import ScanRequest
 
@@ -71,6 +71,39 @@ class BuildPdfTests(unittest.TestCase):
     def test_recusa_dpi_invalido(self):
         with self.assertRaises(ValueError):
             build_pdf(sample_pages(1), dpi=0)
+
+
+def _imagem(modo: str, formato: str) -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+    buffer = BytesIO()
+    Image.new(modo, (170, 220), 1 if modo == '1' else 200).save(buffer, formato)
+    return buffer.getvalue()
+
+
+class EnsureJpegTests(unittest.TestCase):
+    """Drivers WIA (HP) devolvem BMP/TIFF em "Preto e branco" apesar de pedirmos JPEG."""
+
+    def test_jpeg_valido_segue_intacto(self):
+        page = sample_pages(1)[0]
+        self.assertIs(ensure_jpeg(page), page)
+
+    def test_converte_bmp_de_1_bit_em_jpeg_cinzento(self):
+        info = read_jpeg_info(ensure_jpeg(_imagem('1', 'BMP')))
+        self.assertEqual((info.width, info.height, info.components), (170, 220, 1))
+
+    def test_converte_tiff_a_cores(self):
+        info = read_jpeg_info(ensure_jpeg(_imagem('RGB', 'TIFF')))
+        self.assertEqual(info.components, 3)
+
+    def test_pagina_convertida_entra_no_pdf(self):
+        pdf = build_pdf([ensure_jpeg(_imagem('1', 'BMP'))], dpi=200)
+        self.assertIn(b'/DeviceGray', pdf)
+
+    def test_lixo_continua_a_ser_recusado(self):
+        with self.assertRaises(InvalidJpeg):
+            ensure_jpeg(b'isto nao e uma imagem')
 
 
 if __name__ == '__main__':
