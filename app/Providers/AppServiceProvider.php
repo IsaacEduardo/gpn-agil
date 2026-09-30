@@ -96,6 +96,11 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(15)->by($request->user()?->id ?: $request->ip());
         });
 
+        // Assinar pede a password: sem limite, uma sessão roubada adivinhava-a.
+        RateLimiter::for('assinatura', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
+        });
+
         RateLimiter::for('heavy-exports', function (Request $request) {
             return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
         });

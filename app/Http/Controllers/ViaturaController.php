@@ -119,7 +119,7 @@ class ViaturaController extends Controller
 
         // Ordenação
         $sortField = $request->get('sort', 'created_at');
-        $sortDirection = $request->get('direction', 'desc');
+        $sortDirection = $request->get('direction') === 'asc' ? 'asc' : 'desc';
 
         // Validar campo de ordenação para evitar SQL injection
         $allowedSortFields = ['created_at', 'placa', 'modelo', 'marca', 'ano', 'status_operacional', 'tipo'];

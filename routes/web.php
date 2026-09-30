@@ -314,7 +314,7 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('throttle:heavy-exports')
         ->name('documentos-internos.export.excel');
     Route::post('documentos-internos/preview', [DocumentoInternoController::class, 'preview'])->name('documentos-internos.preview');
-    Route::post('documentos-internos/{documentoInterno}/sign', [DocumentoInternoController::class, 'sign'])->name('documentos-internos.sign');
+    Route::post('documentos-internos/{documentoInterno}/sign', [DocumentoInternoController::class, 'sign'])->middleware('throttle:assinatura')->name('documentos-internos.sign');
     Route::post('documentos-internos/{documentoInterno}/restore/{version}', [DocumentoInternoController::class, 'restore'])->name('documentos-internos.restore');
     Route::post('documentos-internos/batch-zip', [DocumentoInternoController::class, 'batchDownloadZip'])
         ->middleware('throttle:heavy-exports')
@@ -343,7 +343,7 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/gabinete/batch-sign', [GabineteDashboardController::class, 'batchSign'])
         ->name('gabinete.batch-sign')
-        ->middleware('auth');
+        ->middleware(['auth', 'throttle:assinatura']);
 
     Route::post('/gabinete/batch-approve', [GabineteDashboardController::class, 'batchApprove'])
         ->name('gabinete.batch-approve')

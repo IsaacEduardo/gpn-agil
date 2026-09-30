@@ -33,7 +33,7 @@ class ModeloDocumentoController extends Controller
 
         // Sort
         $sort = $request->input('sort', 'nome');
-        $direction = $request->input('direction', 'asc');
+        $direction = $request->input('direction') === 'desc' ? 'desc' : 'asc';
 
         $allowedSorts = ['nome', 'created_at', 'updated_at'];
         if (in_array($sort, $allowedSorts)) {

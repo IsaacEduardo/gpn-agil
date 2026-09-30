@@ -13,6 +13,8 @@ class ViaturaReportController extends Controller
 {
     public function exportPDF(Request $request)
     {
+        $this->authorize('viewAny', Viatura::class);
+
         // Aplicar os mesmos filtros da listagem
         $query = Viatura::query();
 
@@ -44,7 +46,7 @@ class ViaturaReportController extends Controller
 
         // Ordenação
         $sortField = $request->get('sort', 'created_at');
-        $sortDirection = $request->get('direction', 'desc');
+        $sortDirection = $request->get('direction') === 'asc' ? 'asc' : 'desc';
 
         // Validar campo de ordenação para evitar SQL injection
         $allowedSortFields = ['created_at', 'placa', 'modelo', 'marca', 'ano', 'status_operacional', 'tipo'];
@@ -72,6 +74,8 @@ class ViaturaReportController extends Controller
 
     public function exportExcel(Request $request)
     {
+        $this->authorize('viewAny', Viatura::class);
+
         // Aplicar os mesmos filtros da listagem
         $query = Viatura::query();
 
@@ -103,7 +107,7 @@ class ViaturaReportController extends Controller
 
         // Ordenação
         $sortField = $request->get('sort', 'created_at');
-        $sortDirection = $request->get('direction', 'desc');
+        $sortDirection = $request->get('direction') === 'asc' ? 'asc' : 'desc';
 
         // Validar campo de ordenação para evitar SQL injection
         $allowedSortFields = ['created_at', 'placa', 'modelo', 'marca', 'ano', 'status_operacional', 'tipo'];

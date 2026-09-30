@@ -109,7 +109,7 @@ class DocumentoInternoController extends Controller
 
         // Ordenação Dinâmica
         $sortBy = $request->get('sort_by', 'created_at');
-        $sortOrder = $request->get('order', 'desc');
+        $sortOrder = $request->get('order') === 'asc' ? 'asc' : 'desc';
 
         // Whitelist de colunas para ordenação
         $allowedSorts = ['numero_referencia', 'titulo', 'created_at', 'updated_at', 'status'];

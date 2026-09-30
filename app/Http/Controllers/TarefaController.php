@@ -57,7 +57,7 @@ class TarefaController extends Controller
 
         // Dynamic Sorting
         $sort = $request->input('sort', 'created_at');
-        $direction = $request->input('direction', 'desc');
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
 
         // Allow list of sortable columns
         if (in_array($sort, ['prazo_at', 'created_at', 'titulo'])) {

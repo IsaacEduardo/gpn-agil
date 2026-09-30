@@ -31,7 +31,7 @@ Route::middleware(['auth'])->group(function () {
     // Ações de Aprovação/Rejeição/Visto
     Route::patch('requisicoes/{requisicao}/aprovar', [RequisicaoController::class, 'aprovar'])->name('requisicoes.aprovar');
     Route::post('requisicoes/{requisicao}/rejeitar', [RequisicaoController::class, 'rejeitar'])->name('requisicoes.rejeitar');
-    Route::post('requisicoes/{requisicao}/sign', [RequisicaoController::class, 'sign'])->name('requisicoes.sign');
+    Route::post('requisicoes/{requisicao}/sign', [RequisicaoController::class, 'sign'])->middleware('throttle:assinatura')->name('requisicoes.sign');
     Route::patch('requisicoes/{requisicao}/visto/aprovar', [RequisicaoController::class, 'vistoAprovar'])->name('requisicoes.visto.aprovar');
     Route::patch('requisicoes/{requisicao}/visto/rejeitar', [RequisicaoController::class, 'vistoRejeitar'])->name('requisicoes.visto.rejeitar');
 
