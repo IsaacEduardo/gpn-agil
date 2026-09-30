@@ -333,7 +333,7 @@ class ProgressoTests(ServerTestCase):
 class MultiplasOrigensTests(ServerTestCase):
     """Producao e desenvolvimento convivem na mesma allowlist."""
 
-    PRODUCAO = 'http://162.35.116.198'
+    PRODUCAO = 'https://ondaka-gph.ao'
     DEV_LOCALHOST = 'http://localhost'
     DEV_LOOPBACK = 'http://127.0.0.1:8000'
 
@@ -354,7 +354,14 @@ class MultiplasOrigensTests(ServerTestCase):
 
     def test_esquema_e_porta_continuam_a_distinguir_a_origem(self):
         """Uma allowlist maior nao pode virar correspondencia por host."""
-        for impostor in ('https://162.35.116.198', 'http://162.35.116.198:8080', 'http://127.0.0.1:9999'):
+        for impostor in (
+            'http://ondaka-gph.ao',          # mesmo host, esquema HTTP
+            'https://ondaka-gph.ao:8443',    # mesmo host, outra porta
+            'https://x.ondaka-gph.ao',       # subdomínio (DNS rebinding)
+            'https://ondaka-gph.ao.evil.com',
+            'http://162.35.116.198',         # origem antiga (hoje só redirecciona)
+            'http://127.0.0.1:9999',
+        ):
             with self.subTest(impostor=impostor):
                 status, body, _ = self.call('GET', '/scanners', origin=impostor)
                 self.assertEqual(status, 403)

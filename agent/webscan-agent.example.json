@@ -1,7 +1,7 @@
 {
   "port": 18090,
   "allowed_origins": [
-    "http://162.35.116.198",
+    "https://ondaka-gph.ao",
     "http://localhost",
     "http://127.0.0.1:8000"
   ],

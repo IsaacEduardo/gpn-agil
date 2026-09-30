@@ -4,7 +4,7 @@ Corre os casos do roteiro que nao precisam de papel: comunicacao, pareamento,
 seguranca de origem, deteccao de equipamento e recusa de sites externos. No fim
 lista os casos que exigem uma pessoa junto ao scanner.
 
-    python verificar-posto.py --origem http://162.35.116.198
+    python verificar-posto.py --origem https://ondaka-gph.ao
     python verificar-posto.py --origem http://localhost --porta 18090
 """
 
@@ -64,7 +64,7 @@ def agente_responde(porta: int) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description='Verifica a instalacao do WebScan Bridge neste posto.')
-    parser.add_argument('--origem', required=True, help='Origem exacta do EDMS, ex.: http://162.35.116.198')
+    parser.add_argument('--origem', required=True, help="Origem exacta do EDMS, ex.: https://ondaka-gph.ao")
     parser.add_argument('--porta', type=int, default=18090)
     parser.add_argument('--token', default=None, help='Codigo de pareamento (omitir le da configuracao)')
     args = parser.parse_args()
@@ -104,8 +104,11 @@ def main() -> int:
     registar('Bloqueia site externo', estado == 403 and corpo.get('error_code') == 'ORIGIN_REJECTED')
     registar('Nao devolve CORS a origem recusada', resposta.getheader('Access-Control-Allow-Origin') is None)
     estado, _, _ = pedir(args.porta, 'GET', '/status', None, token, tempo=10)
+    # Subdomínio falso da origem, qualquer que seja o esquema: com replace('http://', ...)
+    # uma origem https:// ficava igual e o teste enviava a origem verdadeira.
+    esquema, resto = origem.split('://', 1)
     registar('Bloqueia host inesperado (DNS rebinding)',
-             pedir(args.porta, 'GET', '/scanners', origem.replace('http://', 'http://x.'), token)[0] == 403)
+             pedir(args.porta, 'GET', '/scanners', f'{esquema}://x.{resto}', token)[0] == 403)
 
     _, _, resposta = pedir(args.porta, 'OPTIONS', '/scan', origem, token)
     pna = resposta.getheader('Access-Control-Allow-Private-Network')

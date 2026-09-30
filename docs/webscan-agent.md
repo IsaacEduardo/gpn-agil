@@ -164,9 +164,11 @@ executável e ler o token. O agente defende o scanner de **páginas web** e de
 ```powershell
 cd agent
 .\build.ps1                                    # corre testes e gera dist\webscan-bridge.exe
-.\install-servico.ps1 -Origem http://162.35.116.198, http://localhost
+.\install-servico.ps1                          # produção: https://ondaka-gph.ao
+.\install-servico.ps1 -Origem https://ondaka-gph.ao, http://localhost   # + desenvolvimento
 ```
 
+Sem `-Origem`, o instalador usa a produção (`https://ondaka-gph.ao`).
 `install-servico.ps1` copia o executável para `%LOCALAPPDATA%\WebScanBridge`,
 escreve a configuração com as origens indicadas, regista o arranque automático em
 `HKCU:\...\Run` e imprime o código de pareamento. Não precisa de privilégios de
@@ -176,7 +178,7 @@ Origens configuradas actualmente (ver `webscan-agent.example.json`):
 
 | Ambiente | Origem |
 |---|---|
-| Produção | `http://162.35.116.198` |
+| Produção | `https://ondaka-gph.ao` |
 | Desenvolvimento | `http://localhost` |
 | Desenvolvimento (`artisan serve`) | `http://127.0.0.1:8000` |
 
@@ -184,16 +186,22 @@ A comparação é por igualdade exacta de esquema, host e porta. `http://localho
 e `http://127.0.0.1:8000` são origens **diferentes** para o browser, por isso
 ambas constam da lista.
 
-### ⚠️ O EDMS tem de passar a HTTPS para o scanner funcionar
+### HTTPS (resolvido em 2026-09-28)
 
-O Chrome só autoriza uma página a contactar o *loopback* quando essa página vem
-de um **contexto seguro**. O cabeçalho `Access-Control-Allow-Private-Network`
+A produção está em **`https://ondaka-gph.ao`** (Let's Encrypt, renovação
+automática). O acesso por `http://162.35.116.198` redirecciona para o domínio e
+já não serve o EDMS — por isso essa origem deixou de constar do modelo. Postos
+instalados antes de 2026-09-28 precisam de `https://ondaka-gph.ao` em
+`allowed_origins` (reinstalar ou editar o JSON, sem BOM) e de reiniciar o agente.
+
+O motivo, para referência: o Chrome só autoriza uma página a contactar o
+*loopback* quando essa página vem de um **contexto seguro**. O cabeçalho `Access-Control-Allow-Private-Network`
 que o agente devolve é o mecanismo de aceitação, mas ele próprio só é honrado em
 HTTPS — em HTTP simples o pedido é bloqueado antes de o agente ser contactado, e
 o operador vê "Scanner Offline" sem explicação.
 
-Com a produção em `http://162.35.116.198` a digitalização **não vai funcionar no
-Chrome**. As opções, por ordem de preferência:
+Com a produção em `http://162.35.116.198` a digitalização **não funcionava no
+Chrome**. As opções que se consideraram, por ordem de preferência (foi adoptada a 1):
 
 1. **Certificado e domínio** para o EDMS (o
    [CHECKLIST_PRODUCAO_SEGURANCA.md](CHECKLIST_PRODUCAO_SEGURANCA.md) já traz a
@@ -221,7 +229,7 @@ equipamento, limites — e diz o que falta validar com uma pessoa ao scanner:
 
 ```powershell
 cd agent
-python verificar-posto.py --origem http://162.35.116.198
+python verificar-posto.py --origem https://ondaka-gph.ao
 ```
 
 Avisa também quando a origem do EDMS é HTTP simples, que é a causa mais provável

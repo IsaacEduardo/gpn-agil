@@ -11,16 +11,18 @@
 .PARAMETER Origem
     Uma ou mais origens exactas do EDMS. Tem de bater certo com o que o browser
     envia no cabecalho Origin: esquema, host e porta, sem barra final nem caminho.
+    Por omissao, a producao: https://ondaka-gph.ao.
 
 .EXAMPLE
-    .\install-servico.ps1 -Origem http://162.35.116.198
+    .\install-servico.ps1
 
 .EXAMPLE
-    .\install-servico.ps1 -Origem http://162.35.116.198, http://localhost
+    .\install-servico.ps1 -Origem https://ondaka-gph.ao, http://localhost
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][string[]]$Origem,
+    # Producao em HTTPS desde 2026-09-28 (o acesso pelo IP redirecciona para o dominio).
+    [string[]]$Origem = @('https://ondaka-gph.ao'),
     [string]$Executavel = "$PSScriptRoot\dist\webscan-bridge.exe"
 )
 
@@ -34,13 +36,14 @@ $origens = @()
 foreach ($item in $Origem) {
     $limpa = $item.Trim().TrimEnd('/')
     if ($limpa -notmatch '^https?://[^/]+$') {
-        throw "Origem invalida: '$item'. Use o formato http://162.35.116.198 (sem barra final nem caminho)."
+        throw "Origem invalida: '$item'. Use o formato https://ondaka-gph.ao (sem barra final nem caminho)."
     }
     if ($limpa -like 'http://*' -and $limpa -notlike 'http://localhost*' -and $limpa -notlike 'http://127.0.0.1*') {
         Write-Warning "A origem $limpa usa HTTP simples. O Chrome so autoriza pedidos de uma pagina publica ao loopback a partir de HTTPS (Private Network Access), pelo que a digitalizacao tende a falhar ate o EDMS passar a HTTPS."
     }
     $origens += $limpa
 }
+Write-Host ("Origens autorizadas: " + ($origens -join ', ')) -ForegroundColor Cyan
 
 $destino = Join-Path $env:LOCALAPPDATA 'WebScanBridge'
 New-Item -ItemType Directory -Force -Path $destino | Out-Null
