@@ -211,7 +211,6 @@ return [
     // a correr; alvos sem processos long-running — ex.: cPanel — devem manter esta flag desligada,
     // recorrendo ao editor clássico). Ver docs/MANUAL_DEPLOY.md.
     'feature_collab' => env('FEATURE_COLLAB', false),
-    'deploy_key' => env('APP_DEPLOY_KEY'),
 
     /*
     |--------------------------------------------------------------------------

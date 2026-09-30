@@ -81,11 +81,8 @@ class AppServiceProvider extends ServiceProvider
         // ---------------------------------------------------------------------
         // Definições de Rate Limiting (Segurança & OWASP Top 10)
         // ---------------------------------------------------------------------
-        RateLimiter::for('login', function (Request $request) {
-            $email = (string) $request->input('email');
-
-            return Limit::perMinutes(15, 5)->by(Str::transliterate(Str::lower($email).'|'.$request->ip()));
-        });
+        // O login não usa limiter nomeado: o LoginController conta falhas por
+        // email+IP, por IP e por conta (ver MAX_FALHAS_POR_IP / _POR_CONTA).
 
         RateLimiter::for('global-api', function (Request $request) {
             return Limit::perMinute(120)->by($request->user()?->id ?: $request->ip());

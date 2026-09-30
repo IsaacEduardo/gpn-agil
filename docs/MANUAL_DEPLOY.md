@@ -77,11 +77,6 @@ APP_KEY=                      # gerar (ver abaixo)
 APP_DEBUG=false
 APP_URL=https://seu-dominio.com
 
-# Chave da rota utilitária /deploy-setup.
-# DEIXE VAZIO para manter a rota DESATIVADA (recomendado após o deploy).
-# NÃO use "InfinityDeploy2024!" — é rejeitada em produção pelo código.
-APP_DEPLOY_KEY=
-
 APP_LOCALE=pt_BR
 APP_FALLBACK_LOCALE=en
 
@@ -264,27 +259,16 @@ $app = require_once __DIR__.'/../gpn-agil/bootstrap/app.php';
 
 Em `/home/USUARIO/gpn-agil`, crie o arquivo `.env` com o modelo da §4. Gere a `APP_KEY` localmente (`php artisan key:generate --show`) e cole o valor.
 
-### 7.5. Rodar o setup pela rota utilitária `/deploy-setup`
+### 7.5. Rodar o setup (migrações e caches)
 
-Como não há terminal, o projeto expõe uma rota que roda migração, storage:link e caches. **Atenção ao comportamento real do código** ([routes/web.php:254](routes/web.php#L254)):
+A antiga rota web `/deploy-setup` foi removida (2026-09-30): executava `artisan` a partir da internet. Sem terminal, use um **Cron Job de execução única** no cPanel (apague-o depois de correr):
 
-1. **Defina `APP_DEPLOY_KEY` no `.env`** com um segredo forte e único, por exemplo:
-   ```ini
-   APP_DEPLOY_KEY=cole-aqui-um-segredo-longo-e-aleatorio
-   ```
-   - Se ficar **vazio**, a rota responde **403** (fica desativada).
-   - O valor literal `InfinityDeploy2024!` é **rejeitado** em produção (403). Não use.
-
-2. Acesse a rota passando a chave. **Preferencial via header** (não vaza em logs/Referer):
+1. Em **cPanel → Cron Jobs**, crie uma entrada para daqui a 1–2 minutos com o comando:
    ```bash
-   curl -H "X-Deploy-Key: SEU_SEGREDO" https://seu-dominio.com/deploy-setup
+   cd /home/USUARIO/gpn-agil && php artisan optimize:clear && php artisan migrate --force && php artisan storage:link && php artisan optimize > storage/logs/setup.log 2>&1
    ```
-   Alternativa por query string (funciona, porém fica em logs):
-   ```
-   https://seu-dominio.com/deploy-setup?key=SEU_SEGREDO
-   ```
-
-3. A rota executa, nesta ordem: `optimize:clear` → `migrate --force` → `storage:link` → `config:cache` → `route:cache` → `view:cache`, e retorna um resumo HTML. Há limite de **6 chamadas por minuto**.
+2. Depois de correr, confira `storage/logs/setup.log` no Gerenciador de Arquivos e **apague o Cron Job**.
+3. Com SSH (VPS), corra os mesmos comandos directamente.
 
 4. **Permissões:** se der erro 500, ajuste no Gerenciador de Arquivos as pastas `gpn-agil/storage` e `gpn-agil/bootstrap/cache` para **775**.
 
@@ -294,7 +278,7 @@ Como não há terminal, o projeto expõe uma rota que roda migração, storage:l
    ```
    (Pode ser feito via Cron Job de execução única, se não houver SSH.)
 
-6. **Depois de validar o site, ZERE a chave** (`APP_DEPLOY_KEY=`) no `.env` para desativar a rota. Ver §9.
+6. **Depois de validar o site, apague o Cron Job de setup.** Ver §9.
 
 ---
 
@@ -397,11 +381,11 @@ o sistema continua 100% operacional e o editor clássico (TinyMCE) permanece dis
 
 ## 9. Segurança (obrigatório)
 
-1. **Desative a rota `/deploy-setup` após o deploy.** Modo mais simples: deixe `APP_DEPLOY_KEY=` (vazio) no `.env` e rode `php artisan config:clear && php artisan config:cache` (ou acesse a rota de setup uma última vez não é possível com chave vazia — então limpe o cache manualmente). Em VPS, você também pode comentar o bloco da rota em `routes/web.php`.
+1. **Apague o Cron Job de setup** (§7.5) depois de correr. A aplicação não expõe nenhuma rota que execute `artisan`.
 2. **`APP_DEBUG=false`** em produção (já no modelo da §4). Nunca exponha stack traces.
 3. **Documentos privados:** confira que `DOCS_STORAGE_DISK=private`. Isso guarda os arquivos em `storage/app/private_docs`, fora do alcance de URL pública; o acesso passa por controller com checagem de permissão.
 4. **Permissões:** `storage` e `bootstrap/cache` em `775` (ou `755` se o usuário web for o dono). Evite `777`.
-5. **Nunca** versione o `.env` real nem a `APP_KEY`/senhas. O `APP_DEPLOY_KEY` deve existir **apenas** no servidor.
+5. **Nunca** versione o `.env` real nem a `APP_KEY`/senhas.
 6. **HTTPS:** garanta certificado SSL no domínio (cPanel → SSL/TLS) e `APP_URL` com `https://`.
 
 ---
@@ -410,7 +394,6 @@ o sistema continua 100% operacional e o editor clássico (TinyMCE) permanece dis
 
 | Sintoma | Causa provável / solução |
 |---|---|
-| **403 em `/deploy-setup`** | `APP_DEPLOY_KEY` vazio, ou você usou `InfinityDeploy2024!` (rejeitado em produção), ou a chave enviada não confere. Defina um segredo forte e reenvie via header `X-Deploy-Key`. |
 | **500 (Internal Server Error)** | Permissão de `storage` / `bootstrap/cache` → ajuste para `775`. Verifique também `APP_KEY` preenchida e o ajuste do `index.php` (§7.3). |
 | **Tela em branco / "could not find driver"** | Extensão `pdo_mysql` desativada, ou credenciais de banco erradas no `.env`. |
 | **CSS/JS não carregam** | Faltou `npm run build` (gera `public/build`) ou a pasta `build` não subiu para `public_html`. |

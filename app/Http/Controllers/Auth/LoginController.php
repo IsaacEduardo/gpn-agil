@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class LoginController extends Controller
@@ -46,6 +47,17 @@ class LoginController extends Controller
      * @var int
      */
     protected $decayMinutes = 15;
+
+    /**
+     * Falhas toleradas na mesma janela, além do limite email+IP do trait:
+     * - por IP, contra quaisquer contas (password spraying);
+     * - por conta, vindas de quaisquer IPs (ataque distribuído).
+     * Só as falhas contam: os serviços saem para a internet por um único IP
+     * e os logins válidos não podem bloquear os colegas.
+     */
+    private const MAX_FALHAS_POR_IP = 30;
+
+    private const MAX_FALHAS_POR_CONTA = 10;
 
     /**
      * Create a new controller instance.
@@ -119,6 +131,58 @@ class LoginController extends Controller
         return $request->wantsJson()
             ? new JsonResponse(['message' => 'Sessão encerrada com sucesso'], 200)
             : redirect('/login')->with('info', 'Sessão encerrada com sucesso.');
+    }
+
+    protected function hasTooManyLoginAttempts(Request $request)
+    {
+        return $this->limiter()->tooManyAttempts($this->throttleKey($request), $this->maxAttempts())
+            || $this->limiter()->tooManyAttempts($this->chaveFalhasIp($request), self::MAX_FALHAS_POR_IP)
+            || $this->limiter()->tooManyAttempts($this->chaveFalhasConta($request), self::MAX_FALHAS_POR_CONTA);
+    }
+
+    protected function incrementLoginAttempts(Request $request)
+    {
+        $segundos = $this->decayMinutes() * 60;
+
+        $this->limiter()->hit($this->throttleKey($request), $segundos);
+        $this->limiter()->hit($this->chaveFalhasIp($request), $segundos);
+        $this->limiter()->hit($this->chaveFalhasConta($request), $segundos);
+    }
+
+    /**
+     * Um login válido limpa a conta, mas não o IP: senão o atacante limpava
+     * o contador do spraying entrando com uma conta sua.
+     */
+    protected function clearLoginAttempts(Request $request)
+    {
+        $this->limiter()->clear($this->throttleKey($request));
+        $this->limiter()->clear($this->chaveFalhasConta($request));
+    }
+
+    protected function sendLockoutResponse(Request $request)
+    {
+        $seconds = max(
+            $this->limiter()->availableIn($this->throttleKey($request)),
+            $this->limiter()->availableIn($this->chaveFalhasIp($request)),
+            $this->limiter()->availableIn($this->chaveFalhasConta($request)),
+        );
+
+        throw ValidationException::withMessages([
+            $this->username() => [trans('auth.throttle', [
+                'seconds' => $seconds,
+                'minutes' => ceil($seconds / 60),
+            ])],
+        ])->status(429);
+    }
+
+    private function chaveFalhasIp(Request $request): string
+    {
+        return 'login-falhas-ip|'.$request->ip();
+    }
+
+    private function chaveFalhasConta(Request $request): string
+    {
+        return 'login-falhas-conta|'.Str::transliterate(Str::lower((string) $request->input($this->username())));
     }
 
     /**

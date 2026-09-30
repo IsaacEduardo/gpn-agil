@@ -240,9 +240,8 @@ flowchart LR
 
 Serviços do `docker-compose.yml`: **nginx, php, mysql, redis, queue, scheduler**.
 
-Há também uma rota utilitária de deploy para hospedagem partilhada/cPanel (`/deploy-setup`, protegida por
-chave *timing-safe* e *rate limit*) que executa `optimize:clear`, `migrate --force`, `storage:link` e os
-caches de config/rotas/views.
+Não há rota web de deploy: a antiga `/deploy-setup` (executava `artisan` pela internet) foi removida;
+migrações e caches correm por SSH ou por Cron Job de execução única (ver MANUAL_DEPLOY.md §7.5).
 
 ---
 

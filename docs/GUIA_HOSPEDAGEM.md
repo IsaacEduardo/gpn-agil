@@ -100,7 +100,7 @@ Use apenas para **piloto/demonstração do núcleo**. Resumo (passo a passo comp
 2. Banco MySQL criado (usuário com *All Privileges*).
 3. Estrutura segura: projeto **fora** de `public_html`; conteúdo de `public/` **dentro**; ajustar `index.php`.
 4. `.env` limpo com drivers `database` (sem Redis) e `DOCS_STORAGE_DISK=private`.
-5. Migrações/caches via rota utilitária `/deploy-setup` (defina um `APP_DEPLOY_KEY` forte — **não** use a chave padrão).
+5. Migrações/caches por Cron Job de execução única (ver [MANUAL_DEPLOY.md §7.5](MANUAL_DEPLOY.md)).
 6. **Cron** de minuto em minuto: `php artisan schedule:run` (+ um cron de fila, se quiser Web Push).
 
 **Limitações aceitas neste caminho:** sem OCR automático (tesseract ausente), sem chatbot, sem tempo real.
@@ -229,7 +229,7 @@ docker compose exec php php artisan optimize
 
 1. **Criar índices/caches**: `php artisan migrate --force` aplica as migrações de índice de performance.
 2. **Otimizar**: `config:cache`, `route:cache`, `view:cache` (ou `php artisan optimize`).
-3. **Segurança**: `APP_DEBUG=false`; desativar a rota `/deploy-setup` (zerar `APP_DEPLOY_KEY`);
+3. **Segurança**: `APP_DEBUG=false`; apagar o Cron Job de setup depois de correr;
    documentos em disco `private`; HTTPS obrigatório. Detalhes em [MANUAL_DEPLOY.md §9](MANUAL_DEPLOY.md).
 4. **Web Push (se usar)**: gerar chaves com `php artisan push:vapid:generate` e preencher `VAPID_*` no `.env`.
 5. **Backup**: agendar dump do MySQL **+** cópia de `storage/app/private_docs` (os anexos/documentos reais).

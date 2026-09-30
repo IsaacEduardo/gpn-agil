@@ -61,6 +61,11 @@ class ControloAcessoCriticoTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'intruso@example.com']);
     }
 
+    public function test_nao_existe_rota_web_que_execute_artisan(): void
+    {
+        $this->withHeader('X-Deploy-Key', 'qualquer')->get('/deploy-setup')->assertNotFound();
+    }
+
     // --- C2: streaming de anexos ---
 
     public function test_anexo_de_entrada_sem_pasta_nao_e_servido_a_outro_departamento(): void

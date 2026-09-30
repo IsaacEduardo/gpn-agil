@@ -28,6 +28,11 @@ class ResetPasswordController extends Controller
      */
     protected $redirectTo = '/home';
 
+    public function __construct()
+    {
+        $this->middleware('throttle:10,1')->only('reset');
+    }
+
     /**
      * Get the password reset validation rules.
      *

@@ -35,8 +35,6 @@ use App\Http\Controllers\LoteController;
 use App\Http\Controllers\RequerenteController;
 use App\Http\Controllers\SolicitacaoAtribuicaoController;
 use App\Http\Controllers\RelatorioController;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -394,58 +392,3 @@ if (config('app.feature_assistente')) {
         Route::post('documentos-internos/{documentoInterno}/assistente', [AssistenteController::class, 'perguntarInterno'])->name('assistente.interno');
     });
 }
-
-// Rota utilitária para deploy em hospedagem compartilhada (cPanel)
-Route::get('/deploy-setup', function (Request $request) {
-    $expectedKey = config('app.deploy_key');
-
-    if (empty($expectedKey)) {
-        abort(403, 'Acesso negado. Chave de deploy não configurada no ambiente.');
-    }
-
-    // Impede o uso da chave padrão em produção
-    if (app()->environment('production') && $expectedKey === 'InfinityDeploy2024!') {
-        abort(403, 'Acesso negado. A chave de deploy padrão não pode ser utilizada em ambiente de produção por razões de segurança.');
-    }
-
-    // Aceita a chave por header (preferencial, não vaza em logs/Referer) com
-    // fallback para query string por compatibilidade. Comparação timing-safe.
-    $providedKey = $request->header('X-Deploy-Key') ?? $request->input('key');
-    if (! is_string($providedKey) || ! hash_equals((string) $expectedKey, $providedKey)) {
-        abort(403, 'Acesso negado. Chave inválida.');
-    }
-
-    try {
-        $output = [];
-
-        // 1. Limpar caches antigos
-        Artisan::call('optimize:clear');
-        $output[] = 'Caches limpos (optimize:clear)';
-
-        // 2. Rodar migrações (se houver banco configurado)
-        try {
-            Artisan::call('migrate', ['--force' => true]);
-            $output[] = 'Migrações executadas com sucesso.';
-        } catch (Exception $e) {
-            $output[] = 'Aviso na migração: '.$e->getMessage();
-        }
-
-        // 3. Linkar storage (simula o link simbólico)
-        try {
-            Artisan::call('storage:link');
-            $output[] = 'Storage linkado com sucesso.';
-        } catch (Exception $e) {
-            $output[] = 'Aviso no storage:link: '.$e->getMessage();
-        }
-
-        // 4. Cachear configurações para produção
-        Artisan::call('config:cache');
-        Artisan::call('route:cache');
-        Artisan::call('view:cache');
-        $output[] = 'Config, Rotas e Views cacheadas.';
-
-        return implode('<br>', $output);
-    } catch (Exception $e) {
-        return 'Erro crítico durante o setup: '.$e->getMessage();
-    }
-})->middleware('throttle:5,1');
