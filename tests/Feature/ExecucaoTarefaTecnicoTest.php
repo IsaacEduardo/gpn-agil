@@ -148,12 +148,17 @@ class ExecucaoTarefaTecnicoTest extends TestCase
     // Separadores
     // -----------------------------------------------------------------
 
-    public function test_atribuidos_a_mim_e_do_meu_setor_nao_se_sobrepoem(): void
+    /**
+     * "Do Meu Setor" é o que está em curso no departamento; "Atribuídos a Mim" é
+     * a parte dele. Sobrepõem-se de propósito (decisão de 2026-09-30) — antes o
+     * setor só mostrava tarefas sem dono e ficava sempre vazio.
+     */
+    public function test_do_meu_setor_inclui_o_que_e_meu_e_o_que_ainda_nao_tem_dono(): void
     {
         // Tarefa minha, com dono.
         $this->tarefa();
 
-        // Tarefa do setor, ainda sem dono: é a que se pode assumir.
+        // Tarefa do setor, ainda sem dono.
         $doSetor = DocumentoEntrada::factory()->create([
             'departamento_id' => $this->departamento->id,
             'user_id' => $this->chefe->id,
@@ -173,8 +178,7 @@ class ExecucaoTarefaTecnicoTest extends TestCase
         $doMeuSetor = $this->documentosDoSeparador('em_execucao');
 
         $this->assertSame([$this->documento->id], $minhas);
-        $this->assertSame([$doSetor->id], $doMeuSetor);
-        $this->assertEmpty(array_intersect($minhas, $doMeuSetor));
+        $this->assertSame([$this->documento->id, $doSetor->id], $doMeuSetor);
     }
 
     // -----------------------------------------------------------------

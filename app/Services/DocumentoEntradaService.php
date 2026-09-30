@@ -1702,18 +1702,18 @@ class DocumentoEntradaService
                 }
                 break;
             case 'em_execucao':
-                // "Do Meu Setor": o que o técnico pode assumir — tarefas do seu
-                // departamento ainda sem dono. Antes este separador incluía
-                // também as próprias tarefas, pelo que era um superconjunto de
-                // "Atribuídos a Mim" e os dois contadores diziam o mesmo.
+                // "Do Meu Setor": os documentos EM CURSO no departamento do técnico
+                // — a aguardar delegação, com colegas ou com ele próprio (sobrepõe-
+                // se a "Atribuídos a Mim" de propósito: aquele é a parte dele).
+                //
+                // Antes só entravam tarefas atribuídas ao departamento inteiro e
+                // sem dono; os chefes delegam em pessoas (em produção, 1 em 71
+                // tarefas), pelo que o separador ficava sempre a 0 e o técnico não
+                // via nada do seu setor. Decisão de 2026-09-30.
                 if ($user && count($userDeps)) {
-                    $query->whereHas('tarefas', function ($t) use ($userDeps) {
-                        $t->whereIn('assigned_to_departamento_id', $userDeps)
-                            ->whereNull('assigned_to_user_id')
-                            ->where('status', 'pendente');
-                    });
+                    $this->filtrarEmCursoNoSetor($query, $userDeps);
                 } elseif ($user) {
-                    // Sem departamento não há fila de setor para mostrar.
+                    // Sem departamento não há setor para mostrar.
                     $query->whereRaw('1 = 0');
                 }
                 break;
@@ -1731,6 +1731,55 @@ class DocumentoEntradaService
                 }
                 break;
         }
+    }
+
+    /**
+     * Documentos em curso nos departamentos indicados, em SQL para a listagem e o
+     * contador. A custódia segue DocumentoPermissionService::departamentosComCustodia:
+     * departamento_id (só muda no recibo) mais os encaminhamentos por receber
+     * destinados ao setor.
+     *
+     * @param  int[]  $deps
+     */
+    private function filtrarEmCursoNoSetor(Builder $query, array $deps): void
+    {
+        // Estados em que o documento já não está em trabalho no setor.
+        $terminais = [
+            DocumentoStatus::TRATADO->value,
+            DocumentoStatus::ARQUIVADO->value,
+            DocumentoStatus::FINALIZADO->value,
+            DocumentoStatus::ENCAMINHADO_EXTERNO->value,
+        ];
+
+        $encaminhamentoPendente = fn ($sub) => $sub->selectRaw(1)
+            ->from('documento_encaminhamentos as de')
+            ->whereColumn('de.documento_entrada_id', 'documentos_entradas.id')
+            ->whereNull('de.recebido_em');
+
+        $query->where('documentos_entradas.arquivado', false)->where(function ($q) use ($deps, $terminais, $encaminhamentoPendente) {
+            $q->where(function ($emCurso) use ($deps, $terminais, $encaminhamentoPendente) {
+                $emCurso->whereNotIn('documentos_entradas.status', $terminais)
+                    ->where(function ($custodia) use ($deps, $encaminhamentoPendente) {
+                        // Está no setor — excepto se o setor já o encaminhou para
+                        // fora e espera recibo lá: departamento_id ainda aponta
+                        // para cá até ao recibo, mas o documento já saiu.
+                        $custodia->where(function ($local) use ($deps, $encaminhamentoPendente) {
+                            $local->whereIn('documentos_entradas.departamento_id', $deps)
+                                ->whereNotExists(fn ($sub) => $encaminhamentoPendente($sub)
+                                    ->whereIn('de.origem_departamento_id', $deps)
+                                    ->whereNotIn('de.destino_departamento_id', $deps));
+                        })
+                        // Ou vem a caminho do setor, ainda por receber.
+                            ->orWhereExists(fn ($sub) => $encaminhamentoPendente($sub)
+                                ->whereIn('de.destino_departamento_id', $deps));
+                    });
+            })
+            // Critério anterior mantido: tarefa atribuída ao departamento inteiro,
+            // sem dono (p. ex. delegada pelo chefe de gabinete).
+                ->orWhereHas('tarefas', fn ($t) => $t->whereIn('assigned_to_departamento_id', $deps)
+                    ->whereNull('assigned_to_user_id')
+                    ->where('status', 'pendente'));
+        });
     }
 
     private function applySpecialViewFilters(Builder $query, Request $request, ?User $user): void
@@ -1832,7 +1881,9 @@ class DocumentoEntradaService
             'tecnico' => [
                 ['key' => 'atribuidos_mim', 'label' => 'Atribuídos a Mim', 'icon' => 'fas fa-user-check', 'badge_type' => 'warning'],
                 ['key' => 'em_execucao', 'label' => 'Do Meu Setor', 'icon' => 'fas fa-users', 'badge_type' => 'info'],
-                ['key' => 'concluidos', 'label' => 'Concluídos', 'icon' => 'far fa-check-circle', 'badge_type' => 'neutral'],
+                // Pessoal (tarefas que o próprio concluiu): o nome dizia só
+                // "Concluídos" e lia-se como os concluídos do departamento.
+                ['key' => 'concluidos', 'label' => 'Concluídos por Mim', 'icon' => 'far fa-check-circle', 'badge_type' => 'neutral'],
             ],
             default => [
                 ['key' => 'todos', 'label' => 'Todos os Documentos', 'icon' => 'fas fa-layer-group', 'badge_type' => 'neutral'],
