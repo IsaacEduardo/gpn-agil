@@ -19,7 +19,9 @@
                     <div class="card-header bg-gradient-primary d-flex justify-content-between align-items-center">
                         <span>Empresas</span>
                         <div>
-                            <a href="{{ route('empresas.create') }}" class="btn btn-primary">Nova Empresa</a>
+                            @can('create', App\Models\Empresa::class)
+                                <a href="{{ route('empresas.create') }}" class="btn btn-primary">Nova Empresa</a>
+                            @endcan
                         </div>
                     </div>
 
@@ -92,14 +94,18 @@
                                             <td class="text-end">
                                                 <a href="{{ route('empresas.show', $empresa) }}"
                                                     class="btn btn-sm btn-info">Ver</a>
-                                                <a href="{{ route('empresas.edit', $empresa) }}"
-                                                    class="btn btn-sm btn-warning">Editar</a>
-                                                <form action="{{ route('empresas.destroy', $empresa) }}" method="POST"
-                                                    class="d-inline" onsubmit="return confirm('Excluir esta empresa?');">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
-                                                </form>
+                                                @can('update', $empresa)
+                                                    <a href="{{ route('empresas.edit', $empresa) }}"
+                                                        class="btn btn-sm btn-warning">Editar</a>
+                                                @endcan
+                                                @can('delete', $empresa)
+                                                    <form action="{{ route('empresas.destroy', $empresa) }}" method="POST"
+                                                        class="d-inline" onsubmit="return confirm('Excluir esta empresa?');">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+                                                    </form>
+                                                @endcan
                                             </td>
                                         </tr>
                                     @empty

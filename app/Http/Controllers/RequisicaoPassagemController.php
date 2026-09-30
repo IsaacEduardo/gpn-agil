@@ -122,6 +122,7 @@ class RequisicaoPassagemController extends Controller
         $requisicao = Requisicao::where('tipo', Requisicao::TIPO_PASSAGEM)
             ->with('passagem')
             ->findOrFail($id);
+        $this->authorize('view', $requisicao);
 
         $empresas = CatalogCache::empresasList();
 
@@ -130,6 +131,9 @@ class RequisicaoPassagemController extends Controller
 
     public function update(Request $request, $id)
     {
+        // Antes do try: o catch genérico engoliria a AuthorizationException.
+        $this->authorize('view', Requisicao::where('tipo', Requisicao::TIPO_PASSAGEM)->findOrFail($id));
+
         $request->validate([
             'empresa_id' => 'required|exists:empresas,id',
             'observacoes' => 'nullable|string',
@@ -197,7 +201,11 @@ class RequisicaoPassagemController extends Controller
 
         $requisicao = $requisicaoId
             ? $query->findOrFail($requisicaoId)
-            : $query->orderBy('id', 'desc')->first();
+            : $query->accessibleBy(Auth::user())->orderBy('id', 'desc')->first();
+
+        if ($requisicaoId) {
+            $this->authorize('view', $requisicao);
+        }
 
         $empresa = $requisicao && $requisicao->empresa
             ? $requisicao->empresa

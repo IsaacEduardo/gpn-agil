@@ -9,7 +9,9 @@
                         <span>Detalhes da Empresa</span>
                         <div class="d-flex gap-2">
                             <a href="{{ route('empresas.index') }}" class="btn btn-outline-secondary">Voltar</a>
-                            <a href="{{ route('empresas.edit', $empresa) }}" class="btn btn-warning">Editar</a>
+                            @can('update', $empresa)
+                                <a href="{{ route('empresas.edit', $empresa) }}" class="btn btn-warning">Editar</a>
+                            @endcan
                         </div>
                     </div>
                     <div class="card-body">

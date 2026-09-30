@@ -50,6 +50,8 @@ class EmpresaController extends Controller
      */
     public function create()
     {
+        $this->authorize('create', Empresa::class);
+
         return view('empresas.create');
     }
 
@@ -58,6 +60,8 @@ class EmpresaController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorize('create', Empresa::class);
+
         $data = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
             'contacto' => ['nullable', 'string', 'max:255'],
@@ -82,6 +86,8 @@ class EmpresaController extends Controller
      */
     public function edit(Empresa $empresa)
     {
+        $this->authorize('update', $empresa);
+
         return view('empresas.edit', compact('empresa'));
     }
 
@@ -90,6 +96,8 @@ class EmpresaController extends Controller
      */
     public function update(Request $request, Empresa $empresa)
     {
+        $this->authorize('update', $empresa);
+
         $data = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
             'contacto' => ['nullable', 'string', 'max:255'],
@@ -106,6 +114,8 @@ class EmpresaController extends Controller
      */
     public function destroy(Empresa $empresa)
     {
+        $this->authorize('delete', $empresa);
+
         $empresa->delete();
 
         return redirect()->route('empresas.index')->with('status', 'Empresa excluída com sucesso.');

@@ -36,6 +36,7 @@ class PermissionsSeeder extends Seeder
             'viaturas.listar',
             'viaturas.gerir',
             'viaturas.relatorios',
+            'empresas.gerir',
 
             // 4. Requisições (Central de Pedidos)
             'requisicoes.listar',

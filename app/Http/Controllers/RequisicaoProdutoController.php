@@ -151,6 +151,7 @@ class RequisicaoProdutoController extends Controller
         $requisicao = Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)
             ->with('produtos')
             ->findOrFail($id);
+        $this->authorize('view', $requisicao);
 
         $empresas = \App\Support\CatalogCache::empresasList();
 
@@ -159,6 +160,9 @@ class RequisicaoProdutoController extends Controller
 
     public function update(Request $request, $id)
     {
+        // Antes do try: o catch genérico engoliria a AuthorizationException.
+        $this->authorize('view', Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)->findOrFail($id));
+
         $hasMultiple = $request->has('produtos') && is_array($request->input('produtos'));
 
         if ($hasMultiple) {
@@ -263,6 +267,9 @@ class RequisicaoProdutoController extends Controller
 
     public function destroy($id)
     {
+        // Antes do try: o catch genérico engoliria a AuthorizationException.
+        $this->authorize('view', Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)->findOrFail($id));
+
         try {
             $requisicao = Requisicao::where('tipo', Requisicao::TIPO_PRODUTO)->findOrFail($id);
             $requisicao->delete();
@@ -286,7 +293,11 @@ class RequisicaoProdutoController extends Controller
 
         $requisicao = $requisicaoId
             ? $query->findOrFail($requisicaoId)
-            : $query->orderBy('id', 'desc')->first();
+            : $query->accessibleBy(Auth::user())->orderBy('id', 'desc')->first();
+
+        if ($requisicaoId) {
+            $this->authorize('view', $requisicao);
+        }
 
         if ($requisicao) {
             $empresa = $requisicao->empresa ?? ($requisicao->empresa_destinataria ? new Empresa(['nome' => $requisicao->empresa_destinataria]) : new Empresa(['nome' => '']));
