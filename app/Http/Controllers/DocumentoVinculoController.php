@@ -20,6 +20,8 @@ class DocumentoVinculoController extends Controller
      */
     public function index(string $tipo, int $id): JsonResponse
     {
+        $this->exigirLeitura($tipo, $id);
+
         $vinculos = $this->service->listarVinculos($tipo, $id, Auth::user());
 
         return response()->json([
@@ -35,6 +37,8 @@ class DocumentoVinculoController extends Controller
      */
     public function store(Request $request, string $tipo, int $id): JsonResponse|RedirectResponse
     {
+        $this->exigirLeitura($tipo, $id);
+
         $validated = $request->validate([
             'documentos' => 'nullable|array',
             'documentos.*.tipo' => 'required_with:documentos|string|in:EXTERNO,INTERNO,externo,interno',
@@ -119,6 +123,8 @@ class DocumentoVinculoController extends Controller
      */
     public function pesquisar(Request $request, string $tipo, int $id): JsonResponse
     {
+        $this->exigirLeitura($tipo, $id);
+
         $termo = (string) $request->input('q', '');
         $filtroTipo = $request->input('filtro_tipo');
 
@@ -135,5 +141,13 @@ class DocumentoVinculoController extends Controller
             'total' => count($resultados),
             'resultados' => $resultados,
         ]);
+    }
+
+    /**
+     * Documento de origem sem acesso responde como inexistente (IDs sequenciais).
+     */
+    private function exigirLeitura(string $tipo, int $id): void
+    {
+        abort_unless($this->service->podeLerDocumento(Auth::user(), $tipo, $id), 404);
     }
 }

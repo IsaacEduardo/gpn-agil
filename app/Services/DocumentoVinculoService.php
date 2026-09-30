@@ -9,6 +9,7 @@ use App\Models\DocumentoEntrada;
 use App\Models\DocumentoInterno;
 use App\Models\DocumentoVinculo;
 use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -49,7 +50,7 @@ class DocumentoVinculoService
                 $podeVisualizar = $this->verificarPermissaoLeitura($user, $outroTipo, $doc);
             }
 
-            $docData = $this->formatarDadosDocumento($outroTipo, $doc, $podeVisualizar);
+            $docData = $this->ocultarSeRestrito($podeVisualizar, $this->formatarDadosDocumento($outroTipo, $doc, $podeVisualizar));
 
             $resultado[] = [
                 'id' => $vinculo->id,
@@ -110,12 +111,9 @@ class DocumentoVinculoService
                     continue;
                 }
 
-                // Verificar existência do destino
-                $destExiste = $destTipoUpper === 'EXTERNO'
-                    ? DocumentoEntrada::where('id', $destId)->exists()
-                    : DocumentoInterno::where('id', $destId)->exists();
-
-                if (! $destExiste) {
+                // Destino inexistente ou que o utilizador não pode ler: ignorado da
+                // mesma forma, para não revelar a existência de documentos alheios.
+                if (! $this->podeLerDocumento($user, $destTipoUpper, $destId)) {
                     continue;
                 }
 
@@ -164,6 +162,15 @@ class DocumentoVinculoService
     {
         $vinculo = DocumentoVinculo::findOrFail($vinculoId);
 
+        // Basta aceder a um dos lados: o vínculo aparece em ambos os documentos e
+        // quem gere um deles pode retirar uma associação errada.
+        $origemTipoAcesso = is_string($vinculo->origem_tipo) ? $vinculo->origem_tipo : $vinculo->origem_tipo->value;
+        $destinoTipoAcesso = is_string($vinculo->destino_tipo) ? $vinculo->destino_tipo : $vinculo->destino_tipo->value;
+        if (! $this->podeLerDocumento($user, $origemTipoAcesso, (int) $vinculo->origem_id)
+            && ! $this->podeLerDocumento($user, $destinoTipoAcesso, (int) $vinculo->destino_id)) {
+            throw (new ModelNotFoundException)->setModel(DocumentoVinculo::class, [$vinculoId]);
+        }
+
         // Se for um vínculo entre Entrada e Interno, limpar chave legada se correspondente
         $origemTipo = is_string($vinculo->origem_tipo) ? $vinculo->origem_tipo : $vinculo->origem_tipo->value;
         $destinoTipo = is_string($vinculo->destino_tipo) ? $vinculo->destino_tipo : $vinculo->destino_tipo->value;
@@ -205,6 +212,9 @@ class DocumentoVinculoService
         if (! $filtroTipoUpper || $filtroTipoUpper === 'EXTERNO') {
             $queryEntradas = DocumentoEntrada::with(['departamento', 'usuario']);
 
+            // Mesmo âmbito da pesquisa global: só entradas que o utilizador pode ver.
+            app(DocumentoEntradaService::class)->applyVisibilityScope($queryEntradas, $user);
+
             if ($termo !== '') {
                 $queryEntradas->where(function ($q) use ($termo) {
                     $q->where('numero_sequencial', 'like', "%{$termo}%")
@@ -225,7 +235,7 @@ class DocumentoVinculoService
                 $podeVer = $this->verificarPermissaoLeitura($user, 'EXTERNO', $e);
                 $jaVinculado = DocumentoVinculo::entreDocumentos($currentTipoUpper, $currentId, 'EXTERNO', $e->id)->exists();
 
-                $resultados[] = [
+                $resultados[] = $this->ocultarSeRestrito($podeVer, [
                     'id' => $e->id,
                     'tipo' => 'EXTERNO',
                     'tipo_label' => 'Entrada Externa',
@@ -241,7 +251,7 @@ class DocumentoVinculoService
                     'data' => optional($e->data_entrada ?? $e->created_at)->format('d/m/Y'),
                     'pode_visualizar' => $podeVer,
                     'ja_vinculado' => $jaVinculado,
-                ];
+                ]);
             }
         }
 
@@ -273,7 +283,7 @@ class DocumentoVinculoService
 
                 $statusVal = is_string($i->status) ? $i->status : ($i->status?->value ?? 'rascunho');
 
-                $resultados[] = [
+                $resultados[] = $this->ocultarSeRestrito($podeVer, [
                     'id' => $i->id,
                     'tipo' => 'INTERNO',
                     'tipo_label' => 'Documento Interno',
@@ -289,7 +299,7 @@ class DocumentoVinculoService
                     'data' => $i->created_at->format('d/m/Y'),
                     'pode_visualizar' => $podeVer,
                     'ja_vinculado' => $jaVinculado,
-                ];
+                ]);
             }
         }
 
@@ -349,6 +359,45 @@ class DocumentoVinculoService
             'url_pdf' => \Illuminate\Support\Facades\Route::has('documentos-internos.pdf') ? route('documentos-internos.pdf', $doc->id) : null,
             'pode_visualizar' => $podeVisualizar,
         ];
+    }
+
+    /**
+     * Existe e o utilizador pode lê-lo. Inexistente e sem acesso dão o mesmo
+     * resultado, para que a resposta não confirme a existência de documentos.
+     */
+    public function podeLerDocumento(User $user, string $tipo, int $id): bool
+    {
+        $tipoUpper = strtoupper($tipo);
+        $doc = match ($tipoUpper) {
+            'EXTERNO' => DocumentoEntrada::find($id),
+            'INTERNO' => DocumentoInterno::find($id),
+            default => null,
+        };
+
+        return $doc !== null && $this->verificarPermissaoLeitura($user, $tipoUpper, $doc);
+    }
+
+    /**
+     * Documento sem acesso: fica só o tipo e o número, para o utilizador saber
+     * que o vínculo existe sem ver assunto, autor, setor ou endereços.
+     */
+    protected function ocultarSeRestrito(bool $podeVisualizar, array $dados): array
+    {
+        if ($podeVisualizar) {
+            return $dados;
+        }
+
+        return array_merge($dados, [
+            'titulo' => 'Documento de acesso restrito',
+            'especie' => '—',
+            'departamento' => '—',
+            'autor_ou_procedencia' => '—',
+            'status' => null,
+            'status_label' => 'Restrito',
+            'status_badge' => 'bg-light text-dark border',
+            'url_show' => null,
+            'url_pdf' => null,
+        ]);
     }
 
     /**

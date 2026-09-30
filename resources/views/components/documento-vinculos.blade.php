@@ -257,6 +257,13 @@
             let currentFiltroTipo = '';
             let debounceTimer = null;
 
+            // Assunto, procedência e autor são texto livre: escapados antes de ir para innerHTML.
+            function esc(valor) {
+                const div = document.createElement('div');
+                div.textContent = valor ?? '';
+                return div.innerHTML.replace(/"/g, '&quot;');
+            }
+
             function updateSelectedCount() {
                 const count = selectedDocs.size;
                 if (counterSpan) counterSpan.textContent = count;
@@ -287,28 +294,28 @@
 
                     row.innerHTML = `
                         <div class="form-check mt-1">
-                            <input class="form-check-input doc-checkbox" type="checkbox" value="${item.id}" data-tipo="${item.tipo}" 
+                            <input class="form-check-input doc-checkbox" type="checkbox" value="${esc(item.id)}" data-tipo="${esc(item.tipo)}"
                                 ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}>
                         </div>
                         <div class="flex-grow-1 min-w-0">
                             <div class="d-flex align-items-center gap-2 mb-1">
-                                <span class="badge ${item.tipo_badge} rounded-pill px-2 py-0" style="font-size: 0.7rem;">
-                                    ${item.tipo_label}
+                                <span class="badge ${esc(item.tipo_badge)} rounded-pill px-2 py-0" style="font-size: 0.7rem;">
+                                    ${esc(item.tipo_label)}
                                 </span>
-                                <span class="badge ${item.status_badge} rounded-pill px-2 py-0" style="font-size: 0.7rem;">
-                                    ${item.status_label}
+                                <span class="badge ${esc(item.status_badge)} rounded-pill px-2 py-0" style="font-size: 0.7rem;">
+                                    ${esc(item.status_label)}
                                 </span>
                                 ${isDisabled ? '<span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-0" style="font-size: 0.7rem;">Já Vinculado</span>' : ''}
                             </div>
                             <div class="fw-bold text-dark text-truncate">
-                                <span class="text-primary">${item.numero_identificador}</span> — ${item.titulo}
+                                <span class="text-primary">${esc(item.numero_identificador)}</span> — ${esc(item.titulo)}
                             </div>
                             <div class="small text-muted d-flex flex-wrap gap-2 mt-1" style="font-size: 0.75rem;">
-                                <span><i class="fas fa-user me-1"></i>${item.autor_ou_procedencia}</span>
+                                <span><i class="fas fa-user me-1"></i>${esc(item.autor_ou_procedencia)}</span>
                                 <span>•</span>
-                                <span><i class="fas fa-building me-1"></i>${item.departamento}</span>
+                                <span><i class="fas fa-building me-1"></i>${esc(item.departamento)}</span>
                                 <span>•</span>
-                                <span><i class="far fa-calendar me-1"></i>${item.data}</span>
+                                <span><i class="far fa-calendar me-1"></i>${esc(item.data)}</span>
                             </div>
                         </div>
                     `;

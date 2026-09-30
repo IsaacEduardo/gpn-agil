@@ -305,8 +305,19 @@ class DocumentoVinculoTest extends TestCase
             'status' => 'registrado',
         ]);
 
+        // A pesquisa parte sempre de um documento existente (o modal vive na página dele).
+        $origem = DocumentoEntrada::create([
+            'numero_sequencial' => 5002,
+            'ano_referencia' => 2026,
+            'assunto' => 'Documento de origem',
+            'data_entrada' => now(),
+            'departamento_id' => $this->deptA->id,
+            'user_id' => $this->admin->id,
+            'status' => 'registrado',
+        ]);
+
         $response = $this->actingAs($this->admin)->getJson(
-            route('api.documentos.vinculos.pesquisar', ['tipo' => 'EXTERNO', 'id' => 9999, 'q' => 'Auditoria Financeira'])
+            route('api.documentos.vinculos.pesquisar', ['tipo' => 'EXTERNO', 'id' => $origem->id, 'q' => 'Auditoria Financeira'])
         );
 
         $response->assertOk();
