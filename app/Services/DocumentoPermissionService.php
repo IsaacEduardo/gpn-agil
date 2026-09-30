@@ -271,21 +271,42 @@ class DocumentoPermissionService
             return true;
         }
 
-        // 2. Department Chief (do departamento que tem o documento em mãos)
-        if ($this->isChefeDepartamento($user)) {
-            $userDeps = $this->getUserDepartments($user);
-
-            // Custódia formal primeiro: é o caso corrente e não custa consulta.
-            if (in_array((int) $documento->departamento_id, $userDeps, true)) {
-                return true;
-            }
-
-            if (array_intersect($this->departamentosComCustodia($documento), $userDeps)) {
-                return true;
-            }
+        // 2. Administrador: desbloqueia qualquer documento (decisão de 2026-09-30).
+        if ($user->isAdmin() || $this->isAdmin($user)) {
+            return true;
         }
 
-        return false;
+        // 3. Chefe DO departamento que tem o documento em mãos. Ter o papel e ser
+        // membro não chega: um chefe de A que seja membro secundário de B, ou um
+        // adjunto com o mesmo papel, não delega em B.
+        return array_intersect($this->departamentosComCustodia($documento), $this->departamentosChefiados($user)) !== [];
+    }
+
+    /**
+     * Departamentos de que o utilizador é o chefe designado — regra única de
+     * "é chefe do departamento X" para delegar tarefas.
+     *
+     * Usa Departamento::chefeDesignado(): o responsável (responsavel_id, espelho
+     * mantido pela DepartamentoChefiaService) ou, sem ele, o único utilizador do
+     * departamento com o papel de chefe. Com dois ou mais candidatos não há chefe
+     * — nunca se escolhe "um qualquer".
+     *
+     * @return int[]
+     */
+    public function departamentosChefiados(User $user): array
+    {
+        $candidatos = Departamento::where('responsavel_id', $user->id)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        if ($user->departamento_id && $this->isChefeDepartamento($user)) {
+            $candidatos[] = (int) $user->departamento_id;
+        }
+
+        return Departamento::whereIn('id', array_unique($candidatos))->get()
+            ->filter(fn (Departamento $dep) => (int) optional($dep->chefeDesignado())->id === (int) $user->id)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
     }
 
     /**

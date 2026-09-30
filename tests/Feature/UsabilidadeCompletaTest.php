@@ -142,10 +142,15 @@ class UsabilidadeCompletaTest extends TestCase
         $this->assertEquals(DocumentoStatus::RECEBIDO->value, $doc->refresh()->status);
         $this->assertEquals($this->departamentoDestino->id, $doc->departamento_id);
 
-        // 4. Criar Tarefa no documento (Chefe Destino)
+        // 4. Criar Tarefa no documento (Chefe Destino), para um técnico do destino.
+        // O chefe não se atribui tarefas a si próprio (decisão de 2026-09-30).
+        $tecnicoDestino = User::factory()->create([
+            'departamento_id' => $this->departamentoDestino->id,
+            'role_id' => Role::where('name', 'user')->first()->id,
+        ]);
         $response = $this->actingAs($this->chefeDestino)->post(route('documentos-entradas.tarefas.store', $doc), [
             'tipo' => 'usuario',
-            'destino_ids' => [$this->chefeDestino->id],
+            'destino_ids' => [$tecnicoDestino->id],
             'titulo' => 'Analisar Documento',
             'descricao' => 'Verificar conteúdo.',
         ]);

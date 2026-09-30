@@ -89,31 +89,17 @@ class DocumentoEntradaTarefaController extends Controller
             }
         }
 
-        // Executar a criação da tarefa e a aprovação automática do documento dentro da mesma transação
-        \Illuminate\Support\Facades\DB::transaction(function () use ($tipo, $usuariosValidos, $destinoDep, $validated, $documento, $actor) {
-            if ($tipo === 'usuario') {
-                $grupoUuid = (count($usuariosValidos) > 1) ? (string) Str::uuid() : null;
-
-                foreach ($usuariosValidos as $user) {
-                    $data = [
-                        'titulo' => $validated['titulo'],
-                        'descricao' => $validated['descricao'] ?? null,
-                        'prazo_at' => $validated['prazo_at'] ?? null,
-                        'assigned_to_user_id' => $user->id,
-                        'grupo_tarefa_uuid' => $grupoUuid,
-                    ];
-                    $this->documentoService->createTask($documento, $data, $actor);
-                }
-            } else {
-                $data = [
-                    'titulo' => $validated['titulo'],
-                    'descricao' => $validated['descricao'] ?? null,
-                    'prazo_at' => $validated['prazo_at'] ?? null,
-                    'assigned_to_departamento_id' => $destinoDep->id,
-                ];
-                $this->documentoService->createTask($documento, $data, $actor);
-            }
-        });
+        if ($tipo === 'usuario') {
+            // Fonte única, partilhada com o painel rápido: uma tarefa por pessoa, mesmo grupo.
+            $this->documentoService->delegarAUtilizadores($documento, $actor, $usuariosValidos, $validated);
+        } else {
+            $this->documentoService->createTask($documento, [
+                'titulo' => $validated['titulo'],
+                'descricao' => $validated['descricao'] ?? null,
+                'prazo_at' => $validated['prazo_at'] ?? null,
+                'assigned_to_departamento_id' => $destinoDep->id,
+            ], $actor);
+        }
 
         return redirect()->route('documentos-entradas.show', $documento)->with('success', 'Tarefa designada com sucesso e Documento Externo aprovado.');
     }

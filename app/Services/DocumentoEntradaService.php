@@ -756,57 +756,113 @@ class DocumentoEntradaService
     }
 
     /**
-     * Regra única de quem pode receber uma tarefa num documento de entrada.
-     * Partilhada pelo DocumentoEntradaTarefaController e pelo quickAction — antes
-     * só o primeiro a aplicava, pelo que o segundo aceitava qualquer utilizador.
+     * Fonte ÚNICA de quem pode receber uma tarefa neste documento, delegada por
+     * este actor. A ficha e o painel rápido desenham esta lista, e
+     * validarDestinatarioTarefa() aceita exactamente estes — mostrar alguém que
+     * o servidor recusa (ou esconder quem aceita) deixa de ser possível.
+     *
+     * Antes a ficha listava os utilizadores de departamento_id — a ORIGEM
+     * enquanto o encaminhamento espera recibo —, e o chefe do destino via o botão,
+     * via os técnicos da origem e o servidor recusava-os.
+     *
+     * Ninguém se atribui tarefas a si próprio (decisão de 2026-09-30).
+     *
+     * @return \Illuminate\Support\Collection<int, User>
+     */
+    public function destinatariosTarefa(DocumentoEntrada $documento, User $actor): \Illuminate\Support\Collection
+    {
+        if (! $this->permissionService->canManageTasks($actor, $documento)) {
+            return collect();
+        }
+
+        $docGabId = optional($documento->departamento)->gabinete_id;
+
+        if ($docGabId && $actor->isSuperChefeDoGabinete($docGabId)) {
+            // Super Chefe: só o Chefe de Gabinete e os Chefes de Departamento do gabinete.
+            $ids = Departamento::where('gabinete_id', $docGabId)->whereNotNull('responsavel_id')->pluck('responsavel_id')
+                ->push(optional($documento->departamento->gabinete)->responsavel_id)
+                ->filter();
+            $query = User::whereIn('id', $ids);
+        } elseif ($this->permissionService->isGabineteResponsavel($actor, $docGabId)) {
+            // Chefe de Gabinete: qualquer utilizador do gabinete.
+            $query = User::whereHas('departamento', fn ($q) => $q->where('gabinete_id', $docGabId));
+        } else {
+            // Chefe de departamento (ou admin): quem é do departamento que tem o
+            // documento em mãos — recebido ou por receber — e, para o chefe, que
+            // ele chefia. Delegar é um ato interno ao departamento.
+            $custodia = $this->permissionService->departamentosComCustodia($documento);
+            $deps = $this->permissionService->isAdmin($actor) || $actor->isAdmin()
+                ? $custodia
+                : array_values(array_intersect($custodia, $this->permissionService->departamentosChefiados($actor)));
+
+            if ($deps === []) {
+                return collect();
+            }
+
+            $query = User::where(fn ($q) => $q->whereIn('departamento_id', $deps)
+                ->orWhereHas('departamentos', fn ($d) => $d->whereIn('departamentos.id', $deps)));
+        }
+
+        return $query->where('users.id', '!=', $actor->id)->orderBy('name')->get();
+    }
+
+    /**
+     * Regra única de quem pode receber uma tarefa num documento de entrada:
+     * pertencer a destinatariosTarefa(). Partilhada pelo DocumentoEntradaTarefaController
+     * e pelo quickAction.
      *
      * @return string|null mensagem de erro, ou null se o destinatário é válido.
      */
     public function validarDestinatarioTarefa(DocumentoEntrada $documento, User $destino, User $actor): ?string
     {
+        if ($this->destinatariosTarefa($documento, $actor)->contains('id', $destino->id)) {
+            return null;
+        }
+
+        if ((int) $destino->id === (int) $actor->id) {
+            return 'Não pode atribuir uma tarefa a si próprio.';
+        }
+
         $docGabId = optional($documento->departamento)->gabinete_id;
 
-        if ($actor->isSuperChefeDoGabinete($docGabId)) {
-            $gabinete = $documento->departamento ? $documento->departamento->gabinete : null;
-            $isChefeGab = $gabinete && (int) $gabinete->responsavel_id === (int) $destino->id;
-            $isChefeDep = Departamento::where('gabinete_id', $docGabId)
-                ->where('responsavel_id', $destino->id)
-                ->exists();
-
-            return ($isChefeGab || $isChefeDep)
-                ? null
-                : 'O Super Chefe só pode delegar tarefas ao Chefe de Gabinete ou aos Chefes de Departamento do respetivo gabinete.';
+        if ($docGabId && $actor->isSuperChefeDoGabinete($docGabId)) {
+            return 'O Super Chefe só pode delegar tarefas ao Chefe de Gabinete ou aos Chefes de Departamento do respetivo gabinete.';
         }
 
         if ($this->permissionService->isGabineteResponsavel($actor, $docGabId)) {
-            $destinoDep = $destino->departamento;
-
-            return ($destinoDep && (int) $destinoDep->gabinete_id === (int) $docGabId)
-                ? null
-                : 'Selecione usuário do seu gabinete.';
+            return 'Selecione usuário do seu gabinete.';
         }
 
-        // Chefe de departamento: o destinatário tem de pertencer ao departamento
-        // que tem o documento em mãos E que é do próprio ator — delegar é um ato
-        // interno ao departamento, não uma atribuição a terceiros.
-        //
-        // Ler apenas departamento_id contava a ORIGEM enquanto o encaminhamento
-        // esperasse recibo, pelo que o chefe do destino via os seus próprios
-        // técnicos recusados com "Selecione usuário do seu departamento". Ver
-        // DocumentoPermissionService::departamentosComCustodia().
-        $deps = array_values(array_intersect(
-            $this->permissionService->departamentosComCustodia($documento),
-            $this->permissionService->getUserDepartments($actor)
-        ));
+        return 'Selecione usuário do seu departamento.';
+    }
 
-        if (empty($deps)) {
-            return 'Selecione usuário do seu departamento.';
-        }
+    /**
+     * Delega a mesma tarefa em um ou mais utilizadores: uma tarefa por pessoa,
+     * todas no mesmo grupo, numa só transacção. Fonte única da ficha e do painel
+     * rápido. Os destinatários já vêm validados por validarDestinatarioTarefa().
+     *
+     * @param  User[]  $destinatarios
+     * @param  array{titulo: string, descricao?: ?string, prazo_at?: ?string}  $dados
+     * @return DocumentoTarefa[]
+     */
+    public function delegarAUtilizadores(DocumentoEntrada $documento, User $actor, array $destinatarios, array $dados): array
+    {
+        return DB::transaction(function () use ($documento, $actor, $destinatarios, $dados) {
+            $grupo = count($destinatarios) > 1 ? (string) Str::uuid() : null;
+            $tarefas = [];
 
-        $pertence = in_array((int) $destino->departamento_id, $deps, true)
-            || $destino->departamentos()->whereIn('departamento_id', $deps)->exists();
+            foreach ($destinatarios as $destino) {
+                $tarefas[] = $this->createTask($documento, [
+                    'titulo' => $dados['titulo'],
+                    'descricao' => $dados['descricao'] ?? null,
+                    'prazo_at' => $dados['prazo_at'] ?? null,
+                    'assigned_to_user_id' => $destino->id,
+                    'grupo_tarefa_uuid' => $grupo,
+                ], $actor);
+            }
 
-        return $pertence ? null : 'Selecione usuário do seu departamento.';
+            return $tarefas;
+        });
     }
 
     /**
