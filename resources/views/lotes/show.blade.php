@@ -114,7 +114,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     @if($lote->geojson_geometria)
         try {
-            var geojson = {!! $lote->geojson_geometria !!};
+            {{-- Nunca emitir o texto gravado cru num <script>: @json escapa < > & e aspas; JSON inválido vira null e cai no catch. --}}
+            var geojson = @json(json_decode($lote->geojson_geometria));
             var layer = L.geoJSON(geojson, {
                 style: { color: '#198754', weight: 3, fillOpacity: 0.5 }
             }).addTo(map);

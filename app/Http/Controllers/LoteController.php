@@ -101,7 +101,7 @@ class LoteController extends Controller
             'status'                => 'required|in:DISPONIVEL,RESERVADO,ATRIBUIDO,EM_LICITACAO,INDISPONIVEL',
             'latitude_centro'       => 'nullable|numeric|between:-90,90',
             'longitude_centro'      => 'nullable|numeric|between:-180,180',
-            'geojson_geometria'     => 'nullable|string',
+            'geojson_geometria'     => $this->regraGeojson(),
             'observacoes'           => 'nullable|string',
         ]);
 
@@ -162,7 +162,7 @@ class LoteController extends Controller
             'status'                => 'required|in:DISPONIVEL,RESERVADO,ATRIBUIDO,EM_LICITACAO,INDISPONIVEL',
             'latitude_centro'       => 'nullable|numeric|between:-90,90',
             'longitude_centro'      => 'nullable|numeric|between:-180,180',
-            'geojson_geometria'     => 'nullable|string',
+            'geojson_geometria'     => $this->regraGeojson(),
             'observacoes'           => 'nullable|string',
         ]);
 
@@ -210,5 +210,21 @@ class LoteController extends Controller
         $lote->delete();
         return redirect()->route('lotes.index')
             ->with('success', 'Lote removido do inventário com sucesso.');
+    }
+
+    /**
+     * Geometria: JSON com um tipo GeoJSON conhecido. O texto é depois
+     * desenhado no mapa, pelo que não se aceita texto livre.
+     */
+    private function regraGeojson(): array
+    {
+        return ['nullable', 'string', 'json', function (string $attribute, mixed $value, \Closure $fail) {
+            $dados = json_decode((string) $value, true);
+            $tipos = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon', 'GeometryCollection', 'Feature', 'FeatureCollection'];
+
+            if (! is_array($dados) || ! in_array($dados['type'] ?? null, $tipos, true)) {
+                $fail('A geometria tem de ser GeoJSON válido (Polygon, Point, Feature…).');
+            }
+        }];
     }
 }
