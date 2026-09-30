@@ -43,7 +43,8 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Auth::routes(['logout' => false]);
+// Sem registo público: as contas são criadas pelo administrador (admin/users).
+Auth::routes(['register' => false, 'logout' => false]);
 Route::match(['get', 'post'], '/logout', [\App\Http\Controllers\Auth\LoginController::class, 'logout'])->name('logout');
 
 // Rota pública de verificação de autenticidade de documentos (acesso externo via hash)

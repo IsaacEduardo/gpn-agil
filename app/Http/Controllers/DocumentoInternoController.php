@@ -10,6 +10,7 @@ use App\Models\DocumentoInterno;
 use App\Models\ModeloDocumento;
 use App\Models\User;
 use App\Services\DocumentoInternoService;
+use App\Services\DocumentoPermissionService;
 use App\Services\DocumentoWorkflowService;
 use App\Services\EmissorDocumentoService;
 use App\Services\PdfRenderService;
@@ -645,9 +646,8 @@ class DocumentoInternoController extends Controller
         ]);
 
         if ($documentoInterno && $documentoInterno->exists) {
-            if ($documentoInterno->status !== DocumentoStatus::RASCUNHO && $documentoInterno->status !== 'rascunho') {
-                return response()->json(['success' => false, 'message' => 'Apenas rascunhos podem ser salvos automaticamente.'], 422);
-            }
+            // Mesma regra do edit/update: sem isto qualquer autenticado sobrescrevia rascunhos alheios.
+            $this->authorize('update', $documentoInterno);
 
             $documentoInterno->update([
                 'conteudo_final' => $request->conteudo_final,
@@ -655,6 +655,12 @@ class DocumentoInternoController extends Controller
             ]);
             $doc = $documentoInterno;
         } else {
+            $user = Auth::user();
+            if ($request->filled('departamento_id') && ! $user->isAdmin()
+                && ! in_array((int) $request->departamento_id, app(DocumentoPermissionService::class)->getUserDepartments($user), true)) {
+                abort(403, 'Não pode criar documentos noutro departamento.');
+            }
+
             $doc = DocumentoInterno::create([
                 'titulo' => $request->titulo ?: 'Novo Documento (Rascunho)',
                 'conteudo_final' => $request->conteudo_final,

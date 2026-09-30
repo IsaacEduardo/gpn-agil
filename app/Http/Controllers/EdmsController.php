@@ -341,12 +341,8 @@ class EdmsController extends Controller
         $versao = DocumentoVersao::with('documentoInterno')->findOrFail($versionId);
         $documento = $versao->documentoInterno;
 
-        if (! $documento) {
+        if (! $documento || ! $this->podeLerDocumento($user, $documento)) {
             abort(404, 'Documento não encontrado.');
-        }
-
-        if ($documento->pasta && ! $this->canAccessFolder($user, $documento->pasta)) {
-            abort(403, 'Acesso negado.');
         }
 
         $content = $this->storageService->retrieveFileContent($versao);
@@ -376,10 +372,9 @@ class EdmsController extends Controller
         $anexo = Anexo::findOrFail($anexoId);
         $documento = $anexo->anexavel;
 
-        if ($documento instanceof DocumentoEntrada) {
-            if ($documento->pasta && ! $this->canAccessFolder($user, $documento->pasta)) {
-                abort(403, 'Acesso negado.');
-            }
+        // 404 e não 403: os IDs são sequenciais e não se confirma a existência de anexos alheios.
+        if (! $documento || ! $this->podeLerDocumento($user, $documento)) {
+            abort(404, 'Ficheiro não encontrado.');
         }
 
         $disk = config('filesystems.docs_disk', 'public');
@@ -562,6 +557,23 @@ class EdmsController extends Controller
     }
 
     // Auxiliar de permissão (deveria ser Policy)
+    /**
+     * Leitura de ficheiros de um documento: quem o pode ver (policy) ou, já
+     * arquivado, quem tem acesso à pasta. Qualquer outro tipo de dono é negado.
+     */
+    private function podeLerDocumento($user, $documento): bool
+    {
+        if (! $documento instanceof DocumentoEntrada && ! $documento instanceof DocumentoInterno) {
+            return false;
+        }
+
+        if ($user->can('view', $documento)) {
+            return true;
+        }
+
+        return $documento->pasta && $this->canAccessFolder($user, $documento->pasta);
+    }
+
     private function canAccessFolder($user, $folder)
     {
         // Admin
