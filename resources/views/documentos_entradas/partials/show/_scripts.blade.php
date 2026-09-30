@@ -175,36 +175,51 @@
                 const destinoUsuario = tarefaForm.querySelector('[data-field="destino-usuario"]');
                 const destinoDepartamento = tarefaForm.querySelector('[data-field="destino-departamento"]');
                 const depSelect = destinoDepartamento ? destinoDepartamento.querySelector('select') : null;
-                const userSelect = destinoUsuario ? destinoUsuario.querySelector('select') : null;
+                const caixas = () => tarefaForm.querySelectorAll('input[data-destinatario]');
+                const contagem = tarefaForm.querySelector('[data-destinatarios-contagem]');
+                const erroDestinatarios = tarefaForm.querySelector('[data-destinatarios-erro]');
+                const btnTodos = tarefaForm.querySelector('[data-destinatarios-todos]');
+                const actualizarContagem = function() {
+                    const marcadas = Array.from(caixas()).filter(c => c.checked).length;
+                    if (contagem) contagem.textContent = marcadas + ' selecionado(s)';
+                    if (btnTodos) btnTodos.textContent = marcadas === caixas().length && marcadas > 0 ? 'Limpar seleção' : 'Selecionar todos';
+                    if (erroDestinatarios && marcadas > 0) erroDestinatarios.classList.add('d-none');
+                };
+                caixas().forEach(c => c.addEventListener('change', actualizarContagem));
+                if (btnTodos) btnTodos.addEventListener('click', function() {
+                    const todas = Array.from(caixas());
+                    const marcar = !todas.every(c => c.checked);
+                    todas.forEach(c => { c.checked = marcar; });
+                    actualizarContagem();
+                });
                 const updateVisibility = function() {
                     const isDep = tipoDepartamento && tipoDepartamento.checked;
                     if (destinoUsuario) destinoUsuario.classList.toggle('d-none', isDep);
                     if (destinoDepartamento) destinoDepartamento.classList.toggle('d-none', !isDep);
-                    
-                    if (isDep) {
-                        if (depSelect) {
-                            depSelect.setAttribute('name', 'destino_id');
-                            depSelect.required = true;
-                        }
-                        if (userSelect) {
-                            userSelect.removeAttribute('name');
-                            userSelect.required = false;
-                        }
-                    } else {
-                        if (userSelect) {
-                            userSelect.setAttribute('name', 'destino_ids[]');
-                            userSelect.required = true;
-                        }
-                        if (depSelect) {
-                            depSelect.removeAttribute('name');
-                            depSelect.required = false;
-                        }
+
+                    // Caixas desactivadas não são enviadas: com "departamento" só vai o destino_id.
+                    caixas().forEach(c => { c.disabled = isDep; });
+                    if (depSelect) {
+                        if (isDep) depSelect.setAttribute('name', 'destino_id'); else depSelect.removeAttribute('name');
+                        depSelect.required = isDep;
                     }
                 };
                 if (tipoUsuario) tipoUsuario.addEventListener('change', updateVisibility);
                 if (tipoDepartamento) tipoDepartamento.addEventListener('change', updateVisibility);
                 updateVisibility();
-                
+                actualizarContagem();
+
+                // Caixas não têm "required" de grupo: pelo menos uma é validada aqui
+                // (o servidor valida de novo).
+                tarefaForm.addEventListener('submit', function(evento) {
+                    const isDep = tipoDepartamento && tipoDepartamento.checked;
+                    if (!isDep && !Array.from(caixas()).some(c => c.checked)) {
+                        evento.preventDefault();
+                        evento.stopImmediatePropagation();
+                        if (erroDestinatarios) erroDestinatarios.classList.remove('d-none');
+                    }
+                }, true);
+
                 // New: Loading state for submit button
                 tarefaForm.addEventListener('submit', function() {
                     const btn = document.getElementById('btnSubmitTarefa');

@@ -175,15 +175,24 @@
                 @elseif($acaoRapida === 'delegar')
                     {{-- Form para Chefe de Departamento --}}
                     <div class="mb-3">
-                        <label class="form-label fw-bold small text-uppercase text-muted">
-                            Atribuir ao Técnico da Equipe <span class="text-danger">*</span>
-                        </label>
-                        <select name="assigned_to_user_id" class="form-select form-select-sm" required>
-                            <option value="">-- Selecione o Técnico Responsável --</option>
-                            @foreach($depUsuarios as $u)
-                                <option value="{{ $u->id }}">👤 {{ $u->name }}</option>
-                            @endforeach
-                        </select>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <label class="form-label fw-bold small text-uppercase text-muted mb-1">
+                                Atribuir aos Técnicos da Equipa <span class="text-danger">*</span>
+                            </label>
+                            @if($destinatariosTarefa->count() > 1)
+                                <button type="button" class="btn btn-link btn-sm p-0 small" onclick="(function(b){const c=b.closest('form').querySelectorAll('input[name=&quot;assigned_to_user_ids[]&quot;]');const m=!Array.from(c).every(x=>x.checked);c.forEach(x=>x.checked=m);})(this)">Selecionar todos</button>
+                            @endif
+                        </div>
+                        {{-- A lista é a que o servidor aceita (DocumentoEntradaService::destinatariosTarefa). --}}
+                        @forelse($destinatariosTarefa as $u)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="assigned_to_user_ids[]" value="{{ $u->id }}" id="drawerDestinatario_{{ $u->id }}">
+                                <label class="form-check-label small" for="drawerDestinatario_{{ $u->id }}">{{ $u->name }}</label>
+                            </div>
+                        @empty
+                            <div class="alert alert-warning small mb-0">Não há técnicos a quem possa atribuir esta tarefa.</div>
+                        @endforelse
+                        <div class="form-text small">Cada técnico selecionado recebe a sua própria tarefa.</div>
                     </div>
 
                     <div class="mb-3">

@@ -347,41 +347,17 @@ class DocumentoEntradaController extends Controller
         $gabinetes = Cache::remember('gabinetes_list', 600, fn () => Gabinete::select(['id', 'nome', 'sigla'])->orderBy('nome')->get());
 
         $actor = Auth::user();
-        $gabUsuarios = collect();
         $gabDepartamentos = collect();
-        $depUsuarios = collect();
 
         $gab = optional($doc->departamento)->gabinete;
-        if ($gab) {
-            if ($this->permissionService->isGabineteResponsavel($actor, $gab->id)) {
-                $gabUsuarios = User::whereHas('departamento', function ($q) use ($gab) {
-                    $q->where('gabinete_id', $gab->id);
-                })->orderBy('name')->get(['id', 'name']);
-
-                $gabDepartamentos = Departamento::where('gabinete_id', $gab->id)->orderBy('nome')->get(['id', 'nome']);
-            } elseif ($actor->isSuperChefeDoGabinete($gab)) {
-                $destIds = collect();
-                if ($gab->responsavel_id) {
-                    $destIds->push($gab->responsavel_id);
-                }
-                $depChiefs = Departamento::where('gabinete_id', $gab->id)->whereNotNull('responsavel_id')->pluck('responsavel_id');
-                $destIds = $destIds->merge($depChiefs)->unique()->filter()->values();
-
-                if ($destIds->isNotEmpty()) {
-                    $gabUsuarios = User::whereIn('id', $destIds)->orderBy('name')->get(['id', 'name']);
-                } else {
-                    $gabUsuarios = collect();
-                }
-            }
+        if ($gab && $this->permissionService->isGabineteResponsavel($actor, $gab->id)) {
+            $gabDepartamentos = Departamento::where('gabinete_id', $gab->id)->orderBy('nome')->get(['id', 'nome']);
         }
 
-        if ($doc->departamento_id) {
-            $depId = (int) $doc->departamento_id;
-            $depUsuarios = User::where('departamento_id', $depId)
-                ->orWhereHas('departamentos', fn ($q) => $q->where('departamentos.id', $depId))
-                ->orderBy('name')
-                ->get(['id', 'name']);
-        }
+        // Quem pode receber tarefa: a MESMA lista que o servidor aceita, para
+        // qualquer perfil (chefe de departamento, de gabinete, super-chefe, admin).
+        // Ver DocumentoEntradaService::destinatariosTarefa().
+        $destinatariosTarefa = $this->documentoService->destinatariosTarefa($doc, $actor);
 
         $hasPendente = $doc->encaminhamentos()->whereNull('recebido_em')->exists();
         $deps = $this->permissionService->getUserDepartments($actor);
@@ -451,7 +427,7 @@ class DocumentoEntradaController extends Controller
         $etiquetaDesatualizada = $this->etiquetaDesatualizada($doc, $timelineEvents);
 
         return view('documentos_entradas.show', compact(
-            'doc', 'departamentos', 'gabinetes', 'gabUsuarios', 'gabDepartamentos', 'depUsuarios',
+            'doc', 'departamentos', 'gabinetes', 'gabDepartamentos', 'destinatariosTarefa',
             'hasPendente', 'deps', 'pastas', 'modelosDespacho', 'relacionados', 'canAssignTask',
             'canVisto', 'canVistoGabinete', 'canDespachar', 'audits',
             'auditsTotal', 'canVerAuditoria', 'timelineEvents', 'etiquetaDesatualizada'
@@ -880,13 +856,8 @@ Parecer: {$t->resposta}";
         // aplica no despacho (ver DocumentoEntradaService).
         $departamentos = $this->documentoService->departamentosDestinoPermitidos($doc);
 
-        // Técnicos/utilizadores do departamento para atribuição
-        $depUsuarios = User::whereHas('departamentos', function ($q) use ($userDeps) {
-            $q->whereIn('departamentos.id', $userDeps);
-        })->orWhere('departamento_id', $actor->departamento_id)
-            ->distinct()
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        // Quem pode receber tarefa: a mesma lista da ficha e a que o servidor aceita.
+        $destinatariosTarefa = $this->documentoService->destinatariosTarefa($doc, $actor);
 
         $minhaTarefa = DocumentoTarefa::where('documento_entrada_id', $doc->id)
             ->where('assigned_to_user_id', $actor->id)
@@ -909,9 +880,12 @@ Parecer: {$t->resposta}";
         // leem daqui, para não poderem divergir: antes o botão era desenhado
         // sempre, e o perfil 'expediente' — que não tem ramo no formulário —
         // submetia um pedido vazio que o servidor só podia recusar.
+        //
+        // Delegar decide-se por PODER delegar, não pelo perfil: um chefe que também
+        // pertence à Área de Expediente tem perfil 'expediente' e ficava sem a opção.
         $acaoRapida = match (true) {
             $userProfile === 'gabinete' && $canDespachar => 'despachar',
-            $userProfile === 'chefe_departamento' && $canDelegar => 'delegar',
+            $canDelegar => 'delegar',
             $userProfile === 'tecnico' && $minhaTarefa !== null => 'parecer',
             default => null,
         };
@@ -931,7 +905,7 @@ Parecer: {$t->resposta}";
             'canForward',
             'pastas',
             'departamentos',
-            'depUsuarios',
+            'destinatariosTarefa',
             'minhaTarefa',
             'tarefas',
             'canDespachar',
@@ -950,6 +924,16 @@ Parecer: {$t->resposta}";
         }
 
         $profile = $this->permissionService->getUserWorkflowProfile($actor);
+
+        // Delegar decide-se pelo pedido e por canManageTasks, não pelo perfil: um
+        // chefe que também é da Área de Expediente tem perfil 'expediente' e não
+        // chegava a este ramo.
+        $delegar = $request->has('assigned_to_user_ids') || $request->has('assigned_to_user_id')
+            || $profile === 'chefe_departamento';
+
+        if ($delegar) {
+            return $this->delegarPeloPainel($request, $documento, $actor);
+        }
 
         if ($profile === 'gabinete') {
             // Ver o documento nunca basta para o despachar: canViewDocument é largo
@@ -984,51 +968,6 @@ Parecer: {$t->resposta}";
             );
 
             $message = 'Despacho emitido e documento encaminhado aos departamentos de destino!';
-        } elseif ($profile === 'chefe_departamento') {
-            // Mesma exigência do DocumentoEntradaTarefaController::store.
-            if (! $this->permissionService->canManageTasks($actor, $documento)) {
-                return response()->json([
-                    'error' => 'Você não tem permissão para delegar tarefas neste documento.',
-                ], 403);
-            }
-
-            $validated = $request->validate([
-                'assigned_to_user_id' => ['required', 'integer', 'exists:users,id'],
-                'descricao' => ['required', 'string'],
-                'prazo_at' => ['required', 'date'],
-            ]);
-
-            // O destinatário tem de pertencer ao departamento/gabinete — regra
-            // partilhada com o TarefaController via DocumentoEntradaService.
-            $destino = User::find($validated['assigned_to_user_id']);
-            $erroDestino = $destino
-                ? $this->documentoService->validarDestinatarioTarefa($documento, $destino, $actor)
-                : 'Usuário não encontrado.';
-
-            if ($erroDestino !== null) {
-                return response()->json([
-                    'message' => $erroDestino,
-                    'errors' => ['assigned_to_user_id' => [$erroDestino]],
-                ], 422);
-            }
-
-            // Fonte única da delegação: cria a tarefa, dá o visto do departamento
-            // e dá por recebido o encaminhamento pendente.
-            //
-            // Este ramo tinha uma cópia manuscrita da lógica — e, como o ramo do
-            // gabinete e o do técnico antes dele, já divergira: criava a tarefa
-            // sem disparar TaskAssigned, pelo que o executante NUNCA era
-            // notificado por esta via; e punha o status em RECEBIDO sem tocar no
-            // encaminhamento nem na custódia, deixando os dois eixos do documento
-            // a afirmar coisas diferentes.
-            $this->documentoService->createTask($documento, [
-                'titulo' => 'Despacho Executivo / Demanda Técnica',
-                'descricao' => $validated['descricao'],
-                'assigned_to_user_id' => $validated['assigned_to_user_id'],
-                'prazo_at' => $validated['prazo_at'],
-            ], $actor);
-
-            $message = 'Despacho/Tarefa delegada com sucesso e documento aprovado!';
         } elseif ($profile === 'tecnico') {
             $validated = $request->validate([
                 'tarefa_id' => ['required', 'integer', 'exists:documento_tarefas,id'],
@@ -1048,12 +987,70 @@ Parecer: {$t->resposta}";
             return response()->json(['error' => 'Ação não permitida para o perfil atual.'], 403);
         }
 
-        $workflowTabs = $this->documentoService->getRoleWorkflowTabs($actor, $request);
+        return $this->respostaAcaoRapida($request, $actor, $message);
+    }
 
+    /**
+     * Delegação pelo painel rápido: um ou mais técnicos (assigned_to_user_ids[]);
+     * assigned_to_user_id, de um só, continua aceite. Mesmas regras e mesma
+     * implementação que a ficha (DocumentoEntradaTarefaController::store).
+     */
+    private function delegarPeloPainel(Request $request, DocumentoEntrada $documento, User $actor)
+    {
+        if (! $this->permissionService->canManageTasks($actor, $documento)) {
+            return response()->json([
+                'error' => 'Você não tem permissão para delegar tarefas neste documento.',
+            ], 403);
+        }
+
+        $campo = $request->has('assigned_to_user_ids') ? 'assigned_to_user_ids' : 'assigned_to_user_id';
+        $validated = $request->validate([
+            'assigned_to_user_ids' => ['required_without:assigned_to_user_id', 'array', 'min:1'],
+            'assigned_to_user_ids.*' => ['integer', 'exists:users,id'],
+            'assigned_to_user_id' => ['required_without:assigned_to_user_ids', 'nullable', 'integer', 'exists:users,id'],
+            'descricao' => ['required', 'string'],
+            'prazo_at' => ['required', 'date'],
+        ], [
+            'assigned_to_user_ids.required_without' => 'Selecione pelo menos um técnico.',
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $validated['assigned_to_user_ids'] ?? [$validated['assigned_to_user_id']])));
+
+        // Todos validados antes de criar qualquer tarefa: nada fica a meio.
+        $destinatarios = [];
+        foreach ($ids as $id) {
+            $destino = User::find($id);
+            $erro = $destino
+                ? $this->documentoService->validarDestinatarioTarefa($documento, $destino, $actor)
+                : 'Usuário não encontrado.';
+
+            if ($erro !== null) {
+                return response()->json(['message' => $erro, 'errors' => [$campo => [$erro]]], 422);
+            }
+            $destinatarios[] = $destino;
+        }
+
+        // Fonte única: tarefa por pessoa, visto do departamento, notificação de cada
+        // um e recibo do encaminhamento pendente.
+        $this->documentoService->delegarAUtilizadores($documento, $actor, $destinatarios, [
+            'titulo' => 'Despacho Executivo / Demanda Técnica',
+            'descricao' => $validated['descricao'],
+            'prazo_at' => $validated['prazo_at'],
+        ]);
+
+        $message = count($destinatarios) > 1
+            ? 'Tarefa delegada a '.count($destinatarios).' técnicos e documento aprovado!'
+            : 'Despacho/Tarefa delegada com sucesso e documento aprovado!';
+
+        return $this->respostaAcaoRapida($request, $actor, $message);
+    }
+
+    private function respostaAcaoRapida(Request $request, User $actor, string $message)
+    {
         return response()->json([
             'success' => true,
             'message' => $message,
-            'tabs' => $workflowTabs,
+            'tabs' => $this->documentoService->getRoleWorkflowTabs($actor, $request),
         ]);
     }
 

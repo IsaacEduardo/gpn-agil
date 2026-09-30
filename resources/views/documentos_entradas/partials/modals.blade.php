@@ -290,13 +290,26 @@
                             @endif
                             <span class="text-danger">*</span>
                         </label>
-                        <select name="destino_ids[]" class="form-select" multiple required style="min-height: 120px;">
-                            @php($listaUsuarios = ($actorIsRespGab || $actorIsSuperChefe) ? ($gabUsuarios ?? collect()) : ($depUsuarios ?? collect()))
-                            @foreach ($listaUsuarios as $u)
-                                <option value="{{ $u->id }}">{{ $u->name }}</option>
-                            @endforeach
-                        </select>
-                        <div class="form-text text-muted small">Pressione Ctrl (ou Cmd) para selecionar mais do que um.</div>
+                        {{-- A lista é a que o servidor aceita (DocumentoEntradaService::destinatariosTarefa). --}}
+                        @php($listaUsuarios = $destinatariosTarefa ?? collect())
+                        @if ($listaUsuarios->isEmpty())
+                            <div class="alert alert-warning small mb-0">Não há utilizadores a quem possa atribuir esta tarefa.</div>
+                        @else
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="small text-muted" data-destinatarios-contagem>0 selecionado(s)</span>
+                                <button type="button" class="btn btn-link btn-sm p-0" data-destinatarios-todos>Selecionar todos</button>
+                            </div>
+                            <div class="border rounded p-2 bg-white" style="max-height: 180px; overflow-y: auto;" data-destinatarios-lista>
+                                @foreach ($listaUsuarios as $u)
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="destino_ids[]" value="{{ $u->id }}" data-destinatario data-nome="{{ $u->name }}" id="destinatario_{{ $u->id }}">
+                                        <label class="form-check-label" for="destinatario_{{ $u->id }}">{{ $u->name }}</label>
+                                    </div>
+                                @endforeach
+                            </div>
+                            <div class="invalid-feedback d-block d-none" data-destinatarios-erro>Selecione pelo menos um utilizador.</div>
+                            <div class="form-text text-muted small">Cada pessoa selecionada recebe a sua própria tarefa.</div>
+                        @endif
                     </div>
 
                     @if($actorIsRespGab)

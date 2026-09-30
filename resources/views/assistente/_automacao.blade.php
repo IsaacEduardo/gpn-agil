@@ -220,9 +220,12 @@
                                     
                                     let userTag = '';
                                     if (task.assigned_to_user_id) {
-                                        const userOpt = document.querySelector(`#modalDesignarTarefa select[name="destino_ids[]"] option[value="${task.assigned_to_user_id}"]`);
-                                        if (userOpt) {
-                                            userTag = `<span class="badge bg-light text-dark border small mt-1"><i class="fas fa-user text-muted me-1"></i>${userOpt.textContent}</span>`;
+                                        // Só se sugere quem está na lista do modal (a que o servidor aceita).
+                                        const userBox = document.querySelector(`#modalDesignarTarefa input[data-destinatario][value="${Number(task.assigned_to_user_id)}"]`);
+                                        if (userBox) {
+                                            const nome = document.createElement('span');
+                                            nome.textContent = userBox.dataset.nome || '';
+                                            userTag = `<span class="badge bg-light text-dark border small mt-1"><i class="fas fa-user text-muted me-1"></i>${nome.innerHTML}</span>`;
                                         }
                                     }
                                     
@@ -318,14 +321,11 @@
                     
                     // Set user assignment
                     if (task.assigned_to_user_id) {
-                        const selectUser = modalEl.querySelector('select[name="destino_ids[]"]');
-                        if (selectUser) {
-                            // Find and select option
-                            for (let option of selectUser.options) {
-                                option.selected = (option.value == task.assigned_to_user_id);
-                            }
-                            selectUser.dispatchEvent(new Event('change'));
-                        }
+                        const caixas = modalEl.querySelectorAll('input[data-destinatario]');
+                        caixas.forEach(caixa => {
+                            caixa.checked = (caixa.value == task.assigned_to_user_id);
+                            caixa.dispatchEvent(new Event('change'));
+                        });
                     }
                     
                     modal.show();
