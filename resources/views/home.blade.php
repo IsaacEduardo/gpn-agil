@@ -154,6 +154,9 @@
 
     /* List item items */
     .op-item {
+        /* Contém o .stretched-link do título: sem isto o link de cada item cobria a
+           página inteira e o último (um documento) tapava os cartões do painel. */
+        position: relative;
         padding: 0.9rem 1rem;
         border-radius: 12px;
         margin-bottom: 0.6rem;
@@ -565,7 +568,16 @@
                 response.data.kpis.forEach(kpi => {
                     const el = document.getElementById('kpi-val-' + kpi.id);
                     if (el) {
-                        el.textContent = new Intl.NumberFormat('pt-PT').format(kpi.valor);
+                        // Mesmo formato do servidor (number_format com ponto): o Intl pt-PT
+                        // não agrupa números de 4 dígitos e mostrava "6052" em vez de "6.052".
+                        el.textContent = String(Math.trunc(Number(kpi.valor) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+                        // O destino também se actualiza: uma página aberta antes de um deploy
+                        // ficava com os links antigos enquanto os números se iam actualizando.
+                        const card = el.closest('a.kpi-card');
+                        if (card && kpi.link) {
+                            card.href = kpi.link;
+                        }
                     }
                 });
                 

@@ -219,6 +219,20 @@ class DashboardCardsDestinoTest extends TestCase
         }
     }
 
+    /**
+     * Os itens das listas usam .stretched-link; sem contentor posicionado, o link
+     * do último item (um documento) cobria a página e tapava os cartões — ao
+     * clicar em "A Carecer de Despacho" abria /documentos-internos/{id}.
+     */
+    public function test_links_dos_itens_das_listas_nao_tapam_os_cartoes(): void
+    {
+        $html = $this->actingAs($this->admin)->get(route('home'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('stretched-link', $html, 'Pré-condição: as listas usam stretched-link.');
+        $this->assertMatchesRegularExpression('/\.op-item\s*\{[^}]*position:\s*relative/', $html,
+            'O .op-item tem de conter o stretched-link (position: relative).');
+    }
+
     public function test_filtro_de_estado_aplica_se_com_sessao_iniciada(): void
     {
         $total = $this->totalDaLista($this->admin, route('documentos-entradas.index', ['tab' => 'todos', 'status' => 'tratado']));
