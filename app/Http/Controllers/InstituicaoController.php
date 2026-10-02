@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\DadosInstituicao;
+use App\Support\FormatoEtiqueta;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
@@ -57,6 +59,7 @@ class InstituicaoController extends Controller
             'cabecalho_linha2' => ['nullable', 'string', 'max:255'],
             'cabecalho_linha3' => ['nullable', 'string', 'max:255'],
             'rodape_texto' => ['nullable', 'string'],
+            'etiqueta_formato' => ['nullable', Rule::in(FormatoEtiqueta::chaves())],
             'logo' => ['nullable', 'image', 'mimes:jpeg,png,jpg,svg', 'max:2048'],
             'rodape_img' => ['nullable', 'image', 'mimes:jpeg,png,jpg,svg', 'max:2048'],
         ]);
@@ -76,6 +79,7 @@ class InstituicaoController extends Controller
         $dados->cabecalho_linha2 = $data['cabecalho_linha2'] ?? null;
         $dados->cabecalho_linha3 = $data['cabecalho_linha3'] ?? null;
         $dados->rodape_texto = $data['rodape_texto'] ?? null;
+        $dados->etiqueta_formato = $data['etiqueta_formato'] ?? FormatoEtiqueta::PADRAO;
 
         // Tratar upload do logótipo
         if ($request->hasFile('logo')) {

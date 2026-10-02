@@ -12,6 +12,8 @@ use App\Services\DocumentoEntradaService;
 use Database\Seeders\PermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use SimpleSoftwareIO\QrCode\Generator;
 use Tests\TestCase;
 
 /**
@@ -120,13 +122,29 @@ class ProtocoloConsultaPublicaTest extends TestCase
      */
     public function test_a_etiqueta_ignora_a_url_gravada_e_usa_a_publica(): void
     {
-        $resposta = $this->actingAs($this->operadorDoDepartamento())
-            ->get(route('documentos-entradas.protocolo.etiqueta', $this->doc));
+        // O QR da etiqueta é desenhado dentro do PDF: verifica-se o URL que lhe
+        // chega, já que do PDF não se consegue lê-lo de volta. Gerador falso e
+        // não Mockery: os mocks encadeados da fachada dão erro fatal.
+        $gerador = new class extends Generator
+        {
+            public array $textos = [];
 
-        $resposta->assertStatus(200);
+            public function generate(string $text, ?string $filename = null)
+            {
+                $this->textos[] = $text;
+
+                return '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>';
+            }
+        };
+        QrCode::swap($gerador);
+
+        $this->actingAs($this->operadorDoDepartamento())
+            ->get(route('documentos-entradas.protocolo.etiqueta.pdf', $this->doc))
+            ->assertStatus(200);
+
         $this->assertSame(
-            route('protocolo.publico', ['codigo' => 'PRT-2026-042-ABCDEF']),
-            $resposta->viewData('consultaUrl'),
+            [route('protocolo.publico', ['codigo' => 'PRT-2026-042-ABCDEF'])],
+            $gerador->textos,
         );
     }
 

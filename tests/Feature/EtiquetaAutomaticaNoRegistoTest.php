@@ -157,7 +157,10 @@ class EtiquetaAutomaticaNoRegistoTest extends TestCase
             ->assertStatus(200);
     }
 
-    /** O carimbo de impressão precisa do token — a etiqueta não o tinha. */
+    /**
+     * O carimbo de impressão precisa do token. Com o PDF, o 'afterprint' não
+     * dispara: carimba-se ao pedir o diálogo.
+     */
     public function test_etiqueta_em_auto_print_traz_o_csrf_para_o_carimbo(): void
     {
         $doc = DocumentoEntrada::create([
@@ -174,6 +177,7 @@ class EtiquetaAutomaticaNoRegistoTest extends TestCase
             ->get(route('documentos-entradas.protocolo.etiqueta', [$doc, 'auto_print' => 1]))
             ->assertStatus(200)
             ->assertSee('name="csrf-token"', false)
-            ->assertSee('afterprint', false);
+            // O URL vai por @json, com as barras escapadas.
+            ->assertSee(trim(json_encode(route('documentos-entradas.protocolo.impresso', $doc)), '"'), false);
     }
 }

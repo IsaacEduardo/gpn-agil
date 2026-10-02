@@ -27,6 +27,7 @@ class DadosInstituicao extends Model
         'cabecalho_linha3',
         'rodape_texto',
         'rodape_img_path',
+        'etiqueta_formato',
     ];
 
     /**

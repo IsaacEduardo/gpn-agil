@@ -7,6 +7,8 @@ use App\Models\Departamento;
 use App\Models\DocumentoEntrada;
 use App\Models\DocumentoProtocolo;
 use App\Services\DocumentoEntradaService;
+use App\Support\CabecalhoDocumento;
+use App\Support\FormatoEtiqueta;
 use Carbon\Carbon;
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -40,34 +42,70 @@ class DocumentoEntradaProtocoloController extends Controller
         return view('documentos_entradas.protocolo', compact('documento', 'protocolo', 'consultaUrl'));
     }
 
+    /**
+     * Página da etiqueta: pré-visualiza o PDF e, com ?auto_print=1, abre o
+     * diálogo de impressão sobre ele. Os pontos de entrada (iframe oculto do
+     * registo, botões com target=_blank) apontam todos para aqui, pelo que a
+     * impressão automática se mantém sem mexer neles.
+     */
     public function protocoloEtiqueta(DocumentoEntrada $documento, Request $request)
     {
         $this->authorize('view', $documento);
         $this->authorize('verProtocolo', $documento);
 
-        $documento->load(['departamento.gabinete', 'usuario', 'protocolo']);
+        $documento->load('protocolo');
 
         $this->ensureProtocolo($documento);
 
-        $consultaUrl = $this->urlDeConsulta($documento);
-        $protocolo = $documento->protocolo;
-
         $autoPrint = $request->boolean('auto_print', false);
+        $formato = FormatoEtiqueta::daInstituicao();
 
-        // QR Code SVG inline alta definição
+        return view('documentos_entradas.protocolo_etiqueta', compact('documento', 'autoPrint', 'formato'));
+    }
+
+    /**
+     * A etiqueta em PDF, com o tamanho exacto do rolo configurado. O PDF leva o
+     * tamanho da página consigo, ao contrário do @page de uma página HTML, que
+     * o browser trata como sugestão e encolhe ou corta quando o driver tem outro
+     * papel.
+     */
+    public function protocoloEtiquetaPdf(DocumentoEntrada $documento)
+    {
+        $this->authorize('view', $documento);
+        $this->authorize('verProtocolo', $documento);
+
+        $documento->load(['departamento.gabinete', 'protocolo']);
+
+        $this->ensureProtocolo($documento);
+
+        $protocolo = $documento->protocolo;
+        $formato = FormatoEtiqueta::daInstituicao();
+
         try {
-            $qrCodeSvg = (string) QrCode::size(90)->margin(0)->generate($consultaUrl);
+            $qrSvg = (string) QrCode::size(200)->margin(0)->generate($this->urlDeConsulta($documento));
+            $qrCodeSrc = 'data:image/svg+xml;base64,'.base64_encode($qrSvg);
         } catch (\Exception $e) {
-            $qrCodeSvg = '';
+            $qrCodeSrc = null;
         }
 
-        return view('documentos_entradas.protocolo_etiqueta', compact(
-            'documento',
-            'protocolo',
-            'consultaUrl',
-            'qrCodeSvg',
-            'autoPrint'
-        ));
+        $logoSrc = $this->logoParaEtiqueta();
+
+        $options = new Options;
+        $options->set('defaultFont', 'DejaVu Sans');
+        $options->set('chroot', base_path());
+        $dompdf = new Dompdf($options);
+
+        $html = view('documentos_entradas.protocolo_etiqueta_pdf', compact('documento', 'protocolo', 'formato', 'qrCodeSrc', 'logoSrc'))->render();
+        $dompdf->loadHtml($html);
+        $dompdf->setPaper($formato->tamanhoPapel());
+        $dompdf->render();
+
+        $filename = sprintf('etiqueta_%03d_%d.pdf', $documento->numero_sequencial, $documento->ano_referencia);
+
+        return response($dompdf->output(), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$filename.'"')
+            ->header('Cache-Control', 'private, no-store');
     }
 
     public function protocoloPdf(DocumentoEntrada $documento)
@@ -227,6 +265,54 @@ class DocumentoEntradaProtocoloController extends Controller
     private function urlDeConsulta(DocumentoEntrada $documento): string
     {
         return route('protocolo.publico', ['codigo' => $documento->protocolo->codigo]);
+    }
+
+    /**
+     * Logótipo da instituição reduzido e em tons de cinzento, como data URI.
+     *
+     * A insígnia original tem perto de 2000 px; dada assim ao dompdf, gasta
+     * memória e pode falhar em silêncio (ver protocolo_pdf). A térmica imprime
+     * a preto, por isso o cinzento antecipa o que vai sair. Sem GD ou sem
+     * ficheiro legível, a etiqueta sai sem logótipo.
+     */
+    private function logoParaEtiqueta(): ?string
+    {
+        $origem = CabecalhoDocumento::instituicao()->logo_absolute_path;
+
+        if (! $origem || ! is_file($origem) || ! function_exists('imagecreatetruecolor')) {
+            return null;
+        }
+
+        try {
+            $info = @getimagesize($origem);
+            $img = match ($info['mime'] ?? null) {
+                'image/png' => @imagecreatefrompng($origem),
+                'image/jpeg' => @imagecreatefromjpeg($origem),
+                default => false,
+            };
+
+            if (! $img) {
+                return null;
+            }
+
+            $largura = 120;
+            $altura = max(1, (int) round($info[1] / $info[0] * $largura));
+            $destino = imagecreatetruecolor($largura, $altura);
+            imagefill($destino, 0, 0, imagecolorallocate($destino, 255, 255, 255));
+            imagecopyresampled($destino, $img, 0, 0, 0, 0, $largura, $altura, $info[0], $info[1]);
+            imagefilter($destino, IMG_FILTER_GRAYSCALE);
+
+            ob_start();
+            imagepng($destino);
+            $png = ob_get_clean();
+
+            imagedestroy($img);
+            imagedestroy($destino);
+
+            return 'data:image/png;base64,'.base64_encode($png);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**

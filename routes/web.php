@@ -129,6 +129,8 @@ Route::middleware(['auth'])->group(function () {
         ->name('documentos-entradas.protocolo.pdf');
     Route::get('documentos-entradas/{documento}/protocolo/etiqueta', [DocumentoEntradaProtocoloController::class, 'protocoloEtiqueta'])
         ->name('documentos-entradas.protocolo.etiqueta');
+    Route::get('documentos-entradas/{documento}/protocolo/etiqueta/pdf', [DocumentoEntradaProtocoloController::class, 'protocoloEtiquetaPdf'])
+        ->name('documentos-entradas.protocolo.etiqueta.pdf');
     Route::patch('documentos-entradas/{documento}/protocolo/impresso', [DocumentoEntradaProtocoloController::class, 'marcarImpresso'])
         ->name('documentos-entradas.protocolo.impresso');
     Route::post('documentos-entradas/{documento}/encaminhar', [DocumentoEntradaEncaminhamentoController::class, 'encaminhar'])

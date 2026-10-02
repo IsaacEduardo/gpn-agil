@@ -129,6 +129,32 @@
 
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-header bg-white border-bottom py-3">
+                        <h5 class="card-title fw-bold text-secondary m-0"><i class="fas fa-barcode me-2"></i>Etiqueta do Protocolo</h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold text-muted small text-uppercase">Tamanho do Rolo</label>
+                                @php($formatoAtual = \App\Support\FormatoEtiqueta::de($dados->etiqueta_formato)->chave)
+                                <select name="etiqueta_formato" class="form-select @error('etiqueta_formato') is-invalid @enderror">
+                                    @foreach (\App\Support\FormatoEtiqueta::opcoes() as $chave => $rotulo)
+                                        <option value="{{ $chave }}" @selected(old('etiqueta_formato', $formatoAtual) === $chave)>{{ $rotulo }}</option>
+                                    @endforeach
+                                </select>
+                                @error('etiqueta_formato')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+                        <small class="text-muted d-block">
+                            A etiqueta sai em PDF com este tamanho exacto. Em cada posto, o driver da impressora
+                            térmica tem de ter o mesmo tamanho de papel, em orientação Paisagem.
+                        </small>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white border-bottom py-3">
                         <h5 class="card-title fw-bold text-secondary m-0"><i class="fas fa-heading me-2"></i>Timbre e Cabeçalhos Dinâmicos</h5>
                     </div>
                     <div class="card-body p-4">
