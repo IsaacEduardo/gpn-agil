@@ -28,10 +28,23 @@
             .no-print {
                 display: none !important;
             }
+            /* O contentor da pré-visualização centra a etiqueta com 20px de
+               folga; no papel isso empurrava-a para fora da página de 100x50mm
+               e o overflow do body cortava metade. */
+            .preview-screen-container {
+                display: block !important;
+                min-height: 0 !important;
+                padding: 0 !important;
+            }
             .etiqueta-wrapper {
                 border: none !important;
                 box-shadow: none !important;
                 margin: 0 !important;
+                /* Ligeiramente abaixo dos 50mm para não transbordar para a
+                   etiqueta seguinte por arredondamento do driver. */
+                height: 49.5mm;
+                page-break-inside: avoid;
+                break-inside: avoid;
             }
         }
 
