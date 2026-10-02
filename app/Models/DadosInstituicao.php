@@ -19,6 +19,8 @@ class DadosInstituicao extends Model
         'telefone',
         'email',
         'endereco',
+        'responsavel_nome',
+        'responsavel_cargo',
         'logo_path',
         'cabecalho_linha1',
         'cabecalho_linha2',

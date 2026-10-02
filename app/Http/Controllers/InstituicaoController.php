@@ -51,6 +51,8 @@ class InstituicaoController extends Controller
             'telefone' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:100'],
             'endereco' => ['nullable', 'string'],
+            'responsavel_nome' => ['nullable', 'string', 'max:150'],
+            'responsavel_cargo' => ['nullable', 'string', 'max:150'],
             'cabecalho_linha1' => ['nullable', 'string', 'max:255'],
             'cabecalho_linha2' => ['nullable', 'string', 'max:255'],
             'cabecalho_linha3' => ['nullable', 'string', 'max:255'],
@@ -68,6 +70,8 @@ class InstituicaoController extends Controller
         $dados->telefone = $data['telefone'] ?? null;
         $dados->email = $data['email'] ?? null;
         $dados->endereco = $data['endereco'] ?? null;
+        $dados->responsavel_nome = $data['responsavel_nome'] ?? null;
+        $dados->responsavel_cargo = $data['responsavel_cargo'] ?? null;
         $dados->cabecalho_linha1 = $data['cabecalho_linha1'] ?? null;
         $dados->cabecalho_linha2 = $data['cabecalho_linha2'] ?? null;
         $dados->cabecalho_linha3 = $data['cabecalho_linha3'] ?? null;

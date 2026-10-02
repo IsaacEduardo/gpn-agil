@@ -98,6 +98,37 @@
 
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-header bg-white border-bottom py-3">
+                        <h5 class="card-title fw-bold text-secondary m-0"><i class="fas fa-user-tie me-2"></i>Responsável da Instituição</h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold text-muted small text-uppercase">Nome do Responsável</label>
+                                <input type="text" name="responsavel_nome" maxlength="150" class="form-control @error('responsavel_nome') is-invalid @enderror"
+                                       value="{{ old('responsavel_nome', $dados->responsavel_nome) }}" placeholder="Ex: Nome completo do Governador">
+                                @error('responsavel_nome')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold text-muted small text-uppercase">Cargo</label>
+                                <input type="text" name="responsavel_cargo" maxlength="150" class="form-control @error('responsavel_cargo') is-invalid @enderror"
+                                       value="{{ old('responsavel_cargo', $dados->responsavel_cargo) }}" placeholder="Ex: Governador Provincial da Huíla">
+                                @error('responsavel_cargo')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+                        <small class="text-muted d-block">
+                            Nos modelos de documento use <code>@{{INSTITUICAO_RESPONSAVEL_NOME}}</code> e
+                            <code>@{{INSTITUICAO_RESPONSAVEL_CARGO}}</code>. Uma alteração aqui só se aplica aos
+                            documentos criados a partir de agora; os já emitidos mantêm o nome que tinham.
+                        </small>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white border-bottom py-3">
                         <h5 class="card-title fw-bold text-secondary m-0"><i class="fas fa-heading me-2"></i>Timbre e Cabeçalhos Dinâmicos</h5>
                     </div>
                     <div class="card-body p-4">

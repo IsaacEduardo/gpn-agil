@@ -235,6 +235,16 @@ class DocumentoInternoService
             '{{ INSTITUICAO_LOCAL }}' => $dadosInstituicao->cidade,
         ];
 
+        // Responsável da instituição (ex.: o Governador). Diferente de RESPONSAVEL_NOME,
+        // que é o do gabinete emissor. Sem registo fica um aviso visível, como no
+        // CHEFE_DEPARTAMENTO_NOME: um nome em branco num documento passaria despercebido.
+        $responsavelInstituicao = e($dadosInstituicao->responsavel_nome ?: '[Responsável da instituição não definido]');
+        $cargoResponsavelInstituicao = e($dadosInstituicao->responsavel_cargo ?: '[Cargo do responsável não definido]');
+        $placeholders['{{INSTITUICAO_RESPONSAVEL_NOME}}'] = $responsavelInstituicao;
+        $placeholders['{{ INSTITUICAO_RESPONSAVEL_NOME }}'] = $responsavelInstituicao;
+        $placeholders['{{INSTITUICAO_RESPONSAVEL_CARGO}}'] = $cargoResponsavelInstituicao;
+        $placeholders['{{ INSTITUICAO_RESPONSAVEL_CARGO }}'] = $cargoResponsavelInstituicao;
+
         // Construir a linha da data institucional
         $gabineteNome = $gab?->nome ?? ($dep ? $dep->nome : $dadosInstituicao->cabecalho_linha2);
         $linhaData = mb_strtoupper($gabineteNome).', em '.$dadosInstituicao->cidade.', aos '.$dataExtensoFormatada;
