@@ -261,7 +261,7 @@
         {{-- Footer --}}
         <div class="etiqueta-footer">
             <span>AUTENTICIDADE: <span class="etiqueta-codigo">{{ $protocolo->codigo }}</span></span>
-            <span>EDMS GPN-ÁGIL</span>
+            <span>{{ filled($dadosInstituicao->sigla) ? mb_strtoupper(trim($dadosInstituicao->sigla)) : 'EDMS GPN-ÁGIL' }}</span>
         </div>
     </div>
 </div>
