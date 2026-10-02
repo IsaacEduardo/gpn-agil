@@ -740,6 +740,80 @@ class DocumentoInternoService
     }
 
     /**
+     * Consulta da listagem de documentos internos: visibilidade, separador activo e
+     * filtros explícitos (que se somam ao separador). Partilhada pela listagem e
+     * pelos cartões do painel, para que o número do cartão seja o da lista.
+     */
+    public function queryListagem(Request $request, User $user)
+    {
+        $profile = $this->getUserWorkflowProfile($user);
+        $activeTab = $request->input('tab') ?: $this->getDefaultTabForProfile($profile);
+
+        $query = DocumentoInterno::accessibleBy($user)
+            ->with(['especie', 'autor', 'departamento', 'gabinete'])
+            ->withExists(['favoritadoPor as is_favorited' => function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            }]);
+
+        $this->applyRoleTabFilter($query, $activeTab, $user, $profile);
+
+        // Filtro por Texto (Título, Referência ou Conteúdo)
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('titulo', 'like', "%{$search}%")
+                    ->orWhere('numero_referencia', 'like', "%{$search}%")
+                    ->orWhere('conteudo_final', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->boolean('favoritos')) {
+            $query->whereHas('favoritadoPor', fn ($q) => $q->where('user_id', $user->id));
+        }
+        if ($request->filled('especie_id')) {
+            $query->where('documento_especie_id', $request->especie_id);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('departamento_id')) {
+            $query->where('departamento_id', $request->departamento_id);
+        }
+        if ($request->filled('data_inicio')) {
+            $query->whereDate('created_at', '>=', $request->data_inicio);
+        }
+        if ($request->filled('data_fim')) {
+            $query->whereDate('created_at', '<=', $request->data_fim);
+        }
+        if ($request->filled('autor_id')) {
+            $query->where('criado_por', $request->autor_id);
+        }
+
+        // Ordenação dinâmica, com whitelist de colunas
+        $sortBy = $request->get('sort_by', 'created_at');
+        $sortOrder = $request->get('order') === 'asc' ? 'asc' : 'desc';
+        $allowedSorts = ['numero_referencia', 'titulo', 'created_at', 'updated_at', 'status'];
+        if (in_array($sortBy, $allowedSorts)) {
+            $query->orderBy($sortBy, $sortOrder);
+        } else {
+            $query->orderByDesc('created_at');
+        }
+
+        return $query;
+    }
+
+    /**
+     * Total de linhas que a listagem mostraria com estes parâmetros (mesma
+     * contagem do paginador).
+     */
+    public function contarListagem(array $parametros, User $user): int
+    {
+        $request = Request::create(route('documentos-internos.index'), 'GET', $parametros);
+
+        return $this->queryListagem($request, $user)->toBase()->getCountForPagination();
+    }
+
+    /**
      * Gera a estrutura de Underline Tabs com contagens dinâmicas para o utilizador.
      */
     public function getRoleWorkflowTabs(?User $user, Request $request): array

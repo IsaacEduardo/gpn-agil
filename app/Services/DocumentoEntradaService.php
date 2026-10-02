@@ -216,8 +216,23 @@ class DocumentoEntradaService
                     $query->whereIn('status', [DocumentoStatus::ENCAMINHADO->value, DocumentoStatus::RECEBIDO->value]);
                     break;
             }
-        } elseif ($request->filled('status')) {
+        }
+        // O estado soma-se ao separador. Antes só se aplicava sem sessão (ramo
+        // inalcançável, a listagem exige login): os cartões do painel e o filtro
+        // "Status" do ecrã eram ignorados e a lista mostrava sempre o separador
+        // por omissão, com a etiqueta de filtro activo a dizer o contrário.
+        if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
+        }
+        // Documentos em que o próprio concluiu uma tarefa desde a data (cartão
+        // "Concluídos no Mês" do técnico).
+        $desde = $request->filled('concluidas_desde')
+            ? rescue(fn () => Carbon::parse($request->input('concluidas_desde'))->startOfDay(), null, false)
+            : null;
+        if ($user && $desde) {
+            $query->whereHas('tarefas', fn ($t) => $t->where('assigned_to_user_id', $user->id)
+                ->where('status', 'concluida')
+                ->where('updated_at', '>=', $desde));
         }
         if ($request->filled('departamento_id')) {
             $query->where('departamento_id', (int) $request->input('departamento_id'));
@@ -248,6 +263,18 @@ class DocumentoEntradaService
         $query->orderBy($sort, $dir);
 
         return $query;
+    }
+
+    /**
+     * Total de linhas que a listagem mostraria com estes parâmetros — a mesma
+     * consulta e a mesma contagem do paginador. Os cartões do painel contam por
+     * aqui para que o número coincida com a lista para onde levam.
+     */
+    public function contarListagem(array $parametros, User $user): int
+    {
+        $request = Request::create(route('documentos-entradas.index'), 'GET', $parametros);
+
+        return $this->getFilteredDocumentsQuery($request, $user)->toBase()->getCountForPagination();
     }
 
     public function getFilteredDocuments(Request $request, ?User $user)

@@ -63,7 +63,7 @@ class NotificationPresenter
         $workflowTypes = [
             'tarefa_delegada', 'tarefa_concluida', 'tarefa_cancelada',
             'documento_recebido', 'documento_enviado', 'documento_encaminhado_interno', 'documento_encaminhado_externo',
-            'documento_enviado_analise', 'documento_aprovado', 'documento_devolvido',
+            'documento_enviado_analise', 'documento_aprovado', 'documento_devolvido', 'documento_editado_chefia',
             'requisicao_assinada', 'convite_colaboracao', 'despacho', 'visto', 'homologacao'
         ];
 

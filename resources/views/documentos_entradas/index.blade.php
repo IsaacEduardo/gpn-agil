@@ -288,6 +288,11 @@ tr.keyboard-selected {
                 id="filterCollapse">
                 <div class="p-4">
                     <form method="GET" action="{{ route('documentos-entradas.index') }}" class="row g-3">
+                        {{-- Sem o separador, aplicar filtros voltava sempre ao separador por omissão. --}}
+                        <input type="hidden" name="tab" value="{{ $activeTab }}">
+                        @if (request('incluir_arquivados'))
+                            <input type="hidden" name="incluir_arquivados" value="1">
+                        @endif
                         @if (request('meus'))
                             <input type="hidden" name="meus" value="{{ request('meus') }}">
                         @endif
@@ -299,9 +304,18 @@ tr.keyboard-selected {
                             <label class="form-label small fw-bold text-uppercase text-muted">Status</label>
                             <select name="status" class="form-select form-select-sm">
                                 <option value="">Todos</option>
-                                @foreach (['registrado', 'encaminhado', 'encaminhado_externo', 'arquivado', 'cancelado'] as $st)
+                                {{-- Estados reais de uma entrada; o filtro soma-se ao separador activo. --}}
+                                @foreach ([
+                                    'registrado' => 'Registado',
+                                    'pendente_tratamento' => 'Pendente de tratamento',
+                                    'encaminhado' => 'Encaminhado',
+                                    'recebido' => 'Recebido',
+                                    'tratado' => 'Tratado',
+                                    'encaminhado_externo' => 'Encaminhado externo',
+                                    'arquivado' => 'Arquivado',
+                                ] as $st => $rotuloStatus)
                                     <option value="{{ $st }}" {{ request('status') === $st ? 'selected' : '' }}>
-                                        {{ ucwords(str_replace('_', ' ', $st)) }}
+                                        {{ $rotuloStatus }}
                                     </option>
                                 @endforeach
                             </select>
@@ -384,7 +398,7 @@ tr.keyboard-selected {
                 </div>
             @endif
 
-            @php($anyFilter = request()->anyFilled(['status', 'departamento_id', 'data_de', 'data_ate', 'ano', 'search']))
+            @php($anyFilter = request()->anyFilled(['status', 'departamento_id', 'data_de', 'data_ate', 'ano', 'search', 'concluidas_desde', 'incluir_arquivados']))
             @if ($anyFilter)
                 <div class="px-4 pt-3 pb-0 d-flex flex-wrap align-items-center gap-2">
                     <span class="small text-muted fw-bold text-uppercase me-2" style="font-size: 0.7rem; letter-spacing: 0.05em;">Filtros Ativos:</span>
@@ -423,6 +437,18 @@ tr.keyboard-selected {
                         <div class="active-filter-pill">
                             <span>Fim: {{ \Carbon\Carbon::parse(request('data_ate'))->format('d/m/Y') }}</span>
                             <a href="{{ request()->fullUrlWithQuery(['data_ate' => null]) }}" class="btn-clear">&times;</a>
+                        </div>
+                    @endif
+                    @if (request()->filled('concluidas_desde') && ($desdeConcluidas = rescue(fn () => \Carbon\Carbon::parse(request('concluidas_desde')), null, false)))
+                        <div class="active-filter-pill">
+                            <span>Concluídas por mim desde: {{ $desdeConcluidas->format('d/m/Y') }}</span>
+                            <a href="{{ request()->fullUrlWithQuery(['concluidas_desde' => null]) }}" class="btn-clear">&times;</a>
+                        </div>
+                    @endif
+                    @if (request()->boolean('incluir_arquivados'))
+                        <div class="active-filter-pill">
+                            <span>Inclui arquivados</span>
+                            <a href="{{ request()->fullUrlWithQuery(['incluir_arquivados' => null]) }}" class="btn-clear">&times;</a>
                         </div>
                     @endif
                     <a href="{{ route('documentos-entradas.index') }}" class="btn btn-link btn-sm text-decoration-none small text-danger p-0 ms-2">Limpar Todos</a>

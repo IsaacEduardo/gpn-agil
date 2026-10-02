@@ -24,36 +24,49 @@
                     </button>
                 @endif
 
-                @if ($documentoInterno->status->value === 'rascunho')
+                {{-- Rascunho: autor e chefia; em análise: só a chefia (DocumentoInternoPolicy::update).
+                     O estado verifica-se aqui também porque o Gate deixa o admin passar em tudo. --}}
+                @php
+                    $statusDoc = $documentoInterno->status->value;
+                    $podeAprovar = $statusDoc === 'em_analise' && auth()->user()->can('approve', $documentoInterno);
+                    $podeDevolver = in_array($statusDoc, ['em_analise', 'aprovado'], true) && !$documentoInterno->assinado_em
+                        && auth()->user()->can('reject', $documentoInterno);
+                @endphp
+                @if ($documentoInterno->aceitaEdicao() && auth()->user()->can('update', $documentoInterno))
                     <a href="{{ route('documentos-internos.edit', $documentoInterno->id) }}" class="btn btn-primary me-2">
                         <i class="fas fa-edit me-2"></i>Editar
                     </a>
 
-                    <form action="{{ route('documentos-internos.submit', $documentoInterno->id) }}" method="POST"
-                        class="d-inline"
-                        onsubmit="return confirm('Enviar documento para análise? Você não poderá editá-lo até que seja devolvido.');">
-                        @csrf
-                        <button type="submit" class="btn btn-warning me-2 text-dark">
-                            <i class="fas fa-paper-plane me-2"></i>Enviar p/ Análise
-                        </button>
-                    </form>
-                @endif
-
-                @if ($documentoInterno->status->value === 'em_analise')
-                    {{-- Simulação de permissão: Na prática usar @can('approve', $doc) ou verificar cargo --}}
-                    <div class="btn-group me-2">
-                        <form action="{{ route('documentos-internos.approve', $documentoInterno->id) }}" method="POST"
+                    @if ($documentoInterno->status->value === 'rascunho')
+                        <form action="{{ route('documentos-internos.submit', $documentoInterno->id) }}" method="POST"
                             class="d-inline"
-                            onsubmit="return confirm('Aprovar este documento? Ele ficará disponível para assinatura.');">
+                            onsubmit="return confirm('Enviar documento para análise? A partir daí só a chefia o pode editar.');">
                             @csrf
-                            <button type="submit" class="btn btn-success">
-                                <i class="fas fa-check me-2"></i>Aprovar
+                            <button type="submit" class="btn btn-warning me-2 text-dark">
+                                <i class="fas fa-paper-plane me-2"></i>Enviar p/ Análise
                             </button>
                         </form>
-                        <button type="button" class="btn btn-danger ms-1" data-bs-toggle="modal"
-                            data-bs-target="#rejectModal">
-                            <i class="fas fa-times me-2"></i>Devolver
-                        </button>
+                    @endif
+                @endif
+
+                @if ($podeAprovar || $podeDevolver)
+                    <div class="btn-group me-2">
+                        @if ($podeAprovar)
+                            <form action="{{ route('documentos-internos.approve', $documentoInterno->id) }}" method="POST"
+                                class="d-inline"
+                                onsubmit="return confirm('Aprovar este documento? Ele ficará disponível para assinatura.');">
+                                @csrf
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-check me-2"></i>Aprovar
+                                </button>
+                            </form>
+                        @endif
+                        @if ($podeDevolver)
+                            <button type="button" class="btn btn-danger ms-1" data-bs-toggle="modal"
+                                data-bs-target="#rejectModal">
+                                <i class="fas fa-times me-2"></i>Devolver
+                            </button>
+                        @endif
                     </div>
                 @endif
 

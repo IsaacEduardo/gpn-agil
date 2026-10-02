@@ -54,6 +54,7 @@ class NotificationCategory
         'documento_enviado_analise' => 'workflow',
         'documento_aprovado' => 'workflow',
         'documento_devolvido' => 'workflow',
+        'documento_editado_chefia' => 'workflow',
 
         'sla_warning' => 'sla',
         'sla_critical' => 'sla',

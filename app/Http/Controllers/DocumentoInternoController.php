@@ -52,74 +52,8 @@ class DocumentoInternoController extends Controller
         $workflowTabs = $this->service->getRoleWorkflowTabs($user, $request);
         $activeTab = $request->input('tab') ?: $this->service->getDefaultTabForProfile($profile);
 
-        // Query com isolamento de visibilidade por perfil/hierarquia
-        $query = DocumentoInterno::accessibleBy($user)
-            ->with(['especie', 'autor', 'departamento', 'gabinete'])
-            ->withExists(['favoritadoPor as is_favorited' => function ($q) use ($user) {
-                $q->where('user_id', $user->id);
-            }]);
-
-        // Aplica o filtro de ciclo de vida da aba ativa
-        $this->service->applyRoleTabFilter($query, $activeTab, $user, $profile);
-
-        // Filtro por Texto (Título, Referência ou Conteúdo)
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('titulo', 'like', "%{$search}%")
-                    ->orWhere('numero_referencia', 'like', "%{$search}%")
-                    ->orWhere('conteudo_final', 'like', "%{$search}%");
-            });
-        }
-
-        // Filtro por Favoritos
-        if ($request->boolean('favoritos')) {
-            $query->whereHas('favoritadoPor', function ($q) use ($user) {
-                $q->where('user_id', $user->id);
-            });
-        }
-
-        // Filtro por Espécie
-        if ($request->filled('especie_id')) {
-            $query->where('documento_especie_id', $request->especie_id);
-        }
-
-        // Filtro por Status explícito
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        // Filtro por Departamento (visível para Chefe de Gabinete / Admin)
-        if ($request->filled('departamento_id')) {
-            $query->where('departamento_id', $request->departamento_id);
-        }
-
-        // Filtro por Data
-        if ($request->filled('data_inicio')) {
-            $query->whereDate('created_at', '>=', $request->data_inicio);
-        }
-        if ($request->filled('data_fim')) {
-            $query->whereDate('created_at', '<=', $request->data_fim);
-        }
-
-        // Filtro por Autor
-        if ($request->filled('autor_id')) {
-            $query->where('criado_por', $request->autor_id);
-        }
-
-        // Ordenação Dinâmica
-        $sortBy = $request->get('sort_by', 'created_at');
-        $sortOrder = $request->get('order') === 'asc' ? 'asc' : 'desc';
-
-        // Whitelist de colunas para ordenação
-        $allowedSorts = ['numero_referencia', 'titulo', 'created_at', 'updated_at', 'status'];
-        if (in_array($sortBy, $allowedSorts)) {
-            $query->orderBy($sortBy, $sortOrder);
-        } else {
-            $query->orderByDesc('created_at');
-        }
-
-        $documentos = $query->paginate(15)->withQueryString();
+        // Visibilidade, separador activo e filtros: a mesma consulta que os cartões do painel contam.
+        $documentos = $this->service->queryListagem($request, $user)->paginate(15)->withQueryString();
 
         $especies = DocumentoEspecie::where('ativo', true)->orderBy('nome')->get();
 
@@ -351,10 +285,11 @@ class DocumentoInternoController extends Controller
 
     public function edit(DocumentoInterno $documentoInterno)
     {
+        // Rascunho: autor e chefia; em análise: só a chefia (regra na policy).
         $this->authorize('update', $documentoInterno);
 
-        if ($documentoInterno->status !== DocumentoStatus::RASCUNHO && $documentoInterno->status !== 'rascunho') {
-            return back()->with('error', 'Apenas rascunhos podem ser editados.');
+        if (! $documentoInterno->aceitaEdicao()) {
+            return back()->with('error', 'Documento aprovado, assinado ou arquivado não pode ser editado.');
         }
 
         $especies = DocumentoEspecie::where('ativo', true)->orderBy('nome')->get();
@@ -366,8 +301,8 @@ class DocumentoInternoController extends Controller
     {
         $this->authorize('update', $documentoInterno);
 
-        if ($documentoInterno->bloqueado_edicao) {
-            return back()->with('error', 'Documento assinado não pode ser editado.');
+        if (! $documentoInterno->aceitaEdicao()) {
+            return back()->with('error', 'Documento aprovado, assinado ou arquivado não pode ser editado.');
         }
 
         $validated = $request->validate([
@@ -417,6 +352,8 @@ class DocumentoInternoController extends Controller
             DocumentoInterno::whereKey($documentoInterno->id)->increment('revisao_classica'); // sem eventos de auditoria
         });
 
+        $this->workflowService->notificarEdicaoPelaChefia($documentoInterno, Auth::user());
+
         return redirect()->route('documentos-internos.index')
             ->with('success', 'Documento atualizado com sucesso.');
     }
@@ -448,7 +385,7 @@ class DocumentoInternoController extends Controller
 
     public function reject(Request $request, DocumentoInterno $documentoInterno)
     {
-        $this->authorize('approve', $documentoInterno);
+        $this->authorize('reject', $documentoInterno);
         $request->validate(['motivo' => 'required|string']);
         try {
             $this->workflowService->reject($documentoInterno, Auth::user(), $request->motivo);
@@ -463,8 +400,8 @@ class DocumentoInternoController extends Controller
     {
         $this->authorize('update', $documentoInterno);
 
-        if ($documentoInterno->bloqueado_edicao) {
-            return back()->with('error', 'Documento assinado não pode ser restaurado.');
+        if (! $documentoInterno->aceitaEdicao()) {
+            return back()->with('error', 'Documento aprovado, assinado ou arquivado não pode ser restaurado.');
         }
 
         $this->service->restoreVersion($documentoInterno, $version, Auth::user());
@@ -648,6 +585,11 @@ class DocumentoInternoController extends Controller
         if ($documentoInterno && $documentoInterno->exists) {
             // Mesma regra do edit/update: sem isto qualquer autenticado sobrescrevia rascunhos alheios.
             $this->authorize('update', $documentoInterno);
+
+            // Gravação sem versão: só em rascunho. Em análise a chefia grava pelo update (versionado).
+            if ($documentoInterno->status !== DocumentoStatus::RASCUNHO) {
+                abort(403, 'Fora de rascunho as alterações gravam-se pelo ecrã de edição.');
+            }
 
             $documentoInterno->update([
                 'conteudo_final' => $request->conteudo_final,

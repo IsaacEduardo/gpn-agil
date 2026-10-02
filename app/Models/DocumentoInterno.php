@@ -89,6 +89,18 @@ class DocumentoInterno extends Model
         return $id !== null ? (int) $id : null;
     }
 
+    /**
+     * O conteúdo ainda pode mudar: rascunho ou em análise, sem bloqueio nem assinatura.
+     * Vale para todos, incluindo o admin (que o Gate deixa passar nas policies);
+     * quem pode editar em cada estado decide-o DocumentoInternoPolicy::update.
+     */
+    public function aceitaEdicao(): bool
+    {
+        return in_array($this->status, [DocumentoStatus::RASCUNHO, DocumentoStatus::EM_ANALISE], true)
+            && ! $this->bloqueado_edicao
+            && ! $this->assinado_em;
+    }
+
     /** Emitido pelo próprio gabinete (Chefe de Gabinete / Secretário Geral), sem departamento. */
     public function emitidoPeloGabinete(): bool
     {

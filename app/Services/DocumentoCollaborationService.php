@@ -38,9 +38,8 @@ class DocumentoCollaborationService
             return $colab->nivel;
         }
 
-        // Chefe de departamento do documento pode editar (alinhado com DocumentoInternoPolicy::update).
-        if (($user->hasRole('chefe_departamento') || $user->hasRole('chefe-departamento'))
-            && $doc->departamento_id === $user->departamento_id) {
+        // A chefia do documento pode editar — mesma regra de DocumentoInternoPolicy::update.
+        if (app(DocumentoPermissionService::class)->chefiaDoDocumentoInterno($user, $doc)) {
             return NivelColaboracao::EDITAR;
         }
 

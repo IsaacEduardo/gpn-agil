@@ -624,7 +624,7 @@
                                                     <i class="fas fa-file-pdf me-2 text-danger w-20"></i>Baixar PDF
                                                 </a>
                                             </li>
-                                            @if ($statusVal === 'rascunho')
+                                            @if (in_array($statusVal, ['rascunho', 'em_analise'], true) && auth()->user()->can('update', $doc))
                                                 <li>
                                                     <a class="dropdown-item py-2" href="{{ route('documentos-internos.edit', $doc) }}">
                                                         <i class="fas fa-edit me-2 text-warning w-20"></i>Editar Minuta

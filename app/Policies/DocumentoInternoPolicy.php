@@ -78,30 +78,24 @@ class DocumentoInternoPolicy
         return true;
     }
 
+    /**
+     * Em rascunho editam o autor e a chefia; em análise só a chefia (corrige em vez
+     * de devolver). Aprovado, assinado ou arquivado: ninguém — para corrigir um
+     * aprovado devolve-se primeiro (ver reject).
+     */
     public function update(User $user, DocumentoInterno $doc)
     {
-        if ($doc->bloqueado_edicao) {
+        if (! $doc->aceitaEdicao()) {
             return false;
         }
 
-        // Apenas rascunhos podem ser editados (regra geral)
-        if ($doc->status !== DocumentoStatus::RASCUNHO && $doc->status !== 'rascunho') {
-            return false;
-        }
+        $chefia = fn () => app(DocumentoPermissionService::class)->chefiaDoDocumentoInterno($user, $doc);
 
-        // Autor
-        if ($doc->criado_por === $user->id) {
-            return true;
-        }
-
-        // Chefe de Depto do mesmo departamento
-        $permissionService = app(DocumentoPermissionService::class);
-        $userDeps = $permissionService->getUserDepartments($user);
-        if ($permissionService->isChefeDepartamento($user) && in_array((int) $doc->departamento_id, $userDeps, true)) {
-            return true;
-        }
-
-        return false;
+        return match ($doc->status) {
+            DocumentoStatus::RASCUNHO => (int) $doc->criado_por === (int) $user->id || $chefia(),
+            DocumentoStatus::EM_ANALISE => $chefia(),
+            default => false,
+        };
     }
 
     public function delete(User $user, DocumentoInterno $doc)
@@ -118,27 +112,31 @@ class DocumentoInternoPolicy
 
     public function approve(User $user, DocumentoInterno $doc)
     {
-        if ($doc->status !== DocumentoStatus::EM_ANALISE && $doc->status !== 'em_analise') {
+        if ($doc->status !== DocumentoStatus::EM_ANALISE) {
             return false;
         }
 
-        $permissionService = app(DocumentoPermissionService::class);
-        $userDeps = $permissionService->getUserDepartments($user);
+        return app(DocumentoPermissionService::class)->chefiaDoDocumentoInterno($user, $doc);
+    }
 
-        // Chefe do Departamento do documento
-        if ($permissionService->isChefeDepartamento($user) && in_array((int) $doc->departamento_id, $userDeps, true)) {
-            return true;
+    /**
+     * Devolver ao autor (volta a rascunho, desbloqueado). Em análise: a chefia.
+     * Aprovado e ainda por assinar: a chefia ou quem o vai assinar — é a única saída
+     * para um erro detetado depois da aprovação. Assinado: nunca.
+     */
+    public function reject(User $user, DocumentoInterno $doc)
+    {
+        if ($doc->assinado_em) {
+            return false;
         }
 
-        // Chefe de Gabinete também pode aprovar (override)
-        if ($user->isChefeGabinete()) {
-            $gabinete = $user->gabineteGerenciado;
-            if ($gabinete && $doc->gabineteEmissorId() === (int) $gabinete->id) {
-                return true;
-            }
-        }
+        $chefia = app(DocumentoPermissionService::class)->chefiaDoDocumentoInterno($user, $doc);
 
-        return false;
+        return match ($doc->status) {
+            DocumentoStatus::EM_ANALISE => $chefia,
+            DocumentoStatus::APROVADO => $chefia || app(SignatureService::class)->canSign($doc, $user),
+            default => false,
+        };
     }
 
     public function sign(User $user, DocumentoInterno $doc)

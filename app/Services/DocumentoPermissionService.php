@@ -310,6 +310,41 @@ class DocumentoPermissionService
     }
 
     /**
+     * Chefia de um documento interno — regra única para editar em análise,
+     * aprovar e devolver: o chefe designado do departamento emissor ou o
+     * responsável do gabinete emissor (inclui os documentos emitidos pelo
+     * próprio gabinete). Ter o papel de chefe não chega: um chefe de A que seja
+     * membro secundário de B não manda nos documentos de B.
+     */
+    public function chefiaDoDocumentoInterno(User $user, DocumentoInterno $doc): bool
+    {
+        if ($doc->departamento_id && in_array((int) $doc->departamento_id, $this->departamentosChefiados($user), true)) {
+            return true;
+        }
+
+        $gabinete = $doc->gabineteEmissor();
+
+        return $gabinete !== null && (int) $gabinete->responsavel_id === (int) $user->id;
+    }
+
+    /**
+     * Quem a chefia de um documento interno deve ser avisado quando ele entra
+     * em análise: o chefe designado do departamento emissor ou, num documento
+     * emitido pelo gabinete (ou de departamento sem chefe), o responsável do gabinete.
+     */
+    public function chefiaANotificar(DocumentoInterno $doc): ?User
+    {
+        $chefe = $doc->departamento?->chefeDesignado();
+        if ($chefe) {
+            return $chefe;
+        }
+
+        $responsavelId = $doc->gabineteEmissor()?->responsavel_id;
+
+        return $responsavelId ? User::find($responsavelId) : null;
+    }
+
+    /**
      * Quem pode concluir uma tarefa: o utilizador a quem foi atribuída, quem
      * gere tarefas no documento, ou qualquer membro do departamento a que a
      * tarefa foi atribuída.

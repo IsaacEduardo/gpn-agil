@@ -42,6 +42,36 @@ class DashboardService
     }
 
     /**
+     * Valor e destino de um cartão que leva à listagem de entradas, a partir dos
+     * mesmos parâmetros: o número é contado pela própria consulta da lista, pelo
+     * que coincide sempre com o que o utilizador encontra ao clicar. Antes os
+     * cartões tinham contagens próprias e links com ?status=, que a listagem
+     * ignorava — "Tratados" levava aos que carecem de despacho.
+     *
+     * @return array{valor: int, link: string}
+     */
+    private function cartaoEntradas(User $user, array $parametros): array
+    {
+        return [
+            'valor' => app(DocumentoEntradaService::class)->contarListagem($parametros, $user),
+            'link' => route('documentos-entradas.index', $parametros),
+        ];
+    }
+
+    /**
+     * Como cartaoEntradas(), para a listagem de documentos internos.
+     *
+     * @return array{valor: int, link: string}
+     */
+    private function cartaoInternos(User $user, array $parametros): array
+    {
+        return [
+            'valor' => app(DocumentoInternoService::class)->contarListagem($parametros, $user),
+            'link' => route('documentos-internos.index', $parametros),
+        ];
+    }
+
+    /**
      * Determina o perfil operacional do usuário
      */
     public function determinarPerfil(User $user): string
@@ -65,30 +95,27 @@ class DashboardService
         $dept = $user->departamentoPrincipal();
         $startOfMonth = now()->startOfMonth();
 
-        // 1. Consultas agregadas de contagem para KPIs
+        // 1. Prazos das tarefas pendentes (alerta do cartão de tarefas)
         $tarefasAgg = DocumentoTarefa::where('assigned_to_user_id', $user->id)
             ->selectRaw("
-                COUNT(CASE WHEN status = 'pendente' THEN 1 END) as total_pendentes,
                 COUNT(CASE WHEN status = 'pendente' AND prazo_at IS NOT NULL AND prazo_at < ? THEN 1 END) as total_atrasadas,
-                COUNT(CASE WHEN status = 'pendente' AND prazo_at IS NOT NULL AND prazo_at >= ? AND prazo_at <= ? THEN 1 END) as total_urgentes,
-                COUNT(CASE WHEN status = 'concluida' AND updated_at >= ? THEN 1 END) as concluidas_mes
-            ", [now(), now(), now()->addDays(2), $startOfMonth])
+                COUNT(CASE WHEN status = 'pendente' AND prazo_at IS NOT NULL AND prazo_at >= ? AND prazo_at <= ? THEN 1 END) as total_urgentes
+            ", [now(), now(), now()->addDays(2)])
             ->first();
 
-        $internosAgg = DocumentoInterno::where('criado_por', $user->id)
-            ->selectRaw("
-                COUNT(CASE WHEN status = 'rascunho' THEN 1 END) as total_rascunhos,
-                COUNT(CASE WHEN status = 'em_analise' THEN 1 END) as total_em_analise,
-                COUNT(CASE WHEN status IN ('aprovado', 'assinado') AND updated_at >= ? THEN 1 END) as homologados_mes
-            ", [$startOfMonth])
-            ->first();
-
-        $totalPendentes = (int) ($tarefasAgg->total_pendentes ?? 0);
         $totalAtrasadas = (int) ($tarefasAgg->total_atrasadas ?? 0);
         $totalUrgentes = (int) ($tarefasAgg->total_urgentes ?? 0);
-        $totalRascunhos = (int) ($internosAgg->total_rascunhos ?? 0);
-        $totalEmAnalise = (int) ($internosAgg->total_em_analise ?? 0);
-        $totalConcluidosMes = ((int) ($tarefasAgg->concluidas_mes ?? 0)) + ((int) ($internosAgg->homologados_mes ?? 0));
+
+        // Cartões: o número é o da lista para onde levam (ver cartaoEntradas).
+        // Os internos levam autor e estado explícitos para manterem o sentido
+        // "meus" mesmo que o perfil da listagem não seja o de técnico.
+        // "Concluídos no Mês" somava tarefas e internos homologados — duas listas
+        // diferentes, sem destino que mostrasse esse número; passa a contar os
+        // documentos em que o técnico concluiu uma tarefa este mês.
+        $cartaoTarefas = $this->cartaoEntradas($user, ['tab' => 'atribuidos_mim']);
+        $cartaoRascunhos = $this->cartaoInternos($user, ['tab' => 'meus_rascunhos', 'status' => 'rascunho', 'autor_id' => $user->id]);
+        $cartaoSubmetidos = $this->cartaoInternos($user, ['tab' => 'em_revisao', 'status' => 'em_analise', 'autor_id' => $user->id]);
+        $cartaoConcluidos = $this->cartaoEntradas($user, ['tab' => 'concluidos', 'concluidas_desde' => $startOfMonth->toDateString()]);
 
         // 2. Minhas Demandas Imediatas (Tarefas Pendentes Atribuídas a Mim)
         $demandasImediatas = DocumentoTarefa::with(['documentoEntrada.departamento', 'assignedBy'])
@@ -154,38 +181,38 @@ class DashboardService
                 [
                     'id' => 'tarefas_pendentes',
                     'label' => 'Minhas Tarefas Pendentes',
-                    'valor' => $totalPendentes,
+                    'valor' => $cartaoTarefas['valor'],
                     'alerta' => $totalAtrasadas > 0 ? "{$totalAtrasadas} em atraso" : ($totalUrgentes > 0 ? "{$totalUrgentes} p/ vencer" : null),
                     'icone' => 'fas fa-tasks',
                     'cor' => 'warning',
-                    'link' => route('documentos-entradas.index'),
+                    'link' => $cartaoTarefas['link'],
                 ],
                 [
                     'id' => 'rascunhos_internos',
                     'label' => 'Meus Rascunhos Internos',
-                    'valor' => $totalRascunhos,
+                    'valor' => $cartaoRascunhos['valor'],
                     'alerta' => 'Em elaboração',
                     'icone' => 'fas fa-pencil-ruler',
                     'cor' => 'secondary',
-                    'link' => route('documentos-internos.index', ['status' => 'rascunho']),
+                    'link' => $cartaoRascunhos['link'],
                 ],
                 [
                     'id' => 'documentos_submetidos',
                     'label' => 'Documentos Submetidos',
-                    'valor' => $totalEmAnalise,
+                    'valor' => $cartaoSubmetidos['valor'],
                     'alerta' => 'Aguardando revisão',
                     'icone' => 'fas fa-paper-plane',
                     'cor' => 'info',
-                    'link' => route('documentos-internos.index', ['status' => 'em_analise']),
+                    'link' => $cartaoSubmetidos['link'],
                 ],
                 [
                     'id' => 'concluidos_mes',
                     'label' => 'Concluídos no Mês',
-                    'valor' => $totalConcluidosMes,
-                    'alerta' => 'Produtividade',
+                    'valor' => $cartaoConcluidos['valor'],
+                    'alerta' => 'Tarefas concluídas por mim',
                     'icone' => 'fas fa-check-circle',
                     'cor' => 'success',
-                    'link' => route('documentos-internos.index'),
+                    'link' => $cartaoConcluidos['link'],
                 ],
             ],
             'listas' => [
@@ -196,7 +223,7 @@ class DashboardService
                     'tipo' => 'demandas_tecnico',
                     'itens' => $demandasImediatas,
                     'vazio_mensagem' => 'Nenhuma tarefa pendente no momento. Bom trabalho!',
-                    'url_ver_todos' => route('documentos-entradas.index'),
+                    'url_ver_todos' => $cartaoTarefas['link'],
                 ],
                 'direita' => [
                     'titulo' => 'Meus Documentos Internos Recentes',
@@ -205,7 +232,8 @@ class DashboardService
                     'tipo' => 'internos_tecnico',
                     'itens' => $meusInternos,
                     'vazio_mensagem' => 'Nenhum documento interno criado recentemente.',
-                    'url_ver_todos' => route('documentos-internos.index'),
+                    // Os seus documentos, em qualquer estado (a lista ao lado é a dos recentes).
+                    'url_ver_todos' => route('documentos-internos.index', ['tab' => 'todos', 'autor_id' => $user->id]),
                 ],
             ],
         ];
@@ -219,12 +247,21 @@ class DashboardService
         $dept = $user->departamentoPrincipal();
         $deptId = $dept?->id;
 
-        // 1. Contagens das entradas: as mesmas regras (visibilidade + separador)
-        // da lista para onde cada cartão aponta. Antes o painel tinha critério
-        // próprio — só departamento_id, que muda apenas no recebimento, e um
-        // estado 'em_andamento' que não existe —, pelo que os documentos
-        // encaminhados ao sector nunca eram contados e o número não batia com
-        // a lista.
+        // 1. Cartões: o número é o da lista para onde levam (ver cartaoEntradas).
+        // Antes o painel tinha critério próprio — só departamento_id, que muda
+        // apenas no recebimento, e um estado 'em_andamento' que não existe —,
+        // pelo que os documentos encaminhados ao sector nunca eram contados.
+        //
+        // "Total do Acervo" somava entradas e internos, que vivem em listas
+        // diferentes: nenhum clique mostrava esse número. Passa a ser o acervo
+        // de entradas do sector, arquivadas incluídas (como já contava).
+        $cartaoNovas = $this->cartaoEntradas($user, ['tab' => 'novos_departamento']);
+        $cartaoDelegados = $this->cartaoEntradas($user, ['tab' => 'delegados']);
+        $cartaoMinutas = $this->cartaoInternos($user, ['tab' => 'revisao', 'status' => 'em_analise']);
+        $cartaoAcervo = $this->cartaoEntradas($user, ['tab' => 'todos_departamento', 'incluir_arquivados' => 1]);
+
+        $minutasRevisao = $cartaoMinutas['valor'];
+
         $entradas = app(DocumentoEntradaService::class);
         $entradasVisiveis = function () use ($entradas, $user) {
             $query = DocumentoEntrada::query();
@@ -232,31 +269,6 @@ class DashboardService
 
             return $query;
         };
-        $contarSeparador = function (string $separador) use ($entradas, $entradasVisiveis, $user): int {
-            $query = $entradasVisiveis()->where('arquivado', false);
-            $entradas->applyRoleTabFilter($query, $separador, $user, 'chefe_departamento');
-
-            return $query->count();
-        };
-
-        $entradasAgg = (object) [
-            'novas_entradas' => $contarSeparador('novos_departamento'),
-            'total_entradas' => $entradasVisiveis()->count(),
-        ];
-        $tarefasAgg = (object) ['tarefas_andamento' => $contarSeparador('delegados')];
-
-        $internosAgg = DocumentoInterno::query()
-            ->when($deptId, fn ($q) => $q->where('departamento_id', $deptId))
-            ->selectRaw("
-                COUNT(CASE WHEN status = 'em_analise' THEN 1 END) as minutas_revisao,
-                COUNT(*) as total_internos
-            ")
-            ->first();
-
-        $novasEntradas = (int) ($entradasAgg->novas_entradas ?? 0);
-        $tarefasAndamento = (int) ($tarefasAgg->tarefas_andamento ?? 0);
-        $minutasRevisao = (int) ($internosAgg->minutas_revisao ?? 0);
-        $totalAcervo = ((int) ($entradasAgg->total_entradas ?? 0)) + ((int) ($internosAgg->total_internos ?? 0));
 
         // 2. Entradas Recentes no Departamento
         $entradasRecentes = $entradasVisiveis()->with(['usuario'])
@@ -312,20 +324,20 @@ class DashboardService
                 [
                     'id' => 'novas_entradas',
                     'label' => 'Novas Entradas no Setor',
-                    'valor' => $novasEntradas,
+                    'valor' => $cartaoNovas['valor'],
                     'alerta' => 'Aguardando tramitação',
                     'icone' => 'fas fa-inbox',
                     'cor' => 'primary',
-                    'link' => route('documentos-entradas.index', ['tab' => 'novos_departamento']),
+                    'link' => $cartaoNovas['link'],
                 ],
                 [
                     'id' => 'tarefas_delegadas',
                     'label' => 'Delegados / Em Andamento',
-                    'valor' => $tarefasAndamento,
+                    'valor' => $cartaoDelegados['valor'],
                     'alerta' => 'Em execução pela equipe',
                     'icone' => 'fas fa-user-clock',
                     'cor' => 'warning',
-                    'link' => route('documentos-entradas.index', ['tab' => 'delegados']),
+                    'link' => $cartaoDelegados['link'],
                 ],
                 [
                     'id' => 'minutas_revisao',
@@ -334,16 +346,16 @@ class DashboardService
                     'alerta' => $minutasRevisao > 0 ? 'Ação requerida' : 'Em dia',
                     'icone' => 'fas fa-clipboard-check',
                     'cor' => $minutasRevisao > 0 ? 'danger' : 'success',
-                    'link' => route('documentos-internos.index', ['status' => 'em_analise']),
+                    'link' => $cartaoMinutas['link'],
                 ],
                 [
                     'id' => 'total_acervo',
-                    'label' => 'Total do Acervo do Setor',
-                    'valor' => $totalAcervo,
-                    'alerta' => 'Entradas e Internos',
+                    'label' => 'Acervo de Entradas do Setor',
+                    'valor' => $cartaoAcervo['valor'],
+                    'alerta' => 'Inclui arquivados',
                     'icone' => 'fas fa-archive',
                     'cor' => 'info',
-                    'link' => route('documentos-internos.index'),
+                    'link' => $cartaoAcervo['link'],
                 ],
             ],
             'listas' => [
@@ -363,7 +375,7 @@ class DashboardService
                     'tipo' => 'minutas_chefe',
                     'itens' => $minutasEquipe,
                     'vazio_mensagem' => 'Nenhuma minuta pendente de revisão no momento.',
-                    'url_ver_todos' => route('documentos-internos.index', ['status' => 'em_analise']),
+                    'url_ver_todos' => $cartaoMinutas['link'],
                 ],
             ],
         ];
@@ -402,37 +414,23 @@ class DashboardService
             return $query;
         };
 
-        // 1. Contagens agregadas de governança
+        // 1. Cartões de governança: o número é o da lista para onde levam (ver
+        // cartaoEntradas), com a visibilidade da própria listagem — que para o
+        // chefe de gabinete já é a do seu gabinete.
         //
-        // carecer_despacho media-se pelo estado, como o separador homónimo da
-        // listagem. A fórmula anterior usava "saida_gabinete_data IS NULL", campo
-        // que só a saída para OUTRO gabinete preenche, pelo que contava quase
-        // todo o acervo (6031 de 6043 documentos na base de desenvolvimento).
+        // Os links usavam ?status=, que a listagem de entradas ignorava: os três
+        // cartões de entradas abriam a mesma lista ("A Carecer de Tratamento").
         //
-        // TRATADO deixou de ser "pronto a expedir" — o despacho já entrega o
-        // documento aos departamentos —, e passou a significar que o
-        // departamento o tratou. O indicador acompanha esse sentido.
-        $entradasAgg = $limitarAoGabinete(DocumentoEntrada::query())
-            ->selectRaw("
-                COUNT(CASE WHEN status IN ('registrado', 'pendente_tratamento') AND arquivado = 0 THEN 1 END) as carecer_despacho,
-                COUNT(CASE WHEN status = 'tratado' AND arquivado = 0 THEN 1 END) as tratados_departamentos,
-                COUNT(CASE WHEN ano_referencia = ? THEN 1 END) as total_ano
-            ", [$anoAtual])
-            ->first();
+        // carecer_despacho: registados e pendentes de tratamento, como o
+        // separador. TRATADO significa que o departamento o tratou (o despacho
+        // já entrega o documento). O total do ano conta os arquivados, por isso
+        // a lista também os inclui.
+        $cartaoCarecer = $this->cartaoEntradas($user, ['tab' => 'carecer_tratamento']);
+        $cartaoTratados = $this->cartaoEntradas($user, ['tab' => 'tratados']);
+        $cartaoEmAnalise = $this->cartaoInternos($user, ['tab' => 'homologacao', 'status' => 'em_analise']);
+        $cartaoTotalAno = $this->cartaoEntradas($user, ['tab' => 'todos', 'ano' => $anoAtual, 'incluir_arquivados' => 1]);
 
-        $startOfYear = now()->startOfYear();
-
-        $internosAgg = $limitarAoGabinete(DocumentoInterno::query())
-            ->selectRaw("
-                COUNT(CASE WHEN status = 'em_analise' THEN 1 END) as em_analise_total,
-                COUNT(CASE WHEN status IN ('aprovado', 'assinado') AND updated_at >= ? THEN 1 END) as atos_emitidos_ano
-            ", [$startOfYear])
-            ->first();
-
-        $carecerDespacho = (int) ($entradasAgg->carecer_despacho ?? 0);
-        $tratadosDepartamentos = (int) ($entradasAgg->tratados_departamentos ?? 0);
-        $documentosEmAnalise = (int) ($internosAgg->em_analise_total ?? 0);
-        $totalGeralAno = (int) ($entradasAgg->total_ano ?? 0);
+        $carecerDespacho = $cartaoCarecer['valor'];
 
         // 2. Entradas Prioritárias / Despachos Pendentes
         $entradasPrioritarias = $limitarAoGabinete(DocumentoEntrada::with(['departamento']))
@@ -497,34 +495,34 @@ class DashboardService
                     'alerta' => $carecerDespacho > 0 ? 'Decisão prioritária' : 'Zerado',
                     'icone' => 'fas fa-stamp',
                     'cor' => 'danger',
-                    'link' => route('documentos-entradas.index', ['status' => 'pendente_tratamento']),
+                    'link' => $cartaoCarecer['link'],
                 ],
                 [
                     'id' => 'tratados_departamentos',
                     'label' => 'Tratados pelos Departamentos',
-                    'valor' => $tratadosDepartamentos,
+                    'valor' => $cartaoTratados['valor'],
                     'alerta' => 'Concluídos na origem',
                     'icone' => 'fas fa-clipboard-check',
                     'cor' => 'success',
-                    'link' => route('documentos-entradas.index', ['status' => 'tratado']),
+                    'link' => $cartaoTratados['link'],
                 ],
                 [
                     'id' => 'documentos_em_analise',
                     'label' => 'Documentos em Análise Setorial',
-                    'valor' => $documentosEmAnalise,
+                    'valor' => $cartaoEmAnalise['valor'],
                     'alerta' => 'Em tramitação nos departamentos',
                     'icone' => 'fas fa-hourglass-half',
                     'cor' => 'info',
-                    'link' => route('documentos-internos.index', ['status' => 'em_analise']),
+                    'link' => $cartaoEmAnalise['link'],
                 ],
                 [
                     'id' => 'total_registrado_ano',
                     'label' => "Total Geral Registrado ({$anoAtual})",
-                    'valor' => $totalGeralAno,
+                    'valor' => $cartaoTotalAno['valor'],
                     'alerta' => 'Entradas oficiais no ano',
                     'icone' => 'fas fa-chart-line',
                     'cor' => 'success',
-                    'link' => route('documentos-entradas.index'),
+                    'link' => $cartaoTotalAno['link'],
                 ],
             ],
             'listas' => [
@@ -535,7 +533,7 @@ class DashboardService
                     'tipo' => 'despachos_executivos',
                     'itens' => $entradasPrioritarias,
                     'vazio_mensagem' => 'Não há despachos prioritários pendentes.',
-                    'url_ver_todos' => route('documentos-entradas.index', ['status' => 'pendente_tratamento']),
+                    'url_ver_todos' => $cartaoCarecer['link'],
                 ],
                 'direita' => [
                     'titulo' => 'Atos Administrativos & Ordens Emitidas',
@@ -544,7 +542,9 @@ class DashboardService
                     'tipo' => 'atos_emitidos',
                     'itens' => $atosEmitidos,
                     'vazio_mensagem' => 'Nenhum ato administrativo emitido recentemente.',
-                    'url_ver_todos' => route('documentos-internos.index', ['status' => 'assinado']),
+                    // Aprovados e assinados, como a lista ao lado (antes ?status=assinado
+                    // sobre o separador "Para Homologação" dava sempre uma lista vazia).
+                    'url_ver_todos' => route('documentos-internos.index', ['tab' => 'assinados']),
                 ],
             ],
         ];

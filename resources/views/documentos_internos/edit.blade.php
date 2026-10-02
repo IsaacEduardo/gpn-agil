@@ -35,7 +35,8 @@
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <span>Editar Documento Interno</span>
-                        @if (config('app.feature_collab'))
+                        {{-- Em análise a chefia edita aqui; a colaboração só existe em rascunho. --}}
+                        @if (config('app.feature_collab') && auth()->user()->can('collaborate', $documentoInterno))
                             @if (\App\Http\Controllers\DocumentoColaboracaoController::EDITOR_PRESERVA_ESTRUTURA || ! $documentoInterno->temConteudoEstruturado())
                                 <a href="{{ route('documentos-internos.collab.editor', $documentoInterno) }}"
                                    class="btn btn-outline-primary btn-sm">
