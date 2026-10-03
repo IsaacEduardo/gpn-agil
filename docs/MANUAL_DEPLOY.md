@@ -379,8 +379,10 @@ Faça antes um `mysqldump` (como em qualquer deploy com migrações).
    echo "REVERB_APP_KEY=$(openssl rand -hex 16)"
    echo "REVERB_APP_SECRET=$(openssl rand -hex 32)"
    ```
-4. **Dependências e assets** (`yjs`/`@tiptap` vêm do `npm ci`):
+4. **Dependências e assets** (`yjs`/`@tiptap` vêm do `npm ci`). O npm do Node 20 traz a
+   10.8; fixe a 10.9 para o `npm ci` validar o lock como no desenvolvimento:
    ```bash
+   npm install -g npm@10.9.1
    npm ci && npm run build
    ```
 5. **Serviço do Reverb:**
@@ -390,8 +392,9 @@ Faça antes um `mysqldump` (como em qualquer deploy com migrações).
    systemctl enable --now gpn-reverb
    systemctl status gpn-reverb --no-pager
    ```
-6. **nginx** — dentro dos **dois** blocos `server { listen 443 ... }` de
-   `/etc/nginx/sites-available/gpn-agil`, antes do `location /`:
+6. **nginx** — dentro do bloco `server { listen 443 ... default_server; server_name ondaka-gph.ao; }`
+   de `/etc/nginx/sites-available/gpn-agil`, antes do `location /` (o bloco do `www` só
+   redirecciona para o domínio principal, que é onde o browser liga o WebSocket):
    ```nginx
    include /var/www/gpn-agil/deploy/nginx/gpn-reverb.conf;
    ```

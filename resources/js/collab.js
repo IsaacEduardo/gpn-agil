@@ -119,6 +119,26 @@ document.addEventListener('DOMContentLoaded', () => {
         fila?.parar();
         editor?.setEditable(false);
         banner(msg, tipo);
+        desactivarControlos();
+        // O servidor passa a devolver as conversas sem "pode comentar/resolver": a lista
+        // volta a ser desenhada sem caixas de resposta nem botões.
+        comentarios?.recarregar();
+    }
+
+    // O texto fica só de leitura, mas a barra, o título, o destinatário, a versão, os
+    // comentários e os convites continuavam com aspecto activo depois de a sessão
+    // encerrar (o servidor recusava tudo; ficava só a confusão).
+    function desactivarControlos() {
+        document.querySelectorAll([
+            '#collab-toolbar button',
+            '#collab-titulo',
+            '[id^="collab-destinatario_"]',
+            '#collab-change-type', '#collab-change-log', '#collab-checkpoint',
+            '#collab-coment-texto', '#collab-coment-enviar',
+            '#collab-invite-user', '#collab-invite-nivel', '#collab-invite-btn', '.collab-remove',
+        ].join(',')).forEach((el) => { el.disabled = true; });
+        document.getElementById('collab-toolbar')?.classList.add('opacity-50');
+        document.getElementById('collab-coment-trecho')?.classList.add('d-none');
     }
 
     // Recusas definitivas do servidor: param a fila e o editor fica só de leitura.
