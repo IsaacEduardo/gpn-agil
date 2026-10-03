@@ -571,6 +571,11 @@ tr.keyboard-selected {
                                                     </span>
                                                 </div>
                                             @endif
+                                            @if ($t->aguardaQuemAssuma())
+                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-normal mt-1" style="font-size: 0.72rem;" title="Oferecida a vários técnicos: o primeiro a assumir fica com ela">
+                                                    <i class="fas fa-people-arrows me-1"></i>Em concorrência
+                                                </span>
+                                            @endif
                                         @else
                                             <span class="text-muted small">Sem tarefa ativa</span>
                                         @endif
@@ -601,6 +606,15 @@ tr.keyboard-selected {
 
                                     <td class="text-end pe-4" onclick="event.stopPropagation()">
                                         <div class="d-flex justify-content-end align-items-center gap-1">
+                                            @if ($t && $t->aguardaQuemAssuma())
+                                                <form action="{{ route('documentos-entradas.tarefas.assumir', [$doc, $t]) }}" method="POST" class="d-inline">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-sm btn-primary fw-bold px-2 py-1 shadow-sm rounded-2 d-inline-flex align-items-center"
+                                                        title="Assumir: fica só consigo e desaparece para os colegas">
+                                                        <i class="fas fa-hand-pointer me-1"></i> Assumir
+                                                    </button>
+                                                </form>
+                                            @endif
                                             @if ($t)
                                                 <button type="button" 
                                                     class="btn btn-sm btn-success fw-bold px-2 py-1 shadow-sm rounded-2 d-inline-flex align-items-center"

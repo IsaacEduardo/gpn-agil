@@ -383,6 +383,8 @@ class DocumentoEntradaController extends Controller
             $pendente = $tarefa->status === 'pendente';
             $tarefa->setAttribute('can_concluir', $pendente && $this->permissionService->canConcluirTarefa($actor, $doc, $tarefa));
             $tarefa->setAttribute('can_cancelar', $pendente && $this->permissionService->canCancelarTarefa($actor, $doc, $tarefa));
+            $tarefa->setAttribute('can_assumir', $this->permissionService->canAssumirTarefa($actor, $tarefa));
+            $tarefa->setAttribute('can_libertar', $this->permissionService->canLibertarTarefa($actor, $doc, $tarefa));
         }
 
         $canVisto = false;
@@ -557,19 +559,55 @@ class DocumentoEntradaController extends Controller
         }
 
         // 7. Tarefas Atribuídas e Concluídas
-        foreach ($doc->tarefas as $t) {
-            $destinoNome = $t->assignedToUser ? optional($t->assignedToUser)->name : (optional($t->assignedToDepartamento)->nome ?? 'Setor');
+        // Um grupo em concorrência é UMA oferta a vários técnicos: aparece como
+        // uma só atribuição (com os nomes) e depois "assumida por X", e não como
+        // N tarefas atribuídas das quais N-1 desapareceriam sem explicação.
+        foreach ($doc->tarefas->filter(fn ($t) => $t->emConcorrencia())->groupBy('grupo_tarefa_uuid') as $grupo) {
+            $primeira = $grupo->sortBy('id')->first();
+            $nomes = $grupo->map(fn ($t) => optional($t->assignedToUser)->name)->filter()->implode(', ');
             $events->push([
                 'tipo' => 'tarefa_criada',
-                'data' => $t->created_at,
-                'titulo' => "Tarefa Atribuída: {$t->titulo}",
-                'descricao' => ($t->descricao ? "{$t->descricao}\n" : '')."Atribuído a: {$destinoNome}".($t->prazo_at ? ' • Prazo: '.$t->prazo_at->format('d/m/Y') : ''),
-                'autor' => optional($t->assignedBy)->name ?? 'Chefia',
-                'setor' => optional($t->assignedToDepartamento)->nome,
-                'icone' => 'fas fa-tasks',
+                'data' => $primeira->created_at,
+                'titulo' => "Tarefa Oferecida: {$primeira->titulo}",
+                'descricao' => ($primeira->descricao ? "{$primeira->descricao}\n" : '')."Em concorrência, o primeiro a assumir fica com ela: {$nomes}".($primeira->prazo_at ? ' • Prazo: '.$primeira->prazo_at->format('d/m/Y') : ''),
+                'autor' => optional($primeira->assignedBy)->name ?? 'Chefia',
+                'setor' => null,
+                'icone' => 'fas fa-people-arrows',
                 'badge_class' => 'bg-secondary',
-                'badge_text' => 'Tarefa Criada',
+                'badge_text' => 'Tarefa em Concorrência',
             ]);
+
+            $dono = $grupo->first(fn ($t) => $t->assumida_em !== null);
+            if ($dono) {
+                $events->push([
+                    'tipo' => 'tarefa_assumida',
+                    'data' => $dono->assumida_em,
+                    'titulo' => "Tarefa Assumida: {$dono->titulo}",
+                    'descricao' => 'Assumida por '.(optional($dono->assignedToUser)->name ?? 'técnico').'; retirada aos restantes.',
+                    'autor' => optional($dono->assignedToUser)->name ?? 'Técnico',
+                    'setor' => null,
+                    'icone' => 'fas fa-hand-pointer',
+                    'badge_class' => 'bg-info',
+                    'badge_text' => 'Tarefa Assumida',
+                ]);
+            }
+        }
+
+        foreach ($doc->tarefas as $t) {
+            $destinoNome = $t->assignedToUser ? optional($t->assignedToUser)->name : (optional($t->assignedToDepartamento)->nome ?? 'Setor');
+            if (! $t->emConcorrencia()) {
+                $events->push([
+                    'tipo' => 'tarefa_criada',
+                    'data' => $t->created_at,
+                    'titulo' => "Tarefa Atribuída: {$t->titulo}",
+                    'descricao' => ($t->descricao ? "{$t->descricao}\n" : '')."Atribuído a: {$destinoNome}".($t->prazo_at ? ' • Prazo: '.$t->prazo_at->format('d/m/Y') : ''),
+                    'autor' => optional($t->assignedBy)->name ?? 'Chefia',
+                    'setor' => optional($t->assignedToDepartamento)->nome,
+                    'icone' => 'fas fa-tasks',
+                    'badge_class' => 'bg-secondary',
+                    'badge_text' => 'Tarefa Criada',
+                ]);
+            }
 
             if ($t->status === 'concluida' || $t->status === 'concluido') {
                 $executor = optional($t->responsavelAtual)->name ?? (optional($t->assignedToUser)->name ?? 'Técnico');
@@ -864,8 +902,10 @@ Parecer: {$t->resposta}";
             ->where('status', 'pendente')
             ->first();
 
+        // As retiradas (um colega assumiu a tarefa) não são tarefas emitidas a mostrar.
         $tarefas = DocumentoTarefa::with(['assignedToUser:id,name', 'assignedBy:id,name'])
             ->where('documento_entrada_id', $doc->id)
+            ->where('status', '!=', DocumentoTarefa::STATUS_RETIRADA)
             ->orderByDesc('created_at')
             ->get();
 
@@ -978,6 +1018,16 @@ Parecer: {$t->resposta}";
                 ->where('assigned_to_user_id', $actor->id)
                 ->firstOrFail();
 
+            // Uma tarefa que um colega assumiu entretanto (retirada) ou já
+            // fechada não se conclui por aqui; antes não se verificava o estado.
+            if ($tarefa->status !== 'pendente') {
+                $erro = $tarefa->status === DocumentoTarefa::STATUS_RETIRADA
+                    ? 'Esta tarefa foi assumida por outro técnico.'
+                    : 'Esta tarefa já não está pendente.';
+
+                return response()->json(['message' => $erro, 'error' => $erro], 409);
+            }
+
             // Uma só implementação de "concluir tarefa": esta via tinha a sua
             // cópia inline, e era a única que chegava a gravar o parecer.
             $this->documentoService->completeTask($tarefa, $actor, null, $validated['observacao']);
@@ -1010,6 +1060,7 @@ Parecer: {$t->resposta}";
             'assigned_to_user_id' => ['required_without:assigned_to_user_ids', 'nullable', 'integer', 'exists:users,id'],
             'descricao' => ['required', 'string'],
             'prazo_at' => ['required', 'date'],
+            'modo' => ['nullable', 'in:'.DocumentoTarefa::MODO_TODOS.','.DocumentoTarefa::MODO_CONCORRENCIA],
         ], [
             'assigned_to_user_ids.required_without' => 'Selecione pelo menos um técnico.',
         ]);
@@ -1036,11 +1087,15 @@ Parecer: {$t->resposta}";
             'titulo' => 'Despacho Executivo / Demanda Técnica',
             'descricao' => $validated['descricao'],
             'prazo_at' => $validated['prazo_at'],
+            'modo' => $validated['modo'] ?? null,
         ]);
 
-        $message = count($destinatarios) > 1
-            ? 'Tarefa delegada a '.count($destinatarios).' técnicos e documento aprovado!'
-            : 'Despacho/Tarefa delegada com sucesso e documento aprovado!';
+        $message = match (true) {
+            count($destinatarios) > 1 && ($validated['modo'] ?? null) === DocumentoTarefa::MODO_CONCORRENCIA
+                => 'Tarefa oferecida a '.count($destinatarios).' técnicos: o primeiro a assumir fica com ela.',
+            count($destinatarios) > 1 => 'Tarefa delegada a '.count($destinatarios).' técnicos e documento aprovado!',
+            default => 'Despacho/Tarefa delegada com sucesso e documento aprovado!',
+        };
 
         return $this->respostaAcaoRapida($request, $actor, $message);
     }

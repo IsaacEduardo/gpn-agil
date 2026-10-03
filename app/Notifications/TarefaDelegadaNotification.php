@@ -67,7 +67,8 @@ class TarefaDelegadaNotification extends Notification implements ShouldQueue
         return $this->canonicalPayload(
             title: 'Nova tarefa: '.$this->tarefa->titulo,
             url: route('documentos-entradas.show', $documento->id),
-            body: 'No documento '.$numero.($prazo ? ' · prazo '.$prazo : ''),
+            body: 'No documento '.$numero.($prazo ? ' · prazo '.$prazo : '')
+                .($this->tarefa->emConcorrencia() ? ' · em concorrência: o primeiro a assumir fica com ela' : ''),
             priority: 'high',
             type: 'tarefa_delegada',
             icon: 'fas fa-tasks',
@@ -99,7 +100,7 @@ class TarefaDelegadaNotification extends Notification implements ShouldQueue
         $url = route('documentos-entradas.show', $documento->id);
 
         return (new MailMessage)
-            ->subject("Nova Tarefa Designada: {$this->tarefa->titulo}")
+            ->subject(($this->tarefa->emConcorrencia() ? 'Tarefa Disponível: ' : 'Nova Tarefa Designada: ').$this->tarefa->titulo)
             ->markdown('emails.tarefas.delegada', [
                 'tarefa' => $this->tarefa,
                 'documento' => $documento,

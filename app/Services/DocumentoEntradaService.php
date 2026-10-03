@@ -41,6 +41,11 @@ class DocumentoEntradaService
         $this->permissionService = $permissionService;
     }
 
+    private function concorrencia(): TarefaConcorrenciaService
+    {
+        return app(TarefaConcorrenciaService::class);
+    }
+
     /**
      * Restringe a query aos documentos de entrada visíveis pelo utilizador
      * (departamentos próprios, gabinetes responsáveis e histórico de
@@ -506,6 +511,7 @@ class DocumentoEntradaService
                 'prazo_at' => $data['prazo_at'] ?? null,
                 'status' => 'pendente',
                 'grupo_tarefa_uuid' => $data['grupo_tarefa_uuid'] ?? null,
+                'modo_grupo' => $data['modo_grupo'] ?? null,
             ]);
 
             // Regra de negócio (documentos externos): ao delegar, a chefia dá
@@ -868,14 +874,21 @@ class DocumentoEntradaService
      * todas no mesmo grupo, numa só transacção. Fonte única da ficha e do painel
      * rápido. Os destinatários já vêm validados por validarDestinatarioTarefa().
      *
+     * Com dois ou mais destinatários, $dados['modo'] escolhe entre
+     * DocumentoTarefa::MODO_TODOS (cada um executa a sua) e MODO_CONCORRENCIA (o
+     * primeiro a assumir fica com ela — ver TarefaConcorrenciaService). Sem modo,
+     * vale 'todos': é o contrato de sempre para quem não o envia.
+     *
      * @param  User[]  $destinatarios
-     * @param  array{titulo: string, descricao?: ?string, prazo_at?: ?string}  $dados
+     * @param  array{titulo: string, descricao?: ?string, prazo_at?: ?string, modo?: ?string}  $dados
      * @return DocumentoTarefa[]
      */
     public function delegarAUtilizadores(DocumentoEntrada $documento, User $actor, array $destinatarios, array $dados): array
     {
         return DB::transaction(function () use ($documento, $actor, $destinatarios, $dados) {
             $grupo = count($destinatarios) > 1 ? (string) Str::uuid() : null;
+            $modo = $grupo === null ? null
+                : (($dados['modo'] ?? null) === DocumentoTarefa::MODO_CONCORRENCIA ? DocumentoTarefa::MODO_CONCORRENCIA : DocumentoTarefa::MODO_TODOS);
             $tarefas = [];
 
             foreach ($destinatarios as $destino) {
@@ -885,6 +898,7 @@ class DocumentoEntradaService
                     'prazo_at' => $dados['prazo_at'] ?? null,
                     'assigned_to_user_id' => $destino->id,
                     'grupo_tarefa_uuid' => $grupo,
+                    'modo_grupo' => $modo,
                 ], $actor);
             }
 
@@ -905,6 +919,13 @@ class DocumentoEntradaService
      */
     public function completeTask(DocumentoTarefa $tarefa, User $actor, ?int $responsavelId = null, ?string $resposta = null)
     {
+        // Em concorrência, concluir sem ter assumido assume na mesma operação —
+        // senão as linhas dos colegas ficavam pendentes e o documento nunca
+        // fechava. Se outro técnico a assumiu entretanto, isto recusa.
+        if ($tarefa->emConcorrencia()) {
+            $tarefa = $this->concorrencia()->assumir($tarefa, $actor);
+        }
+
         if ($tarefa->assigned_to_departamento_id) {
             if ($responsavelId) {
                 $tarefa->responsavel_user_id = $responsavelId;
@@ -986,8 +1007,14 @@ class DocumentoEntradaService
 
     public function cancelTask(DocumentoTarefa $tarefa, User $actor)
     {
+        $esperavaQuemAssumisse = $tarefa->aguardaQuemAssuma();
+
         $tarefa->status = 'cancelada';
         $tarefa->save();
+
+        if ($esperavaQuemAssumisse) {
+            $this->concorrencia()->cancelarRestantesDoGrupo($tarefa);
+        }
 
         $documento = $tarefa->documento;
         $numero = sprintf('%03d/%d', $documento->numero_sequencial, $documento->ano_referencia);

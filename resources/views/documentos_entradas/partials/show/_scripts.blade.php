@@ -179,9 +179,16 @@
                 const contagem = tarefaForm.querySelector('[data-destinatarios-contagem]');
                 const erroDestinatarios = tarefaForm.querySelector('[data-destinatarios-erro]');
                 const btnTodos = tarefaForm.querySelector('[data-destinatarios-todos]');
+                const blocoModo = tarefaForm.querySelector('[data-modo-delegacao]');
                 const actualizarContagem = function() {
-                    const marcadas = Array.from(caixas()).filter(c => c.checked).length;
+                    const marcadas = Array.from(caixas()).filter(c => !c.disabled && c.checked).length;
                     if (contagem) contagem.textContent = marcadas + ' selecionado(s)';
+                    // O modo (concorrência / todos) só faz sentido com 2+ técnicos.
+                    if (blocoModo) {
+                        const mostrar = marcadas > 1;
+                        blocoModo.classList.toggle('d-none', !mostrar);
+                        blocoModo.querySelectorAll('input[name="modo"]').forEach(r => { r.disabled = !mostrar; });
+                    }
                     if (btnTodos) btnTodos.textContent = marcadas === caixas().length && marcadas > 0 ? 'Limpar seleção' : 'Selecionar todos';
                     if (erroDestinatarios && marcadas > 0) erroDestinatarios.classList.add('d-none');
                 };
@@ -203,6 +210,7 @@
                         if (isDep) depSelect.setAttribute('name', 'destino_id'); else depSelect.removeAttribute('name');
                         depSelect.required = isDep;
                     }
+                    actualizarContagem();
                 };
                 if (tipoUsuario) tipoUsuario.addEventListener('change', updateVisibility);
                 if (tipoDepartamento) tipoDepartamento.addEventListener('change', updateVisibility);

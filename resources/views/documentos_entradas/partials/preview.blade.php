@@ -192,7 +192,20 @@
                         @empty
                             <div class="alert alert-warning small mb-0">Não há técnicos a quem possa atribuir esta tarefa.</div>
                         @endforelse
-                        <div class="form-text small">Cada técnico selecionado recebe a sua própria tarefa.</div>
+                        @if($destinatariosTarefa->count() > 1)
+                            {{-- Com um só técnico selecionado o servidor ignora o modo. --}}
+                            <div class="mt-2 p-2 bg-light border rounded-2 small">
+                                <div class="fw-semibold text-muted mb-1">Com vários técnicos:</div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="modo" id="drawerModoConcorrencia" value="{{ \App\Models\DocumentoTarefa::MODO_CONCORRENCIA }}" checked>
+                                    <label class="form-check-label" for="drawerModoConcorrencia"><i class="fas fa-people-arrows me-1"></i>O primeiro que assumir fica com ela</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="modo" id="drawerModoTodos" value="{{ \App\Models\DocumentoTarefa::MODO_TODOS }}">
+                                    <label class="form-check-label" for="drawerModoTodos"><i class="fas fa-users me-1"></i>Todos executam (uma tarefa por técnico)</label>
+                                </div>
+                            </div>
+                        @endif
                     </div>
 
                     <div class="mb-3">
@@ -220,6 +233,19 @@
                         <div class="text-muted" style="font-size: 0.72rem;">
                             Prazo: <strong>{{ optional($minhaTarefa->prazo_at)->format('d/m/Y') ?? 'S/D' }}</strong>
                         </div>
+                        @if($minhaTarefa->aguardaQuemAssuma())
+                            {{-- O formulário de assumir está fora deste (não há formulários aninhados). --}}
+                            <div class="d-flex align-items-center justify-content-between gap-2 border-top border-warning-subtle pt-2 mt-2">
+                                <span class="text-warning-emphasis"><i class="fas fa-people-arrows me-1"></i>Em concorrência: o primeiro a assumir fica com ela.</span>
+                                <button type="submit" form="formAssumirTarefaDrawer" class="btn btn-primary btn-sm fw-semibold text-nowrap">
+                                    <i class="fas fa-hand-pointer me-1"></i>Assumir
+                                </button>
+                            </div>
+                        @elseif($minhaTarefa->emConcorrencia())
+                            <div class="border-top border-warning-subtle pt-2 mt-2 text-info-emphasis">
+                                <i class="fas fa-hand-pointer me-1"></i>Assumida por si.
+                            </div>
+                        @endif
                     </div>
 
                     <div class="mb-3">
@@ -246,6 +272,11 @@
                     </div>
                 @endif
             </form>
+            @if($acaoRapida === 'parecer' && $minhaTarefa->aguardaQuemAssuma())
+                <form id="formAssumirTarefaDrawer" method="POST" action="{{ route('documentos-entradas.tarefas.assumir', [$doc, $minhaTarefa]) }}" class="d-none">
+                    @csrf
+                </form>
+            @endif
         </div>
     </div>
 
@@ -272,7 +303,12 @@
                             </div>
                         @endif
                         <div class="d-flex justify-content-between text-muted border-top pt-1 mt-1" style="font-size: 0.7rem;">
-                            <span>Para: <strong>{{ optional($t->assignedToUser)->name ?? '—' }}</strong></span>
+                            <span>
+                                Para: <strong>{{ optional($t->assignedToUser)->name ?? '—' }}</strong>
+                                @if($t->emConcorrencia())
+                                    · {{ $t->assumida_em ? 'assumida' : 'em concorrência' }}
+                                @endif
+                            </span>
                             <span>Prazo: <strong>{{ optional($t->prazo_at)->format('d/m/Y') ?? '—' }}</strong></span>
                         </div>
                     </div>

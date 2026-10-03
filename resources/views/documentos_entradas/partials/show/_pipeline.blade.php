@@ -30,8 +30,11 @@
             // 4. Tramitação & Execução
             $hasEncaminhamento = $doc->encaminhamentos->count() > 0 || $doc->encaminhamentosExternos->count() > 0;
             $hasRecebimento = $doc->encaminhamentos->whereNotNull('recebido_em')->count() > 0;
-            $hasTarefas = $doc->tarefas->count() > 0;
-            $allTarefasDone = $hasTarefas && $doc->tarefas->whereIn('status', ['concluida', 'concluido'])->count() === $doc->tarefas->count();
+            // Canceladas e retiradas (um colega assumiu a tarefa em concorrência)
+            // não são trabalho por fazer: não impedem o passo de ficar concluído.
+            $tarefasEmJogo = $doc->tarefas->whereNotIn('status', ['cancelada', \App\Models\DocumentoTarefa::STATUS_RETIRADA]);
+            $hasTarefas = $tarefasEmJogo->count() > 0;
+            $allTarefasDone = $hasTarefas && $tarefasEmJogo->whereIn('status', ['concluida', 'concluido'])->count() === $tarefasEmJogo->count();
             $isArquivado = $doc->arquivado || in_array($doc->status, ['arquivado', 'finalizado']);
 
             // Receber é o INÍCIO do trabalho no sector, não o seu fim. Esta etapa

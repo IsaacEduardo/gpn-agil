@@ -90,6 +90,15 @@
         </div>
     </div>
 
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="{{ route('relatorios.index') }}"><i class="fas fa-chart-line me-1"></i>Visão geral</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{{ route('relatorios.desempenho') }}"><i class="fas fa-user-check me-1"></i>Desempenho da equipa</a>
+        </li>
+    </ul>
+
     {{-- Barra de filtros --}}
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body bg-light rounded-3 p-3">

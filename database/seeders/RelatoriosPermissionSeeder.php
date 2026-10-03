@@ -21,9 +21,11 @@ class RelatoriosPermissionSeeder extends Seeder
     public const PERMISSOES = [
         'relatorios.view',
         'relatorios.export',
+        // Desempenho da equipa: ver DesempenhoEquipaService::escopo.
+        'relatorios.desempenho',
     ];
 
-    /** Papéis que recebem as duas permissões. */
+    /** Papéis que recebem as permissões. */
     public const PAPEIS_COM_ACESSO = [
         'admin',
         'chefe-departamento',

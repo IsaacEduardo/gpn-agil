@@ -9,6 +9,7 @@ use App\Http\Controllers\DocumentoColaboracaoController;
 use App\Http\Controllers\DocumentoEntradaController;
 use App\Http\Controllers\DocumentoEntradaEncaminhamentoController;
 use App\Http\Controllers\DocumentoEntradaProtocoloController;
+use App\Http\Controllers\DesempenhoEquipaController;
 use App\Http\Controllers\DocumentoEntradaTarefaController;
 use App\Http\Controllers\DocumentoInternoController;
 use App\Http\Controllers\EdmsController;
@@ -75,6 +76,7 @@ Route::middleware(['auth'])->group(function () {
 
     // Rotas do Módulo de Relatórios e Analytics EDMS
     Route::get('relatorios', [RelatorioController::class, 'index'])->name('relatorios.index');
+    Route::get('relatorios/desempenho', [DesempenhoEquipaController::class, 'index'])->name('relatorios.desempenho');
     Route::match(['get', 'post'], 'relatorios/export/pdf', [RelatorioController::class, 'exportPdf'])->middleware('throttle:heavy-exports')->name('relatorios.export.pdf');
     Route::match(['get', 'post'], 'relatorios/export/excel', [RelatorioController::class, 'exportExcel'])->middleware('throttle:heavy-exports')->name('relatorios.export.excel');
     Route::match(['get', 'post'], 'relatorios/export/csv', [RelatorioController::class, 'exportCsv'])->middleware('throttle:heavy-exports')->name('relatorios.export.csv');
@@ -168,6 +170,10 @@ Route::middleware(['auth'])->group(function () {
         ->name('documentos-entradas.tarefas.concluir');
     Route::patch('documentos-entradas/{documento}/tarefas/{tarefa}/cancelar', [DocumentoEntradaTarefaController::class, 'cancelar'])
         ->name('documentos-entradas.tarefas.cancelar');
+    Route::post('documentos-entradas/{documento}/tarefas/{tarefa}/assumir', [DocumentoEntradaTarefaController::class, 'assumir'])
+        ->name('documentos-entradas.tarefas.assumir');
+    Route::patch('documentos-entradas/{documento}/tarefas/{tarefa}/libertar', [DocumentoEntradaTarefaController::class, 'libertar'])
+        ->name('documentos-entradas.tarefas.libertar');
     Route::get('documentos-entradas-export/pdf', [DocumentoEntradaProtocoloController::class, 'exportPDF'])
         ->middleware('throttle:heavy-exports')
         ->name('documentos-entradas.export.pdf');

@@ -80,6 +80,10 @@
                     </button>
                 </div>
 
+                <a href="{{ route('relatorios.desempenho') }}" class="btn btn-outline-primary shadow-sm" title="Indicadores de execução das suas tarefas">
+                    <i class="fas fa-user-check me-1"></i> O meu desempenho
+                </a>
+
                 {{-- New Task Button --}}
                 <a href="#" class="btn btn-primary shadow-sm">
                     <i class="fas fa-plus me-1"></i> {{ __('Nova Tarefa') }}
@@ -191,8 +195,23 @@
                                             class="badge rounded-pill bg-{{ $tarefa->status === 'concluida' ? 'success' : ($tarefa->status === 'cancelada' ? 'danger' : 'warning') }}">
                                             {{ ucfirst($tarefa->status) }}
                                         </span>
+                                        @if ($tarefa->aguardaQuemAssuma())
+                                            <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-normal">
+                                                <i class="fas fa-people-arrows me-1"></i>Em concorrência
+                                            </span>
+                                        @endif
                                     </td>
                                     <td class="text-end pe-4">
+                                        @if ($tarefa->aguardaQuemAssuma() && (int) $tarefa->assigned_to_user_id === (int) auth()->id())
+                                            <form action="{{ route('documentos-entradas.tarefas.assumir', [$tarefa->documento_entrada_id, $tarefa->id]) }}"
+                                                method="POST" class="d-inline">
+                                                @csrf
+                                                <button type="submit" class="btn btn-sm btn-primary rounded-pill"
+                                                    title="Em concorrência: o primeiro a assumir fica com ela">
+                                                    <i class="fas fa-hand-pointer me-1"></i>Assumir
+                                                </button>
+                                            </form>
+                                        @endif
                                         @if ($tarefa->status === 'pendente')
                                             <form
                                                 action="{{ route('documentos-entradas.tarefas.concluir', [$tarefa->documento_entrada_id, $tarefa->id]) }}"

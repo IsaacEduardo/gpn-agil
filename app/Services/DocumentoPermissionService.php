@@ -371,6 +371,30 @@ class DocumentoPermissionService
     }
 
     /**
+     * Assumir uma tarefa em concorrência: só o técnico a quem a linha foi
+     * oferecida, e só enquanto ninguém a assumiu. Se outro foi mais rápido, o
+     * TarefaConcorrenciaService recusa com a mensagem — aqui decide-se o botão.
+     */
+    public function canAssumirTarefa(User $user, \App\Models\DocumentoTarefa $tarefa): bool
+    {
+        return $tarefa->aguardaQuemAssuma()
+            && (int) $tarefa->assigned_to_user_id === (int) $user->id;
+    }
+
+    /**
+     * Devolver ao grupo uma tarefa em concorrência já assumida e por concluir:
+     * quem gere tarefas no documento (a chefia), por exemplo se o técnico se
+     * ausentou.
+     */
+    public function canLibertarTarefa(User $user, $documento, \App\Models\DocumentoTarefa $tarefa): bool
+    {
+        return $tarefa->emConcorrencia()
+            && $tarefa->status === 'pendente'
+            && $tarefa->assumida_em !== null
+            && $this->canManageTasks($user, $documento);
+    }
+
+    /**
      * Quem pode cancelar uma tarefa: quem a atribuiu ou quem gere tarefas no
      * documento.
      */

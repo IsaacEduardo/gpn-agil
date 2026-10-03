@@ -116,6 +116,24 @@ class ReportService
     }
 
     /**
+     * Período do filtro com as mesmas regras do painel, para outros relatórios
+     * (ex.: desempenho da equipa) não terem uma segunda interpretação dos campos.
+     *
+     * @param  array<string, mixed>  $filtros
+     * @return array{granularity: string, inicio: CarbonImmutable, fim: CarbonImmutable}
+     */
+    public function periodo(array $filtros): array
+    {
+        $granularidade = in_array($filtros['granularity'] ?? null, self::GRANULARIDADES, true)
+            ? $filtros['granularity']
+            : 'mes';
+
+        [$inicio, $fim] = $this->intervalo($granularidade, $filtros);
+
+        return ['granularity' => $granularidade, 'inicio' => $inicio, 'fim' => $fim];
+    }
+
+    /**
      * Quem pode analisar qualquer departamento (ou o órgão inteiro).
      */
     public function podeEscolherDepartamento(User $user): bool

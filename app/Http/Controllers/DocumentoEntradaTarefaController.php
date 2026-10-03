@@ -8,6 +8,7 @@ use App\Models\DocumentoTarefa;
 use App\Models\User;
 use App\Services\DocumentoEntradaService;
 use App\Services\DocumentoPermissionService;
+use App\Services\TarefaConcorrenciaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -21,6 +22,7 @@ class DocumentoEntradaTarefaController extends Controller
     public function __construct(
         protected DocumentoEntradaService $documentoService,
         protected DocumentoPermissionService $permissionService,
+        protected TarefaConcorrenciaService $concorrencia,
     ) {}
 
     public function store(Request $request, DocumentoEntrada $documento)
@@ -33,6 +35,7 @@ class DocumentoEntradaTarefaController extends Controller
             'titulo' => ['required', 'string', 'max:255'],
             'descricao' => ['nullable', 'string'],
             'prazo_at' => ['nullable', 'date'],
+            'modo' => ['nullable', 'in:'.DocumentoTarefa::MODO_TODOS.','.DocumentoTarefa::MODO_CONCORRENCIA],
         ]);
 
         $actor = Auth::user();
@@ -101,7 +104,60 @@ class DocumentoEntradaTarefaController extends Controller
             ], $actor);
         }
 
-        return redirect()->route('documentos-entradas.show', $documento)->with('success', 'Tarefa designada com sucesso e Documento Externo aprovado.');
+        $mensagem = $tipo === 'usuario' && count($usuariosValidos) > 1 && ($validated['modo'] ?? null) === DocumentoTarefa::MODO_CONCORRENCIA
+            ? 'Tarefa oferecida a '.count($usuariosValidos).' técnicos: o primeiro a assumir fica com ela.'
+            : 'Tarefa designada com sucesso e Documento Externo aprovado.';
+
+        return redirect()->route('documentos-entradas.show', $documento)->with('success', $mensagem);
+    }
+
+    /**
+     * O técnico assume uma tarefa em concorrência; as dos colegas desaparecem.
+     * Se outro foi mais rápido, TarefaIndisponivelException responde com aviso.
+     */
+    public function assumir(Request $request, DocumentoEntrada $documento, DocumentoTarefa $tarefa)
+    {
+        if ((int) $tarefa->documento_entrada_id !== (int) $documento->id) {
+            abort(404);
+        }
+
+        $actor = Auth::user();
+
+        if ((int) $tarefa->assigned_to_user_id !== (int) $actor->id || ! $tarefa->emConcorrencia()) {
+            $msg = 'Sem permissão para assumir esta tarefa.';
+
+            return $request->wantsJson() ? response()->json(['message' => $msg], 403) : back()->with('danger', $msg);
+        }
+
+        // Disponibilidade (já assumida, retirada, concluída) decide-a o serviço,
+        // com as linhas do grupo bloqueadas.
+        $this->concorrencia->assumir($tarefa, $actor);
+
+        $msg = 'Tarefa assumida: está agora só consigo.';
+
+        return $request->wantsJson() ? response()->json(['message' => $msg]) : back()->with('success', $msg);
+    }
+
+    /** A chefia devolve ao grupo uma tarefa em concorrência assumida e por concluir. */
+    public function libertar(Request $request, DocumentoEntrada $documento, DocumentoTarefa $tarefa)
+    {
+        if ((int) $tarefa->documento_entrada_id !== (int) $documento->id) {
+            abort(404);
+        }
+
+        $actor = Auth::user();
+
+        if (! $this->permissionService->canLibertarTarefa($actor, $documento, $tarefa)) {
+            $msg = 'Sem permissão para devolver esta tarefa ao grupo.';
+
+            return $request->wantsJson() ? response()->json(['message' => $msg], 403) : back()->with('danger', $msg);
+        }
+
+        $this->concorrencia->libertar($tarefa, $actor);
+
+        $msg = 'Tarefa devolvida ao grupo: o primeiro técnico a assumir fica com ela.';
+
+        return $request->wantsJson() ? response()->json(['message' => $msg]) : back()->with('success', $msg);
     }
 
     public function concluir(Request $request, DocumentoEntrada $documento, DocumentoTarefa $tarefa)

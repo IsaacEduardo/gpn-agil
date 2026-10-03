@@ -9,6 +9,18 @@ class DocumentoTarefa extends Model
 {
     use HasFactory;
 
+    /** Cada técnico do grupo executa a sua tarefa (o comportamento de sempre). */
+    public const MODO_TODOS = 'todos';
+
+    /** O primeiro técnico do grupo a assumir fica com a tarefa. */
+    public const MODO_CONCORRENCIA = 'concorrencia';
+
+    /**
+     * Tarefa de um grupo em concorrência que outro técnico assumiu. Não é
+     * 'cancelada': ninguém a cancelou, e não pode contar como tal nos indicadores.
+     */
+    public const STATUS_RETIRADA = 'retirada';
+
     protected $table = 'documento_tarefas';
 
     protected $fillable = [
@@ -24,12 +36,32 @@ class DocumentoTarefa extends Model
         'resposta',
         'concluida_em',
         'grupo_tarefa_uuid',
+        'modo_grupo',
+        'assumida_em',
     ];
 
     protected $casts = [
         'prazo_at' => 'datetime',
         'concluida_em' => 'datetime',
+        'assumida_em' => 'datetime',
     ];
+
+    public function emConcorrencia(): bool
+    {
+        return $this->modo_grupo === self::MODO_CONCORRENCIA && $this->grupo_tarefa_uuid !== null;
+    }
+
+    /** Em concorrência, pendente e ainda sem dono: está à espera de quem a assuma. */
+    public function aguardaQuemAssuma(): bool
+    {
+        return $this->emConcorrencia() && $this->status === 'pendente' && $this->assumida_em === null;
+    }
+
+    /** As tarefas do mesmo grupo, incluindo esta. */
+    public function scopeDoGrupo($query, string $grupo)
+    {
+        return $query->where('grupo_tarefa_uuid', $grupo);
+    }
 
     public function documento()
     {

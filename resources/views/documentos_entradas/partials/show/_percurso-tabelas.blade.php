@@ -101,7 +101,8 @@
                                     @endif
                                 </div>
 
-                                @php($tarefas = $doc->tarefas)
+                                {{-- As retiradas (um colega assumiu a tarefa em concorrência) não se listam. --}}
+                                @php($tarefas = $doc->tarefas->where('status', '!=', \App\Models\DocumentoTarefa::STATUS_RETIRADA))
                                 @if ($tarefas && $tarefas->count())
                                     <div class="table-responsive">
                                         <table class="table table-hover align-middle">
@@ -153,6 +154,19 @@
                                                         <td>
                                                             @if ($t->assignedToUser)
                                                                 <i class="fas fa-user text-secondary me-1"></i> {{ optional($t->assignedToUser)->name }}
+                                                                @if ($t->emConcorrencia())
+                                                                    <div class="small mt-1">
+                                                                        @if ($t->assumida_em)
+                                                                            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle fw-normal" title="Tarefa em concorrência">
+                                                                                <i class="fas fa-hand-pointer me-1"></i>Assumida {{ $t->assumida_em->format('d/m/Y H:i') }}
+                                                                            </span>
+                                                                        @elseif ($t->status === 'pendente')
+                                                                            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-normal" title="O primeiro técnico a assumir fica com ela">
+                                                                                <i class="fas fa-people-arrows me-1"></i>Em concorrência
+                                                                            </span>
+                                                                        @endif
+                                                                    </div>
+                                                                @endif
                                                             @elseif($t->assignedToDepartamento)
                                                                 <i class="fas fa-building text-secondary me-1"></i> {{ optional($t->assignedToDepartamento)->nome }}
                                                             @else
@@ -173,6 +187,22 @@
                                                         <td class="text-end">
                                                             @php($canConcluir = $t->can_concluir ?? false)
                                                             @php($canCancelar = $t->can_cancelar ?? false)
+
+                                                            @if ($t->can_assumir ?? false)
+                                                                <form action="{{ route('documentos-entradas.tarefas.assumir', [$doc, $t]) }}" method="POST" class="d-inline">
+                                                                    @csrf
+                                                                    <button class="btn btn-primary btn-sm" title="Assumir: fica só consigo e desaparece para os colegas">
+                                                                        <i class="fas fa-hand-pointer me-1"></i>Assumir
+                                                                    </button>
+                                                                </form>
+                                                            @endif
+                                                            @if ($t->can_libertar ?? false)
+                                                                <form action="{{ route('documentos-entradas.tarefas.libertar', [$doc, $t]) }}" method="POST" class="d-inline" onsubmit="return confirm('Devolver a tarefa ao grupo? Volta a estar disponível para todos os técnicos a quem foi oferecida.');">
+                                                                    @csrf
+                                                                    @method('PATCH')
+                                                                    <button class="btn btn-outline-secondary btn-sm" title="Devolver ao grupo"><i class="fas fa-rotate-left"></i></button>
+                                                                </form>
+                                                            @endif
 
                                                             @if ($canConcluir)
                                                                 <form action="{{ route('documentos-entradas.tarefas.concluir', [$doc, $t]) }}" method="POST" class="d-inline">

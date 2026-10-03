@@ -28,7 +28,10 @@ class TarefaController extends Controller
                 if (count($deps)) {
                     $q->orWhereIn('assigned_to_departamento_id', $deps);
                 }
-            });
+            })
+            // Retirada = um colega assumiu a tarefa em concorrência: deixou de ser
+            // deste utilizador, e a lista mostra todos os estados por omissão.
+            ->where('status', '!=', DocumentoTarefa::STATUS_RETIRADA);
 
         // Filters
         if ($request->has('search')) {

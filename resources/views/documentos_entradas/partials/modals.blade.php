@@ -308,9 +308,31 @@
                                 @endforeach
                             </div>
                             <div class="invalid-feedback d-block d-none" data-destinatarios-erro>Selecione pelo menos um utilizador.</div>
-                            <div class="form-text text-muted small">Cada pessoa selecionada recebe a sua própria tarefa.</div>
                         @endif
                     </div>
+
+                    @if ($listaUsuarios->count() > 1)
+                        {{-- Só com 2+ selecionados (ver _scripts): desactivado, o modo não é enviado. --}}
+                        <div class="col-12 d-none" data-modo-delegacao>
+                            <label class="form-label fw-semibold">Com vários técnicos</label>
+                            <div class="p-3 bg-light rounded border">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="modo" id="modoConcorrencia" value="{{ \App\Models\DocumentoTarefa::MODO_CONCORRENCIA }}" checked disabled>
+                                    <label class="form-check-label" for="modoConcorrencia">
+                                        <i class="fas fa-people-arrows me-1"></i> O primeiro que assumir
+                                        <span class="d-block small text-muted">A tarefa é oferecida a todos; quem a assumir primeiro fica com ela e desaparece para os restantes.</span>
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="modo" id="modoTodos" value="{{ \App\Models\DocumentoTarefa::MODO_TODOS }}" disabled>
+                                    <label class="form-check-label" for="modoTodos">
+                                        <i class="fas fa-users me-1"></i> Todos executam
+                                        <span class="d-block small text-muted">Cada pessoa selecionada recebe a sua própria tarefa.</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
 
                     @if($actorIsRespGab)
                         <div class="col-md-6 d-none" data-field="destino-departamento">

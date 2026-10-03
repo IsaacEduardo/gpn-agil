@@ -5,6 +5,10 @@ Olá, **{{ $notifiable->name }}**,
 
 Uma nova tarefa foi designada para si no sistema **Ondaka (GPN-AGIL)**.
 
+@if($tarefa->emConcorrencia())
+Esta tarefa foi oferecida a vários técnicos: **o primeiro a assumi-la fica com ela** e deixa de estar disponível para os restantes.
+@endif
+
 @component('mail::panel')
 ### Detalhes da Tarefa:
 * **Título:** {{ $tarefa->titulo }}

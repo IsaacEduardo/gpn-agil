@@ -81,6 +81,16 @@
                     <i class="fas fa-chart-line"></i> Relatórios
                 </a>
             </li>
+        @else
+            {{-- Sem acesso aos Relatórios, o técnico vê pelo menos os seus próprios
+                 números (o âmbito é decidido no DesempenhoEquipaService). --}}
+            <li class="gov-nav__item">
+                <a href="{{ route('relatorios.desempenho') }}"
+                   class="gov-nav__link {{ request()->routeIs('relatorios.desempenho') ? 'gov-nav__link--active' : '' }}"
+                   title="Indicadores de execução das suas tarefas">
+                    <i class="fas fa-user-check"></i> O meu desempenho
+                </a>
+            </li>
         @endif
 
         {{-- 6. SERVIÇOS & FROTA (DROPDOWN) --}}
