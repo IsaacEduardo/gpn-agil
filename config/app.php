@@ -213,6 +213,14 @@ return [
     'feature_collab' => env('FEATURE_COLLAB', false),
 
     /*
+    | Tempo real no browser (Laravel Echo → Reverb): notificações em direto e edição
+    | colaborativa. Por omissão ligado quando o broadcasting é o Reverb. TEMPO_REAL=false
+    | desliga-o sem recompilar os assets — p. ex. em desenvolvimento sem `reverb:start`,
+    | onde o browser tentava ligar-se ao Reverb em todas as páginas.
+    */
+    'tempo_real' => (bool) env('TEMPO_REAL', env('BROADCAST_CONNECTION', env('BROADCAST_DRIVER')) === 'reverb'),
+
+    /*
     |--------------------------------------------------------------------------
     | Service Providers
     |--------------------------------------------------------------------------

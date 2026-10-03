@@ -698,6 +698,14 @@ class DocumentoInternoService
             return;
         }
 
+        // Documentos de outros em que o utilizador foi convidado a colaborar.
+        if ($tab === 'partilhados') {
+            $query->where('criado_por', '!=', $user->id)
+                ->whereHas('colaboradores', fn ($c) => $c->where('user_id', $user->id));
+
+            return;
+        }
+
         switch ($profile) {
             case 'gabinete':
                 if ($tab === 'homologacao') {
@@ -858,6 +866,15 @@ class DocumentoInternoService
                 ['key' => 'todos', 'label' => 'Todos os Documentos', 'icon' => 'fas fa-layer-group', 'badge_type' => 'neutral'],
             ],
         };
+
+        // Separador dos convites de colaboração, só para quem os tem.
+        if (config('app.feature_collab')) {
+            $partilhados = clone $baseQuery;
+            $this->applyRoleTabFilter($partilhados, 'partilhados', $user, $profile);
+            if ($partilhados->exists()) {
+                $tabsConfig[] = ['key' => 'partilhados', 'label' => 'Partilhados comigo', 'icon' => 'fas fa-user-friends', 'badge_type' => 'info'];
+            }
+        }
 
         $tabs = [];
         foreach ($tabsConfig as $cfg) {

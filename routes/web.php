@@ -10,7 +10,9 @@ use App\Http\Controllers\DocumentoEntradaController;
 use App\Http\Controllers\DocumentoEntradaEncaminhamentoController;
 use App\Http\Controllers\DocumentoEntradaProtocoloController;
 use App\Http\Controllers\DesempenhoEquipaController;
+use App\Http\Controllers\DocumentoComentarioController;
 use App\Http\Controllers\DocumentoEntradaTarefaController;
+use App\Http\Controllers\DocumentoVersaoController;
 use App\Http\Controllers\DocumentoInternoController;
 use App\Http\Controllers\EdmsController;
 use App\Http\Controllers\EmpresaController;
@@ -324,6 +326,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('documentos-internos/preview', [DocumentoInternoController::class, 'preview'])->name('documentos-internos.preview');
     Route::post('documentos-internos/{documentoInterno}/sign', [DocumentoInternoController::class, 'sign'])->middleware('throttle:assinatura')->name('documentos-internos.sign');
     Route::post('documentos-internos/{documentoInterno}/restore/{version}', [DocumentoInternoController::class, 'restore'])->name('documentos-internos.restore');
+    Route::get('documentos-internos/{documentoInterno}/versoes/{versao}/diff', [DocumentoVersaoController::class, 'diff'])
+        ->whereNumber('versao')->name('documentos-internos.versoes.diff');
     Route::post('documentos-internos/batch-zip', [DocumentoInternoController::class, 'batchDownloadZip'])
         ->middleware('throttle:heavy-exports')
         ->name('documentos-internos.batch-zip');
@@ -376,14 +380,19 @@ if (config('app.feature_collab')) {
         ->group(function () {
             Route::get('/', [DocumentoColaboracaoController::class, 'editor'])->name('editor');
             Route::get('/state', [DocumentoColaboracaoController::class, 'state'])->name('state');
+            Route::get('/updates', [DocumentoColaboracaoController::class, 'updates'])->name('updates');
             Route::post('/sync', [DocumentoColaboracaoController::class, 'sync'])->name('sync');
             Route::post('/checkpoint', [DocumentoColaboracaoController::class, 'checkpoint'])->name('checkpoint');
+            Route::post('/compactar', [DocumentoColaboracaoController::class, 'compactar'])->name('compactar');
             Route::post('/titulo', [DocumentoColaboracaoController::class, 'salvarTitulo'])->name('titulo');
             Route::post('/campos', [DocumentoColaboracaoController::class, 'salvarCampos'])->name('campos');
             Route::get('/colaboradores', [DocumentoColaboracaoController::class, 'colaboradores'])->name('colaboradores');
             Route::post('/colaboradores', [DocumentoColaboracaoController::class, 'convidar'])->name('convidar');
             Route::patch('/colaboradores/{user}', [DocumentoColaboracaoController::class, 'atualizarColaborador'])->name('colaborador.update');
             Route::delete('/colaboradores/{user}', [DocumentoColaboracaoController::class, 'removerColaborador'])->name('colaborador.destroy');
+            Route::get('/comentarios', [DocumentoComentarioController::class, 'index'])->name('comentarios');
+            Route::post('/comentarios', [DocumentoComentarioController::class, 'store'])->name('comentarios.store');
+            Route::patch('/comentarios/{comentario}/resolver', [DocumentoComentarioController::class, 'resolver'])->name('comentarios.resolver');
         });
 }
 

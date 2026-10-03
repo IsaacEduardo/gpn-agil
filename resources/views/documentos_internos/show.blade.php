@@ -307,12 +307,23 @@
                                                     <td class="ps-3 fw-bold">v{{ $versao->versao }}</td>
                                                     <td class="text-muted small">
                                                         {{ $versao->created_at->format('d/m/Y H:i') }}</td>
-                                                    <td>{{ $versao->autor->name ?? 'Desconhecido' }}</td>
+                                                    <td>
+                                                        {{ $versao->autor->name ?? 'Desconhecido' }}
+                                                        {{-- Edição colaborativa: quem mais escreveu nesta versão. --}}
+                                                        @if ($outros = $versao->nomesDosContribuidores())
+                                                            <div class="small text-muted">com {{ implode(', ', $outros) }}</div>
+                                                        @endif
+                                                    </td>
                                                     <td>
                                                         <button type="button" class="btn btn-sm btn-outline-primary"
                                                             data-bs-toggle="modal"
                                                             data-bs-target="#versionModal{{ $versao->id }}">
                                                             <i class="fas fa-eye"></i> Ver Conteúdo
+                                                        </button>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary ms-1 btn-diff-versao"
+                                                            data-url="{{ route('documentos-internos.versoes.diff', [$documentoInterno->id, $versao->versao]) }}"
+                                                            data-versao="{{ $versao->versao }}">
+                                                            <i class="fas fa-code-compare"></i> O que mudou
                                                         </button>
 
                                                         @if ($documentoInterno->status->value === 'rascunho')
@@ -368,6 +379,25 @@
                                             @endforelse
                                         </tbody>
                                     </table>
+                                </div>
+
+                                {{-- Diferenças de uma versão para a anterior (DocumentoVersaoController::diff). --}}
+                                <div class="modal fade" id="modalDiffVersao" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="modalDiffVersaoTitulo">O que mudou</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="small text-muted mb-2">
+                                                    <ins class="diff-legenda">texto acrescentado</ins> ·
+                                                    <del class="diff-legenda">texto removido</del>
+                                                </div>
+                                                <div id="modalDiffVersaoCorpo" class="diff-versao" style="font-family: 'Times New Roman', serif;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -547,7 +577,26 @@
         ])
     @endif
 
+    <style>
+        .diff-versao ins, ins.diff-legenda { background: #d1fae5; color: #065f46; text-decoration: none; }
+        .diff-versao del, del.diff-legenda { background: #fee2e2; color: #991b1b; }
+    </style>
     <script>
+        // Histórico: carrega as diferenças da versão para a anterior.
+        document.querySelectorAll('.btn-diff-versao').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const corpo = document.getElementById('modalDiffVersaoCorpo');
+                document.getElementById('modalDiffVersaoTitulo').textContent = 'O que mudou na v' + btn.dataset.versao;
+                corpo.innerHTML = '<p class="text-muted">A comparar…</p>';
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('modalDiffVersao')).show();
+                fetch(btn.dataset.url, { headers: { Accept: 'application/json' } })
+                    .then((r) => r.ok ? r.json() : Promise.reject())
+                    // O HTML vem do servidor com todo o texto escapado (App\Support\DiffDocumento).
+                    .then((d) => { corpo.innerHTML = d.html; })
+                    .catch(() => { corpo.innerHTML = '<p class="text-danger">Não foi possível comparar as versões.</p>'; });
+            });
+        });
+
         // Imprimir manda à impressora o PDF oficial (o mesmo do "Baixar PDF"), sem o
         // descarregar: carrega-o num iframe invisível e abre o diálogo sobre ele —
         // a técnica da etiqueta do protocolo. A página web impressa levava o menu

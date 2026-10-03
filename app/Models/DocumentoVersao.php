@@ -28,7 +28,25 @@ class DocumentoVersao extends Model
         'mime_type',
         'is_signed',
         'assinatura_hash',
+        'contribuidores',
     ];
+
+    protected $casts = [
+        'contribuidores' => 'array',
+    ];
+
+    /**
+     * Nomes de quem contribuiu para esta versão na edição colaborativa, além de quem a
+     * guardou. Vazio nas versões do editor clássico.
+     *
+     * @return array<int, string>
+     */
+    public function nomesDosContribuidores(): array
+    {
+        $ids = array_values(array_diff($this->contribuidores ?? [], [(int) $this->criado_por]));
+
+        return $ids ? User::whereIn('id', $ids)->orderBy('name')->pluck('name')->all() : [];
+    }
 
     public function getVersaoSemanticaAttribute(): string
     {

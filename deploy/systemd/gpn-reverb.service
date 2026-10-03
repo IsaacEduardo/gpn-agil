@@ -1,0 +1,26 @@
+[Unit]
+# Servidor de tempo real do GPN-AGIL (Laravel Reverb): edicao colaborativa de
+# Documentos Internos e notificacoes em direto. So escuta em 127.0.0.1: o nginx
+# termina o TLS e encaminha /app/ (WebSocket) para aqui (deploy/nginx/gpn-reverb.conf).
+# Instalar: cp deploy/systemd/gpn-reverb.service /etc/systemd/system/ &&
+#           systemctl daemon-reload && systemctl enable --now gpn-reverb
+Description=GPN-AGIL Reverb (WebSocket)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/gpn-agil
+ExecStart=/usr/bin/php /var/www/gpn-agil/artisan reverb:start --host=127.0.0.1 --port=8080
+# `php artisan reverb:restart` (no deploy) pede ao processo que termine; o systemd
+# volta a arranca-lo com o codigo novo.
+Restart=always
+RestartSec=3
+# Cada ligacao WebSocket e um descritor de ficheiro.
+LimitNOFILE=10000
+StandardOutput=append:/var/log/gpn-reverb.log
+StandardError=append:/var/log/gpn-reverb.log
+
+[Install]
+WantedBy=multi-user.target

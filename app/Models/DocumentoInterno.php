@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\DocumentoStatus;
+use App\Events\EventoColaborativo;
+use App\Services\DocumentoCollaborationService;
 use App\Support\CamposVinculados;
 use App\Support\Sanitizer;
 use App\Traits\Auditable;
@@ -66,6 +68,21 @@ class DocumentoInterno extends Model
         static::saving(function (self $doc) {
             if ($doc->gabinete_id === null && $doc->departamento_id) {
                 $doc->gabinete_id = Departamento::whereKey($doc->departamento_id)->value('gabinete_id');
+            }
+        });
+
+        // Submetido, bloqueado ou assinado: as sessões colaborativas abertas passam a só
+        // leitura de imediato (o servidor já recusa as gravações delas de qualquer forma).
+        static::updated(function (self $doc) {
+            if (! config('app.feature_collab') || ! $doc->wasChanged(['status', 'bloqueado_edicao', 'assinado_em'])) {
+                return;
+            }
+
+            $colaboracao = app(DocumentoCollaborationService::class);
+            if (! $colaboracao->sessaoAberta($doc)) {
+                $colaboracao->transmitir($doc, EventoColaborativo::ENCERRADA, [
+                    'message' => 'Este documento já não está em rascunho: a edição colaborativa terminou.',
+                ]);
             }
         });
     }
@@ -173,6 +190,17 @@ class DocumentoInterno extends Model
             return $query; // Admin vê tudo
         }
 
+        // Quem foi convidado para colaborar vê o documento enquanto for colaborador,
+        // mesmo sendo de outro departamento do gabinete (o convite é por gabinete).
+        return $query->where(function ($q) use ($user) {
+            $q->where(fn ($base) => static::visibilidadePorFuncao($base, $user))
+                ->orWhereHas('colaboradores', fn ($c) => $c->where('user_id', $user->id));
+        });
+    }
+
+    /** Visibilidade pela função na estrutura (gabinete, departamento, autoria). */
+    protected static function visibilidadePorFuncao($query, User $user)
+    {
         if ($user->isSuperChefeGabinete()) {
             $gabinete = $user->gabineteSuperGerenciado;
             if ($gabinete) {
@@ -308,6 +336,11 @@ class DocumentoInterno extends Model
     /**
      * Log durável de updates Yjs (CRDT) da edição colaborativa.
      */
+    public function comentarios()
+    {
+        return $this->hasMany(DocumentoComentario::class, 'documento_interno_id');
+    }
+
     public function collabUpdates()
     {
         return $this->hasMany(DocumentoCollabUpdate::class, 'documento_interno_id');

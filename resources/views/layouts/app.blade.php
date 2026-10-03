@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    {{-- Lido por resources/js/bootstrap.js: sem tempo real não se cria o Echo. --}}
+    <meta name="tempo-real" content="{{ config('app.tempo_real') ? '1' : '0' }}">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Ondaka - @yield('title', 'Gestão Inteligente')</title>
 

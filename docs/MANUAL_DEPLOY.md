@@ -330,52 +330,117 @@ stdout_logfile=/home/USUARIO/gpn-agil/storage/logs/worker.log
 
 ### 8.4. Edição colaborativa em tempo real (Laravel Reverb) — opcional, **somente VPS/Docker**
 
-A edição colaborativa de Documentos Internos (co-edição, cursores, presença) usa **WebSockets**
-via **Laravel Reverb**, que é um **processo long-running**. Isto **não funciona em cPanel/shared
-hosting** (sem Supervisor/daemons). Nesses ambientes, mantenha a funcionalidade **desligada** —
-o sistema continua 100% operacional e o editor clássico (TinyMCE) permanece disponível.
+A edição colaborativa de Documentos Internos (co-edição, cursores, presença, comentários) e as
+notificações em direto usam **WebSockets** via **Laravel Reverb**, um **processo long-running**.
+Isto **não funciona em cPanel/shared hosting**. Nesses ambientes mantenha tudo **desligado** — o
+sistema continua operacional e o editor clássico permanece disponível.
 
-**Desligado (cPanel — padrão):** deixe `FEATURE_COLLAB=false` no `.env`. Nenhuma outra ação.
+**Desligado (cPanel — padrão):** `FEATURE_COLLAB=false` e sem `BROADCAST_CONNECTION=reverb`.
 
-**Ligado (VPS/Docker):**
+#### 8.4.1. Ligar na VPS de produção (Ubuntu 24.04, nginx, systemd)
 
-1. `.env`:
+Ficheiros prontos no repositório: `deploy/systemd/gpn-reverb.service` e `deploy/nginx/gpn-reverb.conf`.
+Faça antes um `mysqldump` (como em qualquer deploy com migrações).
+
+1. **Node 20 LTS** (o Vite 7 e o editor colaborativo exigem Node 20.19+; o Ubuntu traz o 18):
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+   apt-get install -y nodejs
+   node -v   # v20.x
+   ```
+2. **`.env`** — nomes das variáveis (os valores secretos são gerados no passo 3):
    ```env
    FEATURE_COLLAB=true
    BROADCAST_CONNECTION=reverb
-   ```
-2. Gere as chaves do Reverb (preenche `REVERB_*` no `.env`):
-   ```bash
-   php artisan reverb:install
-   ```
-3. Exponha as variáveis ao frontend e refaça o build:
-   ```env
-   VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
-   VITE_REVERB_HOST="seu-dominio"     # host público do WebSocket
-   VITE_REVERB_PORT=443
-   VITE_REVERB_SCHEME=https           # wss:// (TLS 1.3 no proxy)
-   ```
-   ```bash
-   npm run build
-   ```
-4. Corra o servidor Reverb como serviço persistente:
-   - **Docker:** já incluído no `docker-compose.yml` (serviço `reverb`).
-   - **Supervisor (VPS):**
-     ```ini
-     [program:gpn-reverb]
-     command=php /home/USUARIO/gpn-agil/artisan reverb:start --host=0.0.0.0 --port=8080
-     autostart=true
-     autorestart=true
-     user=USUARIO
-     redirect_stderr=true
-     stdout_logfile=/home/USUARIO/gpn-agil/storage/logs/reverb.log
-     ```
-5. No proxy (nginx/traefik), faça o *upgrade* WebSocket para a porta do Reverb e termine **TLS 1.3**
-   (`wss://`). O canal de presença é autorizado por sessão + gabinete/nível — não há exposição a
-   utilizadores não autorizados.
+   TEMPO_REAL=true
 
-> Isolamento: a colaboração está atrás da flag `FEATURE_COLLAB`. Se o Reverb ficar indisponível,
-> o editor colaborativo degrada para o editor clássico e o **resto do sistema não é afetado**.
+   REVERB_APP_ID=            # gerado no passo 3
+   REVERB_APP_KEY=           # gerado no passo 3
+   REVERB_APP_SECRET=        # gerado no passo 3
+   REVERB_SERVER_HOST=127.0.0.1
+   REVERB_SERVER_PORT=8080
+   # O Laravel publica os eventos direto no Reverb, sem passar pelo nginx:
+   REVERB_HOST=127.0.0.1
+   REVERB_PORT=8080
+   REVERB_SCHEME=http
+   # Só as páginas da aplicação abrem ligações:
+   REVERB_ALLOWED_ORIGINS=ondaka-gph.ao,www.ondaka-gph.ao
+
+   # O que o browser usa (wss:// pelo nginx, porta 443):
+   VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
+   VITE_REVERB_HOST=ondaka-gph.ao
+   VITE_REVERB_PORT=443
+   VITE_REVERB_SCHEME=https
+   ```
+3. **Chaves do Reverb** — gerar e colar no `.env` (não usar `php artisan reverb:install` em
+   produção: além do `.env`, reescreve ficheiros da aplicação já configurados):
+   ```bash
+   echo "REVERB_APP_ID=$(shuf -i 100000-999999 -n 1)"
+   echo "REVERB_APP_KEY=$(openssl rand -hex 16)"
+   echo "REVERB_APP_SECRET=$(openssl rand -hex 32)"
+   ```
+4. **Dependências e assets** (`yjs`/`@tiptap` vêm do `npm ci`):
+   ```bash
+   npm ci && npm run build
+   ```
+5. **Serviço do Reverb:**
+   ```bash
+   cp deploy/systemd/gpn-reverb.service /etc/systemd/system/
+   systemctl daemon-reload
+   systemctl enable --now gpn-reverb
+   systemctl status gpn-reverb --no-pager
+   ```
+6. **nginx** — dentro dos **dois** blocos `server { listen 443 ... }` de
+   `/etc/nginx/sites-available/gpn-agil`, antes do `location /`:
+   ```nginx
+   include /var/www/gpn-agil/deploy/nginx/gpn-reverb.conf;
+   ```
+   ```bash
+   nginx -t && systemctl reload nginx
+   ```
+7. **Migrações e caches** (ciclo normal de deploy):
+   ```bash
+   php artisan migrate --force
+   php artisan optimize:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache && php artisan event:cache
+   chown -R www-data:www-data /var/www/gpn-agil
+   systemctl restart gpn-queue && systemctl reload php8.3-fpm
+   ```
+
+#### 8.4.2. Verificar
+
+- **Handshake WebSocket (deve dar 101):**
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}\n" --http1.1 \
+    -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" \
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Origin: https://ondaka-gph.ao" \
+    "https://ondaka-gph.ao/app/$(grep ^REVERB_APP_KEY= .env | cut -d= -f2)?protocol=7"
+  ```
+- **Autorização do canal:** no browser, com sessão iniciada, abrir um documento em
+  "Editar em colaboração" → na consola de rede, `POST /broadcasting/auth` deve dar **200**; um
+  utilizador de outro gabinete recebe **403**.
+- **Dois browsers no mesmo rascunho:** o que um escreve aparece no outro em menos de um segundo;
+  o indicador "Tudo gravado" volta depois de cada pausa.
+- **Logs:** `tail -f /var/log/gpn-reverb.log` e `storage/logs/laravel.log` (procurar
+  "Edição colaborativa: aviso em tempo real não enviado").
+- **Teste de carga** (local ou numa máquina de testes, nunca em produção):
+  `node scripts/collab-carga.mjs --help`.
+
+#### 8.4.3. Deploys seguintes
+
+O `deploy.sh` reinicia o Reverb quando o serviço existe. Para recompilar os assets (alterações em
+`resources/js`, `resources/css` ou `vite.config.js`): `COMPILAR_ASSETS=1 ./deploy.sh` — recusa
+avançar com Node abaixo do 20.
+
+#### 8.4.4. Voltar atrás
+
+`FEATURE_COLLAB=false` e `php artisan config:cache` desligam as rotas e o botão "Editar em
+colaboração"; os documentos continuam no editor clássico. Para parar também as notificações em
+direto (e o browser deixar de tentar ligar-se): `TEMPO_REAL=false`, `config:cache`, e
+`systemctl disable --now gpn-reverb`. Os dados colaborativos (log Yjs, comentários) ficam na base
+e voltam a ser usados se a flag for religada.
+
+> **Docker:** o `docker-compose.yml` já inclui o serviço `reverb`; as variáveis do passo 2 aplicam-se
+> igualmente (com `REVERB_HOST` igual ao nome do serviço).
 
 ---
 

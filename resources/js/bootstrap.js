@@ -33,8 +33,11 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 
 const reverbKey = import.meta.env.VITE_REVERB_APP_KEY;
+// O servidor diz se o tempo real está ligado (config app.tempo_real). Sem a meta
+// (layouts antigos) mantém-se o comportamento anterior: basta a chave.
+const tempoReal = document.querySelector('meta[name="tempo-real"]')?.getAttribute('content') ?? '1';
 
-if (reverbKey) {
+if (reverbKey && tempoReal === '1') {
   window.Pusher = Pusher;
   window.Echo = new Echo({
     broadcaster: 'reverb',

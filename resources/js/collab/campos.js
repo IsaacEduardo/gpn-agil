@@ -33,7 +33,11 @@ export function ligarCamposColaborativos(editor, cfg, http, obterRevisao) {
         const dados = valoresPendentes;
         valoresPendentes = {};
         http.post(cfg.urls.campos, { ...dados, revisao: obterRevisao() })
-            .catch(() => { valoresPendentes = { ...dados, ...valoresPendentes }; });
+            .catch((e) => {
+                // Recusa definitiva (documento fora de rascunho, sem permissão): não se insiste.
+                if ([403, 409, 419].includes(e.response?.status)) return;
+                valoresPendentes = { ...dados, ...valoresPendentes };
+            });
     }
 }
 
@@ -84,4 +88,38 @@ export function actualizarMarcas(editor, def, classeVazio, valorBruto) {
         tr.replaceWith(from, to, state.schema.text(texto, [...outras, nova]));
     });
     editor.view.dispatch(tr);
+}
+
+/**
+ * Título e destinatário partilhados: vivem num Y.Map do mesmo Y.Doc, pelo que quando um
+ * participante escreve, os campos dos outros actualizam-se (antes ficavam com o valor
+ * de quando abriram, e quem escrevesse a seguir repunha o antigo). Quem tem os campos
+ * continua a gravá-los nas colunas do documento (autosave do título e de /campos).
+ */
+export function ligarMapaDeCampos(ydoc, cfg) {
+    const mapa = ydoc.getMap('campos');
+    const campos = ['titulo', 'destinatario_nome', 'destinatario_cargo', 'destinatario_orgao', 'destinatario_local'];
+    const idDoInput = (campo) => (campo === 'titulo' ? 'collab-titulo' : `collab-${campo}`);
+    const cabecalho = document.getElementById('collab-doc-titulo');
+
+    const mostrar = (campo, valor) => {
+        const input = document.getElementById(idDoInput(campo));
+        if (input && input.value !== valor) input.value = valor;
+        if (campo === 'titulo' && cabecalho) cabecalho.textContent = valor;
+    };
+
+    // O que já está no documento partilhado prevalece sobre o que a página trouxe.
+    mapa.forEach((valor, campo) => mostrar(campo, valor ?? ''));
+    mapa.observe((evento) => {
+        if (evento.transaction.local) return;
+        evento.keysChanged.forEach((campo) => mostrar(campo, mapa.get(campo) ?? ''));
+    });
+
+    if (!cfg.podeEditar) return;
+    campos.forEach((campo) => {
+        const input = document.getElementById(idDoInput(campo));
+        if (!input) return;
+        if (!mapa.has(campo)) mapa.set(campo, input.value);
+        input.addEventListener('input', () => mapa.set(campo, input.value));
+    });
 }

@@ -64,6 +64,7 @@ class DocumentoColaboracaoController extends Controller
             'candidatos' => $candidatos,
             'nivelAtual' => $nivel,
             'podeEditar' => $nivel !== null && $nivel->podeEditar(),
+            'podeComentar' => $nivel !== null && $nivel->podeComentar(),
             'podeAdministrar' => $nivel !== null && $nivel->podeAdministrar(),
             'cor' => $this->service->corDoUtilizador(Auth::id()),
             'niveis' => NivelColaboracao::cases(),
@@ -81,36 +82,44 @@ class DocumentoColaboracaoController extends Controller
     }
 
     /**
-     * Recebe um delta Yjs para persistência durável e, opcionalmente, faz autosave do HTML.
-     * (O relay de baixa latência entre pares é feito por WebSocket; isto é a camada de durabilidade.)
+     * Recebe um delta Yjs: grava-o no log e retransmite-o aos outros participantes
+     * (o servidor é o único caminho das alterações, para o nível de quem escreve ser
+     * verificado). Opcionalmente faz autosave do HTML.
      */
     public function sync(Request $request, DocumentoInterno $documentoInterno): JsonResponse
     {
-        abort_unless($this->service->podeEditar(Auth::user(), $documentoInterno), 403);
-
         $validated = $request->validate([
-            'update' => 'required|string',
+            'update' => 'nullable|string|required_without:html',
             'html' => 'nullable|string',
             'seed' => 'nullable|boolean',
             'revisao' => 'nullable|integer',
         ]);
 
-        // Sessão aberta antes de uma gravação clássica: o log Yjs em que se baseia foi
-        // descartado, por isso nem o delta nem o HTML podem ser aceites.
-        if ($this->service->sessaoDesactualizada($documentoInterno, $request->filled('revisao') ? (int) $request->input('revisao') : null)) {
-            return $this->respostaSessaoDesactualizada();
+        if ($recusa = $this->recusarGravacao($request, $documentoInterno)) {
+            return $recusa;
         }
 
         // Seed: estado inicial de quem abriu primeiro, sem HTML (nada muda no documento).
         if ($request->boolean('seed')) {
-            if (! $this->service->registarSeed($documentoInterno, Auth::user(), $validated['update'])) {
+            $linha = filled($validated['update'] ?? null)
+                ? $this->service->registarSeed($documentoInterno, Auth::user(), $validated['update'])
+                : null;
+            if (! $linha) {
                 return response()->json(['ok' => false, 'seed_rejeitado' => true], 409);
             }
 
-            return response()->json(['ok' => true]);
+            $this->service->retransmitir($documentoInterno, $linha);
+
+            return response()->json(['ok' => true, 'id' => $linha->id]);
         }
 
-        $this->service->registarUpdate($documentoInterno, Auth::user(), $validated['update']);
+        $id = null;
+        if (filled($validated['update'] ?? null)) {
+            $linha = $this->service->registarUpdate($documentoInterno, Auth::user(), $validated['update']);
+            $this->service->retransmitir($documentoInterno, $linha);
+            $this->service->registarEdicaoParaResumo($documentoInterno, Auth::user());
+            $id = $linha->id;
+        }
 
         if (! empty($validated['html'])) {
             if ($this->service->degradaConteudo($documentoInterno, $validated['html'])) {
@@ -119,13 +128,56 @@ class DocumentoColaboracaoController extends Controller
                     'user_id' => Auth::id(),
                 ]);
 
-                return response()->json(['ok' => true, 'html_rejeitado' => true]);
+                return response()->json(['ok' => true, 'id' => $id, 'html_rejeitado' => true]);
             }
 
             $this->service->autosave($documentoInterno, $validated['html']);
         }
 
-        return response()->json(['ok' => true]);
+        return response()->json([
+            'ok' => true,
+            'id' => $id,
+            'compactar' => $id !== null && $this->service->precisaCompactar($documentoInterno),
+        ]);
+    }
+
+    /**
+     * Compactação automática (sem versão), pedida pelo servidor na resposta do /sync
+     * quando o log passa de LIMITE_LOG linhas. Mesma regra do checkpoint: só se apagam
+     * as linhas que o cliente diz já ter aplicado.
+     */
+    public function compactar(Request $request, DocumentoInterno $documentoInterno): JsonResponse
+    {
+        $validated = $request->validate([
+            'snapshot' => 'required|string',
+            'ids_aplicados' => 'required|array|min:1',
+            'ids_aplicados.*' => 'integer',
+            'revisao' => 'nullable|integer',
+        ]);
+
+        if ($recusa = $this->recusarGravacao($request, $documentoInterno)) {
+            return $recusa;
+        }
+
+        $id = $this->service->compactar($documentoInterno, Auth::user(), $validated['snapshot'], $validated['ids_aplicados']);
+
+        return response()->json(['ok' => true, 'snapshot_id' => $id]);
+    }
+
+    /**
+     * Updates do log com os ids, para o cliente apanhar o que lhe faltou (ligação em
+     * tempo real perdida, ou um update grande demais para seguir na mensagem).
+     */
+    public function updates(DocumentoInterno $documentoInterno): JsonResponse
+    {
+        $this->authorize('collaborate', $documentoInterno);
+
+        $estado = $this->service->estadoInicial($documentoInterno);
+
+        return response()->json([
+            'updates' => $estado['updates'],
+            'ids' => $estado['ids'],
+        ]);
     }
 
     /**
@@ -133,19 +185,19 @@ class DocumentoColaboracaoController extends Controller
      */
     public function checkpoint(Request $request, DocumentoInterno $documentoInterno): JsonResponse
     {
-        abort_unless($this->service->podeEditar(Auth::user(), $documentoInterno), 403);
-
         $validated = $request->validate([
             'html' => 'required|string',
             'titulo' => 'nullable|string|max:255',
             'change_type' => 'nullable|in:patch,minor,major',
             'change_log' => 'nullable|string',
             'snapshot' => 'nullable|string',
+            'ids_aplicados' => 'nullable|array',
+            'ids_aplicados.*' => 'integer',
             'revisao' => 'nullable|integer',
         ]);
 
-        if ($this->service->sessaoDesactualizada($documentoInterno, $request->filled('revisao') ? (int) $request->input('revisao') : null)) {
-            return $this->respostaSessaoDesactualizada();
+        if ($recusa = $this->recusarGravacao($request, $documentoInterno)) {
+            return $recusa;
         }
 
         if ($this->service->degradaConteudo($documentoInterno, $validated['html'])) {
@@ -163,12 +215,14 @@ class DocumentoColaboracaoController extends Controller
             $validated['change_log'] ?? null,
             $validated['snapshot'] ?? null,
             $validated['titulo'] ?? null,
+            $validated['ids_aplicados'] ?? [],
         );
 
         return response()->json([
             'ok' => true,
             'versao' => $doc->versao_semantica,
             'versao_atual' => $doc->versao_atual,
+            'snapshot_id' => $doc->getAttribute('snapshot_id'),
         ]);
     }
 
@@ -177,9 +231,14 @@ class DocumentoColaboracaoController extends Controller
      */
     public function salvarTitulo(Request $request, DocumentoInterno $documentoInterno): JsonResponse
     {
-        abort_unless($this->service->podeEditar(Auth::user(), $documentoInterno), 403);
+        $validated = $request->validate([
+            'titulo' => 'required|string|max:255',
+            'revisao' => 'nullable|integer',
+        ]);
 
-        $validated = $request->validate(['titulo' => 'required|string|max:255']);
+        if ($recusa = $this->recusarGravacao($request, $documentoInterno)) {
+            return $recusa;
+        }
 
         $this->service->salvarTitulo($documentoInterno, $validated['titulo']);
 
@@ -192,18 +251,55 @@ class DocumentoColaboracaoController extends Controller
      */
     public function salvarCampos(Request $request, DocumentoInterno $documentoInterno): JsonResponse
     {
-        abort_unless($this->service->podeEditar(Auth::user(), $documentoInterno), 403);
-
         $validated = $request->validate([
             'destinatario_nome' => 'sometimes|nullable|string|max:255',
             'destinatario_cargo' => 'sometimes|nullable|string|max:255',
             'destinatario_orgao' => 'sometimes|nullable|string|max:255',
             'destinatario_local' => 'sometimes|nullable|string|max:255',
+            'revisao' => 'nullable|integer',
         ]);
+
+        if ($recusa = $this->recusarGravacao($request, $documentoInterno)) {
+            return $recusa;
+        }
 
         $this->service->salvarDestinatario($documentoInterno, $validated);
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Regra única de gravação: nível Editar, documento em rascunho e não bloqueado
+     * (DocumentoCollaborationService::motivoRecusaGravacao) e sessão aberta depois
+     * da última gravação clássica. Devolve a resposta de recusa, ou null.
+     */
+    private function recusarGravacao(Request $request, DocumentoInterno $documentoInterno): ?JsonResponse
+    {
+        $motivo = $this->service->motivoRecusaGravacao(Auth::user(), $documentoInterno);
+
+        if ($motivo === 'nivel') {
+            return response()->json([
+                'ok' => false,
+                'sem_permissao' => true,
+                'message' => 'Já não tem permissão para editar este documento.',
+            ], 403);
+        }
+
+        if ($motivo === 'encerrada') {
+            return response()->json([
+                'ok' => false,
+                'sessao_encerrada' => true,
+                'message' => 'Este documento já não está em rascunho: a edição colaborativa terminou e nada mais é gravado.',
+            ], 409);
+        }
+
+        // Sessão aberta antes de uma gravação clássica: o log Yjs em que se baseia foi
+        // descartado, por isso nada do que envia pode ser aceite.
+        if ($this->service->sessaoDesactualizada($documentoInterno, $request->filled('revisao') ? (int) $request->input('revisao') : null)) {
+            return $this->respostaSessaoDesactualizada();
+        }
+
+        return null;
     }
 
     private function respostaSessaoDesactualizada(): JsonResponse

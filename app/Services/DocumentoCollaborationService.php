@@ -2,13 +2,19 @@
 
 namespace App\Services;
 
+use App\Enums\DocumentoStatus;
 use App\Enums\NivelColaboracao;
+use App\Events\EventoColaborativo;
+use App\Jobs\EnviarResumoEdicoesColaborativas;
 use App\Models\DocumentoColaborador;
 use App\Models\DocumentoCollabUpdate;
 use App\Models\DocumentoInterno;
+use App\Models\DocumentoVersao;
 use App\Models\User;
 use App\Support\Sanitizer;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Núcleo da edição colaborativa em tempo real de Documentos Internos.
@@ -19,6 +25,23 @@ use Illuminate\Support\Facades\DB;
  */
 class DocumentoCollaborationService
 {
+    /**
+     * Acima disto (base64) o update não segue na mensagem em tempo real: o Reverb
+     * recusa mensagens maiores que max_message_size (10 000 bytes por omissão), e o
+     * cliente vai buscá-lo ao servidor.
+     */
+    public const MAX_UPDATE_NA_MENSAGEM = 8000;
+
+    /**
+     * Linhas do log (sem contar snapshots) a partir das quais o servidor pede a um
+     * cliente que compacte, sem criar versão. Sem isto o log só encolhia quando
+     * alguém carregava em "Guardar versão", e cada abertura relia-o inteiro.
+     */
+    public const LIMITE_LOG = 500;
+
+    /** Janela do resumo de edições enviado ao autor (uma notificação por janela). */
+    public const JANELA_RESUMO_MINUTOS = 30;
+
     public function __construct(private DocumentoInternoService $documentoService) {}
 
     /**
@@ -66,16 +89,66 @@ class DocumentoCollaborationService
     }
 
     /**
-     * Estado inicial para o cliente: log de updates Yjs (base64, por ordem) e HTML de fallback.
+     * O documento ainda aceita gravações colaborativas: rascunho, sem bloqueio e
+     * sem assinatura. Fora disto, uma sessão que ficou aberta não pode reescrever o
+     * conteúdo — antes continuava a gravar depois de submetido ou ASSINADO.
+     */
+    public function sessaoAberta(DocumentoInterno $doc): bool
+    {
+        $status = $doc->status instanceof DocumentoStatus ? $doc->status : DocumentoStatus::tryFrom((string) $doc->status);
+
+        return $status === DocumentoStatus::RASCUNHO && ! $doc->bloqueado_edicao && ! $doc->assinado_em;
+    }
+
+    /**
+     * Regra única de gravação (sync, seed, checkpoint, título, destinatário):
+     * nível Editar E sessão aberta. Devolve null se pode, ou o motivo da recusa:
+     * 'nivel' (sem permissão) ou 'encerrada' (o documento já não aceita edição).
+     */
+    public function motivoRecusaGravacao(User $user, DocumentoInterno $doc): ?string
+    {
+        if (! $this->podeEditar($user, $doc)) {
+            return 'nivel';
+        }
+
+        return $this->sessaoAberta($doc) ? null : 'encerrada';
+    }
+
+    /**
+     * Envia um aviso aos participantes. Sem servidor de tempo real a resposta ao
+     * pedido não pode falhar: a alteração já está gravada, e quem abrir depois vê-a.
+     */
+    public function transmitir(DocumentoInterno $doc, string $tipo, array $dados = [], bool $excetoQuemEnviou = false): void
+    {
+        try {
+            $evento = broadcast(new EventoColaborativo($doc->id, $tipo, $dados));
+            if ($excetoQuemEnviou) {
+                $evento->toOthers();
+            }
+            // O PendingBroadcast envia ao ser destruído; força-se aqui, dentro do
+            // try, para uma falha do servidor de tempo real ser apanhada.
+            unset($evento);
+        } catch (\Throwable $e) {
+            Log::warning('Edição colaborativa: aviso em tempo real não enviado.', [
+                'documento_interno_id' => $doc->id,
+                'tipo' => $tipo,
+                'erro' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Estado inicial para o cliente: log de updates Yjs (base64, por ordem), os seus
+     * ids (o cliente diz na compactação quais aplicou) e o HTML de fallback.
      *
-     * @return array{updates: array<int, string>, html: string, hasState: bool}
+     * @return array{updates: array<int, string>, ids: array<int, int>, html: string, hasState: bool}
      */
     public function estadoInicial(DocumentoInterno $doc, ?User $user = null): array
     {
-        $updates = DocumentoCollabUpdate::where('documento_interno_id', $doc->id)
+        $linhas = DocumentoCollabUpdate::where('documento_interno_id', $doc->id)
             ->orderBy('id')
-            ->pluck('update')
-            ->all();
+            ->get(['id', 'update']);
+        $updates = $linhas->pluck('update')->all();
 
         // Primeira abertura colaborativa: o conteúdo actual fica no histórico antes de
         // qualquer edição, para ser sempre possível voltar atrás.
@@ -87,6 +160,7 @@ class DocumentoCollaborationService
 
         return [
             'updates' => $updates,
+            'ids' => $linhas->pluck('id')->map(fn ($id) => (int) $id)->all(),
             'html' => $doc->conteudo_final ?? '',
             'hasState' => count($updates) > 0,
             // A sessão devolve-o em sync/checkpoint; se mudou, houve gravação clássica entretanto.
@@ -105,22 +179,76 @@ class DocumentoCollaborationService
         ]);
     }
 
+    public static function chaveResumo(int $documentoId): string
+    {
+        return "collab_resumo:{$documentoId}";
+    }
+
+    /**
+     * Junta quem edita ao resumo que o autor recebe no fim da janela. A primeira edição
+     * da janela agenda o envio; as seguintes só acrescentam o nome. Por pessoa, só a
+     * primeira edição da janela toca na cache com lock (o /sync corre a cada ~150 ms).
+     */
+    public function registarEdicaoParaResumo(DocumentoInterno $doc, User $user): void
+    {
+        if ((int) $doc->criado_por === (int) $user->id) {
+            return;
+        }
+
+        $chave = self::chaveResumo($doc->id);
+        $marca = "{$chave}:marcados:{$user->id}";
+        $validade = now()->addMinutes(self::JANELA_RESUMO_MINUTOS + 10);
+        if (! Cache::add($marca, true, now()->addMinutes(self::JANELA_RESUMO_MINUTOS))) {
+            return;
+        }
+
+        try {
+            Cache::lock("{$chave}:lock", 5)->block(2, function () use ($chave, $doc, $user, $validade) {
+                $editores = Cache::get($chave, []);
+                $novaJanela = $editores === [];
+                $editores[$user->id] = $user->name;
+                Cache::put($chave, $editores, $validade);
+
+                if ($novaJanela) {
+                    EnviarResumoEdicoesColaborativas::dispatch($doc->id)
+                        ->onQueue('notifications')
+                        ->delay(now()->addMinutes(self::JANELA_RESUMO_MINUTOS));
+                }
+            });
+        } catch (\Throwable $e) {
+            // O resumo é acessório: nunca impede a gravação.
+            Log::info('Edição colaborativa: resumo de edições não registado.', ['erro' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Retransmite aos outros participantes um update já gravado. Grande demais para
+     * uma mensagem, segue só o id e o cliente vai buscar o estado ao servidor.
+     */
+    public function retransmitir(DocumentoInterno $doc, DocumentoCollabUpdate $linha): void
+    {
+        $dados = ['id' => $linha->id, 'user_id' => $linha->user_id];
+        if (strlen($linha->update) <= self::MAX_UPDATE_NA_MENSAGEM) {
+            $dados['update'] = $linha->update;
+        }
+
+        $this->transmitir($doc, EventoColaborativo::ALTERACAO, $dados, excetoQuemEnviou: true);
+    }
+
     /**
      * Estado inicial (seed) enviado por quem abriu primeiro. Só é aceite com o log vazio:
      * dois seeds concorrentes duplicariam o conteúdo no CRDT.
      */
-    public function registarSeed(DocumentoInterno $doc, User $user, string $base64Update): bool
+    public function registarSeed(DocumentoInterno $doc, User $user, string $base64Update): ?DocumentoCollabUpdate
     {
         return DB::transaction(function () use ($doc, $user, $base64Update) {
             DocumentoInterno::whereKey($doc->id)->lockForUpdate()->first();
 
             if (DocumentoCollabUpdate::where('documento_interno_id', $doc->id)->exists()) {
-                return false;
+                return null;
             }
 
-            $this->registarUpdate($doc, $user, $base64Update);
-
-            return true;
+            return $this->registarUpdate($doc, $user, $base64Update);
         });
     }
 
@@ -184,8 +312,13 @@ class DocumentoCollaborationService
         ?string $changeLog = null,
         ?string $snapshotBase64 = null,
         ?string $titulo = null,
+        array $idsAplicados = [],
     ): DocumentoInterno {
-        return DB::transaction(function () use ($doc, $user, $html, $changeType, $changeLog, $snapshotBase64, $titulo) {
+        return DB::transaction(function () use ($doc, $user, $html, $changeType, $changeLog, $snapshotBase64, $titulo, $idsAplicados) {
+            // Quem escreveu desde a última versão, antes de a compactação apagar o rasto.
+            $contribuidores = $this->contribuidores($doc, $snapshotBase64 !== null ? $idsAplicados : null)
+                ->push($user->id)->unique()->values()->all();
+
             $doc = $this->documentoService->updateWithVersioning(
                 $doc,
                 [
@@ -197,18 +330,68 @@ class DocumentoCollaborationService
                 $changeLog
             );
 
+            DocumentoVersao::where('documento_interno_id', $doc->id)->latest('id')->first()
+                ?->update(['contribuidores' => $contribuidores]);
+
             if ($snapshotBase64 !== null) {
-                DocumentoCollabUpdate::where('documento_interno_id', $doc->id)->delete();
-                DocumentoCollabUpdate::create([
-                    'documento_interno_id' => $doc->id,
-                    'user_id' => $user->id,
-                    'update' => $snapshotBase64,
-                    'is_snapshot' => true,
-                    'created_at' => now(),
-                ]);
+                $doc->setAttribute('snapshot_id', $this->compactar($doc, $user, $snapshotBase64, $idsAplicados));
             }
 
             return $doc;
+        });
+    }
+
+    /**
+     * Autores das linhas do log (sem snapshots): só as indicadas, ou todas.
+     *
+     * @param  array<int, int>|null  $ids
+     */
+    private function contribuidores(DocumentoInterno $doc, ?array $ids)
+    {
+        $query = DocumentoCollabUpdate::where('documento_interno_id', $doc->id)
+            ->where('is_snapshot', false)
+            ->whereNotNull('user_id');
+        if ($ids !== null) {
+            $query->whereIn('id', array_map('intval', $ids) ?: [0]);
+        }
+
+        return $query->distinct()->pluck('user_id')->map(fn ($id) => (int) $id);
+    }
+
+    /** O log passou do limite: o servidor pede a quem acabou de gravar que o compacte. */
+    public function precisaCompactar(DocumentoInterno $doc): bool
+    {
+        return DocumentoCollabUpdate::where('documento_interno_id', $doc->id)
+            ->where('is_snapshot', false)
+            ->count() >= self::LIMITE_LOG;
+    }
+
+    /**
+     * Substitui no log as linhas que o cliente diz já ter aplicado pelo snapshot dele.
+     * Só essas: um update de um colega que ainda não lhe chegou continua no log e é
+     * reaplicado por cima do snapshot (o Yjs é idempotente). Antes apagava-se o log
+     * inteiro, e esse update perdia-se.
+     *
+     * @param  array<int, int>  $idsAplicados
+     * @return int id da linha do snapshot
+     */
+    public function compactar(DocumentoInterno $doc, User $user, string $snapshotBase64, array $idsAplicados): int
+    {
+        return DB::transaction(function () use ($doc, $user, $snapshotBase64, $idsAplicados) {
+            DocumentoInterno::whereKey($doc->id)->lockForUpdate()->first();
+
+            $ids = array_values(array_unique(array_map('intval', $idsAplicados)));
+            foreach (array_chunk($ids, 500) as $lote) {
+                DocumentoCollabUpdate::where('documento_interno_id', $doc->id)->whereIn('id', $lote)->delete();
+            }
+
+            return DocumentoCollabUpdate::create([
+                'documento_interno_id' => $doc->id,
+                'user_id' => $user->id,
+                'update' => $snapshotBase64,
+                'is_snapshot' => true,
+                'created_at' => now(),
+            ])->id;
         });
     }
 
@@ -234,6 +417,9 @@ class DocumentoCollaborationService
         DocumentoColaborador::where('documento_interno_id', $doc->id)
             ->where('user_id', $invitee->id)
             ->update(['nivel' => $nivel->value]);
+
+        // A página aberta dele foi montada com o nível antigo: recarrega.
+        $this->transmitir($doc, EventoColaborativo::PERMISSOES, ['user_id' => $invitee->id]);
     }
 
     public function remover(DocumentoInterno $doc, User $invitee): void
@@ -241,6 +427,8 @@ class DocumentoCollaborationService
         DocumentoColaborador::where('documento_interno_id', $doc->id)
             ->where('user_id', $invitee->id)
             ->delete();
+
+        $this->transmitir($doc, EventoColaborativo::PERMISSOES, ['user_id' => $invitee->id]);
     }
 
     /**

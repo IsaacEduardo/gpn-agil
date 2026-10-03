@@ -96,6 +96,10 @@
     </div>
 
     <div id="collab-status" class="alert alert-secondary py-2">A ligar ao servidor de tempo real…</div>
+    @if ($podeEditar)
+        {{-- Alterações ainda por confirmar pelo servidor (collab/fila.js). --}}
+        <div id="collab-por-gravar" class="small text-success mb-2" aria-live="polite">Tudo gravado</div>
+    @endif
 
     <a id="collab-fallback-link" href="{{ route('documentos-internos.edit', $documentoInterno) }}"
        class="btn btn-outline-secondary btn-sm mb-2 d-none">
@@ -108,6 +112,7 @@
                 $collabConfig = [
                     'documentoId' => $documentoInterno->id,
                     'podeEditar' => $podeEditar,
+                    'podeComentar' => $podeComentar,
                     'user' => [
                         'id' => auth()->id(),
                         'name' => auth()->user()->name,
@@ -115,8 +120,11 @@
                     ],
                     'urls' => [
                         'state' => route('documentos-internos.collab.state', $documentoInterno),
+                        'updates' => route('documentos-internos.collab.updates', $documentoInterno),
                         'sync' => route('documentos-internos.collab.sync', $documentoInterno),
                         'checkpoint' => route('documentos-internos.collab.checkpoint', $documentoInterno),
+                        'compactar' => route('documentos-internos.collab.compactar', $documentoInterno),
+                        'comentarios' => route('documentos-internos.collab.comentarios', $documentoInterno),
                         'titulo' => route('documentos-internos.collab.titulo', $documentoInterno),
                         'campos' => route('documentos-internos.collab.campos', $documentoInterno),
                     ],
@@ -201,8 +209,10 @@
                     @endphp
                     @if ($rodapeImg)
                         <div class="collab-paper__footer">
+                            {{-- À largura do texto e na proporção da imagem, como no PDF: o
+                                 max-height de 12mm achatava o estacionário. --}}
                             <img src="{{ $rodapeImg }}" alt="Rodapé Oficial"
-                                 style="width: 100%; height: auto; max-height: 12mm; display: block; margin: 0 auto;">
+                                 style="width: 100%; height: auto; display: block; margin: 0 auto;">
                         </div>
                     @endif
                 </div>
@@ -280,6 +290,23 @@
                         <div id="collab-invite-msg" class="form-text"></div>
                     </div>
                 @endif
+            </div>
+
+            {{-- Comentários (collab/comentarios.js). Ancorados ao trecho seleccionado. --}}
+            <div class="card mt-3" id="collab-comentarios">
+                <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                    <strong>Comentários</strong>
+                    <span class="badge bg-secondary" id="collab-coment-count" title="Conversas por resolver">0</span>
+                </div>
+                @if ($podeComentar)
+                    <div class="card-body py-2 border-bottom">
+                        <div id="collab-coment-trecho" class="small text-muted fst-italic mb-1 d-none"></div>
+                        <textarea id="collab-coment-texto" class="form-control form-control-sm mb-1" rows="2" maxlength="5000"
+                                  placeholder="Seleccione um trecho no texto e escreva o comentário…"></textarea>
+                        <button type="button" id="collab-coment-enviar" class="btn btn-sm btn-primary w-100">Comentar</button>
+                    </div>
+                @endif
+                <div id="collab-coment-lista" class="list-group list-group-flush small"></div>
             </div>
         </div>
     </div>
