@@ -120,9 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editor?.setEditable(false);
         banner(msg, tipo);
         desactivarControlos();
-        // O servidor passa a devolver as conversas sem "pode comentar/resolver": a lista
-        // volta a ser desenhada sem caixas de resposta nem botões.
-        comentarios?.recarregar();
+        comentarios?.bloquear();
     }
 
     // O texto fica só de leitura, mas a barra, o título, o destinatário, a versão, os

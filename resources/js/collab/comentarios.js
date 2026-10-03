@@ -10,7 +10,7 @@ const MAX_TRECHO = 300;
 
 export function ligarComentarios(editor, cfg, http, cabecalhos) {
     const lista = document.getElementById('collab-coment-lista');
-    if (!lista || !cfg.urls.comentarios) return { recarregar() {} };
+    if (!lista || !cfg.urls.comentarios) return { recarregar() {}, bloquear() {} };
 
     const contagem = document.getElementById('collab-coment-count');
     const caixaTrecho = document.getElementById('collab-coment-trecho');
@@ -18,6 +18,8 @@ export function ligarComentarios(editor, cfg, http, cabecalhos) {
     const enviar = document.getElementById('collab-coment-enviar');
     let trecho = null;
     let podeComentar = false;
+    let bloqueado = false; // sessão encerrada: só leitura, sem pedidos ao servidor
+    let ultimas = [];
 
     // A selecção no texto passa a ser o trecho do próximo comentário.
     editor.on('selectionUpdate', () => {
@@ -39,6 +41,7 @@ export function ligarComentarios(editor, cfg, http, cabecalhos) {
     });
 
     function recarregar() {
+        if (bloqueado) return;
         http.get(cfg.urls.comentarios).then(({ data }) => {
             podeComentar = !!data.pode_comentar;
             render(data.conversas || []);
@@ -53,6 +56,7 @@ export function ligarComentarios(editor, cfg, http, cabecalhos) {
     }
 
     function render(conversas) {
+        ultimas = conversas;
         lista.innerHTML = '';
         const abertas = conversas.filter((c) => !c.resolvido).length;
         if (contagem) contagem.textContent = abertas;
@@ -84,7 +88,7 @@ export function ligarComentarios(editor, cfg, http, cabecalhos) {
         if (c.resolvido) {
             accoes.appendChild(el('span', 'badge bg-success-subtle text-success-emphasis', `Resolvido${c.resolvido_por ? ` por ${c.resolvido_por}` : ''}`));
         }
-        if (c.pode_resolver) {
+        if (c.pode_resolver && !bloqueado) {
             const botao = el('button', 'btn btn-outline-secondary btn-sm py-0', c.resolvido ? 'Reabrir' : 'Resolver');
             botao.type = 'button';
             botao.addEventListener('click', () => {
@@ -146,6 +150,14 @@ export function ligarComentarios(editor, cfg, http, cabecalhos) {
         editor.chain().setTextSelection(encontrado).scrollIntoView().run();
     }
 
+    // Sessão encerrada: o servidor já não serve a lista (403 fora de rascunho), por isso
+    // redesenha-se a que está no ecrã, sem caixas de resposta nem botões.
+    function bloquear() {
+        bloqueado = true;
+        podeComentar = false;
+        render(ultimas);
+    }
+
     recarregar();
-    return { recarregar };
+    return { recarregar, bloquear };
 }
