@@ -73,7 +73,11 @@
                 <a href="{{ route('documentos-internos.pdf', $documentoInterno->id) }}" class="btn btn-danger me-2">
                     <i class="fas fa-file-pdf me-2"></i>Baixar PDF
                 </a>
-                <button class="btn btn-dark" onclick="window.print()">
+                {{-- Imprime o PDF oficial, não esta página: sai igual ao descarregado,
+                     sem o menu do sistema nem a data/endereço que o browser junta. --}}
+                <button type="button" class="btn btn-dark" id="btnImprimirDocumento"
+                    data-pdf-url="{{ route('documentos-internos.pdf', [$documentoInterno->id, 'imprimir' => 1]) }}">
+                    <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
                     <i class="fas fa-print me-2"></i>Imprimir
                 </button>
 
@@ -458,7 +462,11 @@
                 overflow: visible !important;
             }
 
-            /* Hide System Elements */
+            /* Hide System Elements. gov-* é o layout actual: sem eles, um Ctrl+P
+               imprimia o cabeçalho e o menu do sistema por cima do documento. */
+            .gov-header,
+            .gov-nav,
+            .gov-footer,
             .sidebar,
             .topbar,
             footer,
@@ -538,4 +546,67 @@
             'ctxTitulo' => 'este documento interno',
         ])
     @endif
+
+    <script>
+        // Imprimir manda à impressora o PDF oficial (o mesmo do "Baixar PDF"), sem o
+        // descarregar: carrega-o num iframe invisível e abre o diálogo sobre ele —
+        // a técnica da etiqueta do protocolo. A página web impressa levava o menu
+        // do sistema e a data/endereço que o browser junta às páginas HTML.
+        (function () {
+            const botao = document.getElementById('btnImprimirDocumento');
+            if (!botao) return;
+
+            const url = botao.dataset.pdfUrl;
+            const spinner = botao.querySelector('.spinner-border');
+            let frame = null;
+            let carregado = false;
+
+            const ocupado = (sim) => {
+                botao.disabled = sim;
+                spinner.classList.toggle('d-none', !sim);
+            };
+
+            // Sem leitor de PDF no browser, ou se ele recusar imprimir a partir do
+            // iframe, o PDF abre num separador e imprime-se de lá.
+            const abrirNumSeparador = () => {
+                ocupado(false);
+                window.open(url, '_blank', 'noopener');
+            };
+
+            const imprimir = () => {
+                try {
+                    frame.contentWindow.focus();
+                    frame.contentWindow.print();
+                    ocupado(false);
+                } catch (e) {
+                    abrirNumSeparador();
+                }
+            };
+
+            botao.addEventListener('click', function () {
+                if (navigator.pdfViewerEnabled === false) {
+                    abrirNumSeparador();
+                    return;
+                }
+
+                if (frame && carregado) {
+                    imprimir();
+                    return;
+                }
+
+                ocupado(true);
+                frame = document.createElement('iframe');
+                frame.title = 'Documento em PDF para impressão';
+                // Invisível mas desenhado: com display:none o leitor de PDF não carrega.
+                frame.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0; visibility:hidden;';
+                frame.addEventListener('load', function () {
+                    carregado = true;
+                    // Folga para o leitor de PDF acabar de desenhar as páginas.
+                    setTimeout(imprimir, 500);
+                }, { once: true });
+                frame.src = url;
+                document.body.appendChild(frame);
+            });
+        })();
+    </script>
 @endsection

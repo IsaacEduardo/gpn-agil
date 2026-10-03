@@ -452,7 +452,9 @@ class DocumentoInternoController extends Controller
     {
         $this->authorize('view', $documentoInterno);
 
-        $documentoInterno->logAudit('download');
+        // O botão Imprimir da ficha pede este mesmo PDF (?imprimir=1) para o mandar
+        // à impressora: no histórico fica como impressão, não como descarga.
+        $documentoInterno->logAudit($request->boolean('imprimir') ? 'print' : 'download');
         $documentoInterno->load(['especie', 'departamento.gabinete', 'autor']);
 
         $html = view('documentos_internos.pdf', compact('documentoInterno'))->render();
