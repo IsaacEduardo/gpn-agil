@@ -68,6 +68,16 @@ class DocumentoInternoImpressaoTest extends TestCase
         $this->assertFalse(AuditLog::where('auditable_id', $this->doc->id)->where('action', 'download')->exists());
     }
 
+    public function test_pdf_nao_tem_numeracao_de_paginas(): void
+    {
+        // O Dompdf não calcula o total de páginas: o rodapé dizia "Página 1 de 0".
+        $this->actingAs($this->autor);
+        $html = view('documentos_internos.pdf', ['documentoInterno' => $this->doc->fresh()])->render();
+
+        $this->assertStringNotContainsString('Página <span', $html);
+        $this->assertStringNotContainsString('counter(pages)', $html);
+    }
+
     public function test_baixar_continua_registado_como_descarga(): void
     {
         $this->actingAs($this->autor)->get(route('documentos-internos.pdf', $this->doc->id))->assertOk();
