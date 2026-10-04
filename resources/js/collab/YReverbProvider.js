@@ -21,7 +21,7 @@ export default class YReverbProvider {
      * @param {object} localUser  { id, name, color }
      * @param {object} handlers
      *   onPresence(users[]), onAlteracao({id, update?, user_id}),
-     *   onEncerrada(message), onPermissoes(userId), onComentarios()
+     *   onEncerrada(message), onPermissoes(userId), onComentarios(), onVersao({versao, autor})
      */
     constructor(doc, echo, channel, localUser, handlers = {}) {
         this.doc = doc;
@@ -67,6 +67,7 @@ export default class YReverbProvider {
             .listen('.collab.encerrada', (payload) => this._emit('onEncerrada', payload?.message))
             .listen('.collab.permissoes', (payload) => this._emit('onPermissoes', payload?.user_id))
             .listen('.collab.comentarios', () => this._emit('onComentarios'))
+            .listen('.collab.versao', (payload) => this._emit('onVersao', payload || {}))
             .listenForWhisper('yjs-awareness', (payload) => {
                 if (!payload || !payload.state) return;
                 applyAwarenessUpdate(this.awareness, fromBase64(payload.state), 'remote');

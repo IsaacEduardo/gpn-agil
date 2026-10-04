@@ -17,6 +17,7 @@ use Illuminate\Foundation\Events\Dispatchable;
  *  - ENCERRADA: o documento saiu de rascunho, ficou bloqueado ou foi assinado.
  *  - PERMISSOES: o nível de um participante mudou ou ele foi removido.
  *  - COMENTARIOS: um comentário foi criado, respondido, resolvido ou reaberto.
+ *  - VERSAO: alguém guardou uma versão (os outros actualizam o número e o botão).
  *
  * As alterações passaram a ir pelo servidor (antes iam entre browsers, por client
  * events): só assim o nível de quem escreve é verificado antes de chegar aos outros.
@@ -32,6 +33,8 @@ class EventoColaborativo implements ShouldBroadcastNow
     public const PERMISSOES = 'collab.permissoes';
 
     public const COMENTARIOS = 'collab.comentarios';
+
+    public const VERSAO = 'collab.versao';
 
     /**
      * @param  array<string, mixed>  $dados

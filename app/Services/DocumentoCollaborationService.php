@@ -313,8 +313,20 @@ class DocumentoCollaborationService
         ?string $snapshotBase64 = null,
         ?string $titulo = null,
         array $idsAplicados = [],
-    ): DocumentoInterno {
+    ): ?DocumentoInterno {
         return DB::transaction(function () use ($doc, $user, $html, $changeType, $changeLog, $snapshotBase64, $titulo, $idsAplicados) {
+            // Com o documento bloqueado: dois cliques (ou dois colegas) ao mesmo tempo não
+            // passam os dois pela verificação e criam duas versões iguais.
+            $doc = DocumentoInterno::whereKey($doc->id)->lockForUpdate()->firstOrFail();
+            $conteudo = Sanitizer::clean($html);
+            $tituloFinal = $titulo ?: $doc->titulo;
+
+            // Igual à última versão: não se cria outra. Antes cada clique criava uma versão
+            // nova com o mesmo conteúdo, e a numeração subia sem nada ter mudado.
+            if (! $this->difereDaUltimaVersao($doc, $conteudo, $tituloFinal)) {
+                return null;
+            }
+
             // Quem escreveu desde a última versão, antes de a compactação apagar o rasto.
             $contribuidores = $this->contribuidores($doc, $snapshotBase64 !== null ? $idsAplicados : null)
                 ->push($user->id)->unique()->values()->all();
@@ -322,8 +334,8 @@ class DocumentoCollaborationService
             $doc = $this->documentoService->updateWithVersioning(
                 $doc,
                 [
-                    'titulo' => $titulo ?: $doc->titulo,
-                    'conteudo_final' => Sanitizer::clean($html),
+                    'titulo' => $tituloFinal,
+                    'conteudo_final' => $conteudo,
                 ],
                 $user,
                 in_array($changeType, ['major', 'minor', 'patch'], true) ? $changeType : 'minor',
@@ -339,6 +351,28 @@ class DocumentoCollaborationService
 
             return $doc;
         });
+    }
+
+    public function ultimaVersao(DocumentoInterno $doc): ?DocumentoVersao
+    {
+        return DocumentoVersao::where('documento_interno_id', $doc->id)->latest('id')->first();
+    }
+
+    /** O conteúdo e o título diferem dos da última versão guardada (ou ainda não há nenhuma). */
+    public function difereDaUltimaVersao(DocumentoInterno $doc, ?string $conteudo, ?string $titulo): bool
+    {
+        $ultima = $this->ultimaVersao($doc);
+
+        return ! $ultima || (string) $ultima->conteudo_final !== (string) $conteudo || (string) $ultima->titulo !== (string) $titulo;
+    }
+
+    /**
+     * Há alterações gravadas no documento (autosave) que ainda não estão numa versão.
+     * Decide o estado inicial do botão "Guardar versão".
+     */
+    public function temAlteracoesPorGuardar(DocumentoInterno $doc): bool
+    {
+        return $this->difereDaUltimaVersao($doc, $doc->conteudo_final, $doc->titulo);
     }
 
     /**

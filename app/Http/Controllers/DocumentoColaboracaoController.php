@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\NivelColaboracao;
+use App\Events\EventoColaborativo;
 use App\Models\DocumentoInterno;
 use App\Models\User;
 use App\Notifications\ConviteColaboracaoNotification;
@@ -65,6 +66,8 @@ class DocumentoColaboracaoController extends Controller
             'nivelAtual' => $nivel,
             'podeEditar' => $nivel !== null && $nivel->podeEditar(),
             'podeComentar' => $nivel !== null && $nivel->podeComentar(),
+            'versaoAtual' => $documentoInterno->versao_semantica,
+            'porGuardar' => $this->service->temAlteracoesPorGuardar($documentoInterno),
             'podeAdministrar' => $nivel !== null && $nivel->podeAdministrar(),
             'cor' => $this->service->corDoUtilizador(Auth::id()),
             'niveis' => NivelColaboracao::cases(),
@@ -217,6 +220,24 @@ class DocumentoColaboracaoController extends Controller
             $validated['titulo'] ?? null,
             $validated['ids_aplicados'] ?? [],
         );
+
+        if ($doc === null) {
+            $versao = $documentoInterno->fresh()->versao_semantica;
+
+            return response()->json([
+                'ok' => false,
+                'sem_alteracoes' => true,
+                'versao' => $versao,
+                'message' => "Não há alterações desde a v{$versao}: nenhuma versão nova foi criada.",
+            ], 409);
+        }
+
+        // Os colegas actualizam o número da versão e o estado do botão.
+        $this->service->transmitir($doc, EventoColaborativo::VERSAO, [
+            'versao' => $doc->versao_semantica,
+            'user_id' => Auth::id(),
+            'autor' => Auth::user()->name,
+        ], excetoQuemEnviou: true);
 
         return response()->json([
             'ok' => true,

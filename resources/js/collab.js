@@ -8,6 +8,7 @@ import { extensoesDoDocumento } from './collab/extensoes';
 import { ligarCamposColaborativos, ligarMapaDeCampos } from './collab/campos';
 import { criarFilaDeEnvio } from './collab/fila';
 import { ligarComentarios } from './collab/comentarios';
+import { ligarVersoes } from './collab/versoes';
 
 /**
  * Editor colaborativo de Documentos Internos (Tiptap + Yjs sobre Laravel Reverb).
@@ -54,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let editor = null;
     let fila = null;
     let comentarios = null;
+    let versoes = null;
 
     const provider = new YReverbProvider(
         ydoc,
@@ -65,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
             onAlteracao: receberAlteracao,
             onEncerrada: (msg) => encerrar(msg || 'A edição colaborativa deste documento terminou.'),
             onComentarios: () => comentarios?.recarregar(),
+            onVersao: (dados) => versoes?.aoVersaoDeOutro(dados),
             onPermissoes: (userId) => {
                 if (Number(userId) !== Number(cfg.user.id)) return;
                 encerrar('As suas permissões neste documento mudaram. A recarregar…', 'warning');
@@ -197,11 +200,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 onEstado: mostrarPorGravar,
             });
         }
-        wireCheckpoint(editor);
         ligarCamposColaborativos(editor, cfg, http, () => revisao);
         // Depois da fila: os valores iniciais que se escrevam no mapa têm de ser gravados.
         ligarMapaDeCampos(ydoc, cfg);
         comentarios = ligarComentarios(editor, cfg, http, cabecalhos);
+        // Por último: as escritas iniciais do mapa de campos não contam como alterações.
+        versoes = ligarVersoes({
+            editor,
+            ydoc,
+            cfg,
+            http,
+            cabecalhos,
+            aplicados,
+            obterRevisao: () => revisao,
+            porGravar: () => fila?.porGravar() ?? 0,
+            recusaDefinitiva,
+            estaEncerrado: () => encerrado,
+        });
     }
 
     // Regista o estado inicial no log durável, para quem abrir depois partir da mesma base.
@@ -309,36 +324,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ed.on('selectionUpdate', refresh);
         ed.on('transaction', refresh);
         refresh();
-    }
-
-    // --- Checkpoint manual: cria uma versão no histórico e compacta o log Yjs ---
-    // Envia os ids que este cliente aplicou: o servidor só apaga esses, e um update de um
-    // colega que ainda não chegou aqui sobrevive à compactação.
-    function wireCheckpoint(ed) {
-        const btn = document.getElementById('collab-checkpoint');
-        if (!btn) return;
-        btn.addEventListener('click', () => {
-            if (!cfg.podeEditar || encerrado) return;
-            btn.disabled = true;
-            const ids = Array.from(aplicados);
-            http.post(cfg.urls.checkpoint, {
-                html: ed.getHTML(),
-                change_type: document.getElementById('collab-change-type')?.value || 'minor',
-                change_log: document.getElementById('collab-change-log')?.value || null,
-                snapshot: toBase64(Y.encodeStateAsUpdate(ydoc)),
-                ids_aplicados: ids,
-                revisao,
-            }, { headers: cabecalhos() }).then(({ data }) => {
-                ids.forEach((id) => aplicados.delete(id));
-                if (data.snapshot_id) aplicados.add(data.snapshot_id);
-                banner(`Versão ${data.versao} guardada no histórico.`, 'success');
-            }).catch((e) => {
-                if (recusaDefinitiva(e)) return;
-                banner(e.response?.data?.message || 'Falha ao guardar versão.', 'danger');
-            }).finally(() => {
-                btn.disabled = false;
-            });
-        });
     }
 
     // --- Campo de título/assunto (autosave debounced; não colaborativo — last-write-wins) ---

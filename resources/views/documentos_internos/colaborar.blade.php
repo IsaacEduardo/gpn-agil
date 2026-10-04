@@ -47,6 +47,9 @@
     #collab-editor .ProseMirror td > p, #collab-editor .ProseMirror th > p { margin: 0; }
     #collab-editor .ProseMirror .campo-vazio { color: #b45309; background: #fef3c7; }
 
+    /* Barra de "Guardar versão" sempre à vista no fundo do ecrã */
+    .collab-barra-versao { position: sticky; bottom: 0; z-index: 1020; }
+
     /* Barra de ferramentas */
     #collab-toolbar .btn.active { background-color: #0d6efd; border-color: #0d6efd; color: #fff; }
 
@@ -84,6 +87,7 @@
             <small class="text-muted">
                 {{ $documentoInterno->numero_referencia }} ·
                 <span class="badge bg-{{ $documentoInterno->status->color() }}">{{ $documentoInterno->status->label() }}</span>
+                · Versão <strong id="collab-versao-atual">v{{ $versaoAtual }}</strong>
                 @if ($nivelAtual)
                     · O seu nível: <strong>{{ $nivelAtual->label() }}</strong>
                 @endif
@@ -113,6 +117,8 @@
                     'documentoId' => $documentoInterno->id,
                     'podeEditar' => $podeEditar,
                     'podeComentar' => $podeComentar,
+                    'versao' => $versaoAtual,
+                    'porGuardar' => $porGuardar,
                     'user' => [
                         'id' => auth()->id(),
                         'name' => auth()->user()->name,
@@ -219,7 +225,9 @@
             </div>
 
             @if ($podeEditar)
-                <div class="card mt-3">
+                {{-- Fixa no fundo do ecrã enquanto se percorre a folha: estava depois da A4 e o
+                     resultado de "Guardar versão" não se via (collab/versoes.js). --}}
+                <div class="card mt-3 shadow collab-barra-versao" id="collab-barra-versao">
                     <div class="card-body py-2">
                         <div class="row g-2 align-items-end">
                             <div class="col-auto">
@@ -236,14 +244,18 @@
                                        placeholder="Ex.: Ajustado o parágrafo introdutório">
                             </div>
                             <div class="col-auto">
-                                <button id="collab-checkpoint" class="btn btn-success btn-sm">
-                                    <i class="fas fa-save me-1"></i> Guardar versão
+                                <button id="collab-checkpoint" type="button" class="btn btn-success btn-sm" @disabled(! $porGuardar)>
+                                    <span class="spinner-border spinner-border-sm me-1 d-none" role="status" aria-hidden="true"></span>
+                                    <i class="fas fa-save me-1"></i>
+                                    <span id="collab-checkpoint-rotulo">{{ $porGuardar ? 'Guardar versão' : 'Sem alterações desde a v'.$versaoAtual }}</span>
                                 </button>
                             </div>
                         </div>
-                        <div class="form-text">
-                            As alterações são guardadas automaticamente. "Guardar versão" cria um ponto
-                            no histórico de revisões (rollback disponível na visualização do documento).
+                        <div class="form-text d-flex justify-content-between flex-wrap gap-2">
+                            <span id="collab-versao-estado" aria-live="polite">
+                                {{ $porGuardar ? 'Há alterações desde a v'.$versaoAtual.' por guardar numa versão.' : 'O documento está igual à v'.$versaoAtual.'.' }}
+                            </span>
+                            <span>As alterações gravam-se sozinhas; "Guardar versão" cria um ponto no histórico de revisões.</span>
                         </div>
                     </div>
                 </div>
