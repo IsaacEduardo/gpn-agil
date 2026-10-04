@@ -32,6 +32,16 @@
                     $podeDevolver = in_array($statusDoc, ['em_analise', 'aprovado'], true) && !$documentoInterno->assinado_em
                         && auth()->user()->can('reject', $documentoInterno);
                 @endphp
+                {{-- Colaboração: também para os convidados, que não passam no 'update' (autor e
+                     chefia) e só chegavam ao editor pelo link da notificação do convite. --}}
+                @php($nivelColab = config('app.feature_collab') && auth()->user()->can('collaborate', $documentoInterno)
+                    ? app(\App\Services\DocumentoCollaborationService::class)->nivelDe(auth()->user(), $documentoInterno)
+                    : null)
+                @if ($nivelColab)
+                    <a href="{{ route('documentos-internos.collab.editor', $documentoInterno) }}" class="btn btn-outline-primary me-2">
+                        <i class="fas fa-users me-2"></i>{{ $nivelColab->podeEditar() ? 'Editar em colaboração' : 'Abrir em colaboração' }}
+                    </a>
+                @endif
                 @if ($documentoInterno->aceitaEdicao() && auth()->user()->can('update', $documentoInterno))
                     <a href="{{ route('documentos-internos.edit', $documentoInterno->id) }}" class="btn btn-primary me-2">
                         <i class="fas fa-edit me-2"></i>Editar
@@ -255,23 +265,25 @@
                                                 <th>Usuário</th>
                                                 <th>Ação</th>
                                                 <th>IP</th>
-                                                <th>Detalhes</th>
+                                                <th>O que fez</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             @forelse ($documentoInterno->audits as $audit)
+                                                {{-- Quem fez o quê, em português (App\Support\DescricaoAuditoria). --}}
+                                                @php($descricao = \App\Support\DescricaoAuditoria::de($audit))
                                                 <tr>
                                                     <td class="ps-3 text-muted small">
                                                         {{ $audit->created_at->format('d/m/Y H:i:s') }}</td>
                                                     <td class="fw-medium">{{ $audit->user->name ?? 'Sistema' }}</td>
                                                     <td>
-                                                        <span
-                                                            class="badge bg-{{ match ($audit->action) {'create' => 'primary','update' => 'info','sign' => 'success','delete' => 'danger',default => 'secondary'} }}-subtle text-dark border">
-                                                            {{ ucfirst($audit->action) }}
+                                                        <span class="badge bg-{{ $descricao['cor'] }}-subtle text-dark border">
+                                                            {{ $descricao['acao'] }}
                                                         </span>
                                                     </td>
                                                     <td class="small text-muted">{{ $audit->ip_address }}</td>
-                                                    <td class="small text-muted">
+                                                    <td class="small">
+                                                        {{ $descricao['detalhe'] }}
                                                         @if ($audit->action === 'sign' && isset($audit->new_values['hash']))
                                                             Hash: <span
                                                                 class="font-monospace">{{ substr($audit->new_values['hash'], 0, 10) }}...</span>

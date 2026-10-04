@@ -249,7 +249,7 @@ class ColaboracaoElevacaoTest extends TestCase
         Bus::fake([EnviarResumoEdicoesColaborativas::class]);
         $this->sync($this->editor);
 
-        (new EnviarResumoEdicoesColaborativas($this->doc->id))->handle();
+        app()->call([new EnviarResumoEdicoesColaborativas($this->doc->id), 'handle']);
 
         Notification::assertSentTo($this->autor, EdicaoColaborativaNotification::class,
             fn ($n) => $n->editores === ['Edu Editor']);

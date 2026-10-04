@@ -631,6 +631,15 @@
                                                     </a>
                                                 </li>
                                             @endif
+                                            {{-- Também para os convidados (os documentos "Partilhados comigo"). --}}
+                                            @if ($statusVal === 'rascunho' && config('app.feature_collab') && auth()->user()->can('collaborate', $doc))
+                                                @php($nivelColab = app(\App\Services\DocumentoCollaborationService::class)->nivelDe(auth()->user(), $doc))
+                                                <li>
+                                                    <a class="dropdown-item py-2" href="{{ route('documentos-internos.collab.editor', $doc) }}">
+                                                        <i class="fas fa-users me-2 text-primary w-20"></i>{{ $nivelColab?->podeEditar() ? 'Editar em colaboração' : 'Abrir em colaboração' }}
+                                                    </a>
+                                                </li>
+                                            @endif
                                             <li><hr class="dropdown-divider"></li>
                                             <li>
                                                 <button type="button"

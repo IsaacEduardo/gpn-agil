@@ -7,6 +7,7 @@ use App\Events\EventoColaborativo;
 use App\Models\DocumentoInterno;
 use App\Models\User;
 use App\Notifications\ConviteColaboracaoNotification;
+use App\Services\ActividadeColaborativaService;
 use App\Services\DocumentoCollaborationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,10 @@ class DocumentoColaboracaoController extends Controller
      */
     public const EDITOR_PRESERVA_ESTRUTURA = true;
 
-    public function __construct(private DocumentoCollaborationService $service) {}
+    public function __construct(
+        private DocumentoCollaborationService $service,
+        private ActividadeColaborativaService $actividade,
+    ) {}
 
     /**
      * Página do editor colaborativo (Tiptap + Yjs).
@@ -121,6 +125,7 @@ class DocumentoColaboracaoController extends Controller
             $linha = $this->service->registarUpdate($documentoInterno, Auth::user(), $validated['update']);
             $this->service->retransmitir($documentoInterno, $linha);
             $this->service->registarEdicaoParaResumo($documentoInterno, Auth::user());
+            $this->actividade->registarEdicao($documentoInterno, Auth::user());
             $id = $linha->id;
         }
 
@@ -232,6 +237,8 @@ class DocumentoColaboracaoController extends Controller
             ], 409);
         }
 
+        $this->service->registarEdicaoParaResumo($doc, Auth::user());
+
         // Os colegas actualizam o número da versão e o estado do botão.
         $this->service->transmitir($doc, EventoColaborativo::VERSAO, [
             'versao' => $doc->versao_semantica,
@@ -262,6 +269,8 @@ class DocumentoColaboracaoController extends Controller
         }
 
         $this->service->salvarTitulo($documentoInterno, $validated['titulo']);
+        $this->actividade->registarCampos($documentoInterno, Auth::user(), ActividadeColaborativaService::TITULO, ['titulo' => $validated['titulo']]);
+        $this->service->registarEdicaoParaResumo($documentoInterno, Auth::user());
 
         return response()->json(['ok' => true]);
     }
@@ -285,6 +294,11 @@ class DocumentoColaboracaoController extends Controller
         }
 
         $this->service->salvarDestinatario($documentoInterno, $validated);
+        $campos = array_intersect_key($validated, array_flip(['destinatario_nome', 'destinatario_cargo', 'destinatario_orgao', 'destinatario_local']));
+        if ($campos !== []) {
+            $this->actividade->registarCampos($documentoInterno, Auth::user(), ActividadeColaborativaService::DESTINATARIO, $campos);
+            $this->service->registarEdicaoParaResumo($documentoInterno, Auth::user());
+        }
 
         return response()->json(['ok' => true]);
     }
@@ -369,6 +383,11 @@ class DocumentoColaboracaoController extends Controller
         }
 
         $invitee->notify(new ConviteColaboracaoNotification($documentoInterno, Auth::user(), $colab->nivel));
+        $this->actividade->registar($documentoInterno, Auth::user(), ActividadeColaborativaService::CONVITE, [
+            'colaborador_id' => $invitee->id,
+            'colaborador' => $invitee->name,
+            'nivel' => $colab->nivel->value,
+        ]);
 
         return response()->json([
             'ok' => true,
@@ -389,6 +408,11 @@ class DocumentoColaboracaoController extends Controller
         ]);
 
         $this->service->definirNivel($documentoInterno, $user, NivelColaboracao::from($validated['nivel']));
+        $this->actividade->registar($documentoInterno, Auth::user(), ActividadeColaborativaService::NIVEL, [
+            'colaborador_id' => $user->id,
+            'colaborador' => $user->name,
+            'nivel' => $validated['nivel'],
+        ]);
 
         return response()->json(['ok' => true]);
     }
@@ -398,6 +422,10 @@ class DocumentoColaboracaoController extends Controller
         $this->authorize('manageCollaborators', $documentoInterno);
 
         $this->service->remover($documentoInterno, $user);
+        $this->actividade->registar($documentoInterno, Auth::user(), ActividadeColaborativaService::REMOCAO, [
+            'colaborador_id' => $user->id,
+            'colaborador' => $user->name,
+        ]);
 
         return response()->json(['ok' => true]);
     }

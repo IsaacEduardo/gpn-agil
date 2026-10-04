@@ -4,11 +4,13 @@ namespace App\Jobs;
 
 use App\Models\DocumentoInterno;
 use App\Notifications\EdicaoColaborativaNotification;
+use App\Services\ActividadeColaborativaService;
 use App\Services\DocumentoCollaborationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -21,17 +23,25 @@ class EnviarResumoEdicoesColaborativas implements ShouldQueue
 
     public function __construct(public int $documentoId) {}
 
-    public function handle(): void
+    public function handle(ActividadeColaborativaService $actividade): void
     {
         $chave = DocumentoCollaborationService::chaveResumo($this->documentoId);
         // As marcas por pessoa expiram com a janela: quem editar depois abre uma nova.
         $editores = Cache::pull($chave, []);
+        $inicio = Cache::pull("{$chave}:inicio");
 
         $documento = DocumentoInterno::with('autor')->find($this->documentoId);
         if (! $documento || ! $documento->autor || $editores === []) {
             return;
         }
 
-        $documento->autor->notify(new EdicaoColaborativaNotification($documento, array_values($editores)));
+        // O que cada um fez na janela ("Josuelma: 14 alterações ao texto e 1 comentário").
+        $detalhes = $actividade->resumoPorPessoa(
+            $documento,
+            $inicio ? Carbon::parse($inicio) : now()->subMinutes(DocumentoCollaborationService::JANELA_RESUMO_MINUTOS + 5),
+            $editores,
+        );
+
+        $documento->autor->notify(new EdicaoColaborativaNotification($documento, array_values($editores), $detalhes));
     }
 }

@@ -19,7 +19,10 @@ use Illuminate\Support\Facades\Notification;
  */
 class DocumentoComentarioService
 {
-    public function __construct(private DocumentoCollaborationService $colaboracao) {}
+    public function __construct(
+        private DocumentoCollaborationService $colaboracao,
+        private ActividadeColaborativaService $actividade,
+    ) {}
 
     public function podeComentar(User $user, DocumentoInterno $doc): bool
     {
@@ -92,6 +95,13 @@ class DocumentoComentarioService
 
         $this->notificar($comentario, $pai);
         $this->colaboracao->transmitir($doc, EventoColaborativo::COMENTARIOS);
+        $this->actividade->registar($doc, $user, ActividadeColaborativaService::COMENTARIO, [
+            'comentario_id' => $comentario->id,
+            'resposta' => $pai !== null,
+            'trecho' => $pai ? $pai->trecho : $comentario->trecho,
+            'texto' => \Illuminate\Support\Str::limit($comentario->texto, 300),
+        ]);
+        $this->colaboracao->registarEdicaoParaResumo($doc, $user);
 
         return $comentario;
     }
@@ -103,6 +113,12 @@ class DocumentoComentarioService
             : ['resolvido_em' => null, 'resolvido_por' => null]);
 
         $this->colaboracao->transmitir($comentario->documento, EventoColaborativo::COMENTARIOS);
+        $this->actividade->registar(
+            $comentario->documento,
+            $user,
+            $resolvido ? ActividadeColaborativaService::COMENTARIO_RESOLVIDO : ActividadeColaborativaService::COMENTARIO_REABERTO,
+            ['comentario_id' => $comentario->id, 'texto' => \Illuminate\Support\Str::limit($comentario->texto, 300)],
+        );
     }
 
     /**

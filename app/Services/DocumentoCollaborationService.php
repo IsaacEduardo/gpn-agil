@@ -210,6 +210,8 @@ class DocumentoCollaborationService
                 Cache::put($chave, $editores, $validade);
 
                 if ($novaJanela) {
+                    // Início da janela: o resumo conta o que cada um fez a partir daqui.
+                    Cache::put("{$chave}:inicio", now()->toIso8601String(), $validade);
                     EnviarResumoEdicoesColaborativas::dispatch($doc->id)
                         ->onQueue('notifications')
                         ->delay(now()->addMinutes(self::JANELA_RESUMO_MINUTOS));
@@ -326,6 +328,10 @@ class DocumentoCollaborationService
             if (! $this->difereDaUltimaVersao($doc, $conteudo, $tituloFinal)) {
                 return null;
             }
+
+            // A auditoria desta gravação diz que é uma versão da colaboração, com a
+            // descrição dada (App\Support\DescricaoAuditoria).
+            $doc->auditMotivo = trim(ActividadeColaborativaService::MARCA_VERSAO.' '.($changeLog ?? ''));
 
             // Quem escreveu desde a última versão, antes de a compactação apagar o rasto.
             $contribuidores = $this->contribuidores($doc, $snapshotBase64 !== null ? $idsAplicados : null)

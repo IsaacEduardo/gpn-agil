@@ -20,8 +20,9 @@ class EdicaoColaborativaNotification extends Notification implements ShouldQueue
 
     /**
      * @param  array<int, string>  $editores  nomes
+     * @param  array<int, string>  $detalhes  uma frase por pessoa: o que fez
      */
-    public function __construct(public DocumentoInterno $documento, public array $editores)
+    public function __construct(public DocumentoInterno $documento, public array $editores, public array $detalhes = [])
     {
         $this->queue = 'notifications';
     }
@@ -42,13 +43,17 @@ class EdicaoColaborativaNotification extends Notification implements ShouldQueue
         return $this->canonicalPayload(
             title: 'Edições em "'.$this->documento->titulo.'"',
             url: route('documentos-internos.collab.editor', $this->documento),
-            body: $nomes.(count($this->editores) > 1 ? ' editaram' : ' editou').' o seu documento na edição colaborativa.',
+            // "Josuelma: 14 alterações ao texto e 1 comentário. Nicolau: guardou a v1.0.0."
+            body: $this->detalhes
+                ? \Illuminate\Support\Str::limit(implode(' ', $this->detalhes), 400)
+                : $nomes.(count($this->editores) > 1 ? ' editaram' : ' editou').' o seu documento na edição colaborativa.',
             priority: 'low',
             type: 'edicao_colaborativa',
             icon: 'fas fa-users',
             extra: [
                 'documento_interno_id' => $this->documento->id,
                 'editores' => $this->editores,
+                'detalhes' => $this->detalhes,
             ],
         );
     }
