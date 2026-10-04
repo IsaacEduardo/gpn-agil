@@ -223,6 +223,19 @@ class TarefaConcorrenciaTest extends TestCase
         $this->assertSame('pendente', $this->tarefaDe($doc, $this->tec1)->status);
     }
 
+    public function test_chegar_segundo_nao_vai_para_o_log_de_erros(): void
+    {
+        $doc = $this->delegarEmConcorrencia();
+        $tarefa2 = $this->tarefaDe($doc, $this->tec2);
+        $this->assumir($this->tec1, $doc);
+
+        \Illuminate\Support\Facades\Log::spy();
+        $this->actingAs($this->tec2)->postJson(route('documentos-entradas.tarefas.assumir', [$doc, $tarefa2]))
+            ->assertStatus(409);
+
+        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('error');
+    }
+
     public function test_assumir_duas_vezes_e_idempotente(): void
     {
         $doc = $this->delegarEmConcorrencia();
