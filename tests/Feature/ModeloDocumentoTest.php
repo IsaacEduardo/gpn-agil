@@ -83,4 +83,20 @@ class ModeloDocumentoTest extends TestCase
         $response->assertJsonStructure(['modelo', 'conteudo_processado']);
         $response->assertJsonFragment(['nome' => 'Modelo Preview Teste']);
     }
+
+    public function test_modelo_aberto_no_browser_vai_para_a_lista_e_nao_mostra_json()
+    {
+        $user = User::factory()->create();
+        $especie = DocumentoEspecie::firstOrCreate(['nome' => 'Ofício Teste'], ['sigla' => 'OFI']);
+        $modelo = ModeloDocumento::create([
+            'nome' => 'Modelo Browser', 'documento_especie_id' => $especie->id,
+            'conteudo' => '<p>x</p>', 'user_id' => $user->id, 'ativo' => true,
+        ]);
+
+        $this->actingAs($user)->get(route('modelos.show', $modelo))
+            ->assertRedirect(route('modelos.index', ['ver' => $modelo->id]));
+
+        $this->actingAs($user)->getJson(route('modelos.show', $modelo))
+            ->assertOk()->assertJsonFragment(['nome' => 'Modelo Browser']);
+    }
 }

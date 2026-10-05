@@ -81,6 +81,12 @@ class ModeloDocumentoController extends Controller
 
     public function show(Request $request, ModeloDocumento $modelo)
     {
+        // Os dados servem a janela "Visualizar" da lista; aberto no browser (ex.: num
+        // separador novo), mostra essa janela em vez do JSON em bruto.
+        if (! $request->expectsJson()) {
+            return redirect()->route('modelos.index', ['ver' => $modelo->id]);
+        }
+
         $modelo->load('especie', 'gabinete');
 
         if ($request->boolean('preview')) {

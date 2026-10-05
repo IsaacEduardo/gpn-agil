@@ -258,6 +258,10 @@
 
             init() {
                 this.modal = new bootstrap.Modal(document.getElementById('previewModal'));
+
+                // /modelos/{id} aberto directamente redirecciona para aqui com ?ver={id}.
+                const ver = new URLSearchParams(window.location.search).get('ver');
+                if (ver && /^\d+$/.test(ver)) this.openPreview(ver);
             },
             
             setView(newView) {
@@ -269,8 +273,11 @@
                 this.previewData = { nome: '{{ __("Carregando...") }}', conteudo: '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>' };
                 this.modal.show();
 
-                fetch(`/modelos/${id}`)
-                    .then(res => res.json())
+                fetch(`/modelos/${id}`, { headers: { Accept: 'application/json' } })
+                    .then(res => {
+                        if (!res.ok) throw new Error(res.status);
+                        return res.json();
+                    })
                     .then(data => {
                         this.previewData = data;
                     })
