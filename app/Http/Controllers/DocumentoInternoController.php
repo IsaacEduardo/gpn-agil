@@ -235,8 +235,11 @@ class DocumentoInternoController extends Controller
             $doc->conteudo_final = $this->service->prepararCamposVinculados($doc->conteudo_final, $validated);
             $reserva = $this->service->reservarNumero($doc);
             $doc->numero_referencia = $reserva['referencia'];
-            // Referência no corpo e, nas Ordens de Serviço, o "Nº" do título.
-            $doc->conteudo_final = $this->service->aplicarReferenciaDefinitiva($doc->conteudo_final, $reserva['referencia'], $reserva['numero']);
+            // Referência no corpo e, nas Ordens de Serviço, o "Nº" do título; sem numeração
+            // automática (livro do gabinete antes da data de início) ficam em branco.
+            $doc->conteudo_final = $reserva['referencia'] !== null
+                ? $this->service->aplicarReferenciaDefinitiva($doc->conteudo_final, $reserva['referencia'], $reserva['numero'])
+                : $this->service->aplicarReferenciaEmBranco($doc->conteudo_final, $reserva['provisoria']);
             $doc->save();
 
             // O original fica no histórico: qualquer edição posterior pode ser revertida.
@@ -261,7 +264,8 @@ class DocumentoInternoController extends Controller
         }
 
         return redirect()->route('documentos-internos.index')
-            ->with('success', 'Documento interno criado com sucesso: '.$doc->numero_referencia);
+            ->with('success', 'Documento interno criado com sucesso: '.($doc->numero_referencia
+                ?? 'sem número (o livro deste documento continua em papel; preencha o número à mão)'));
     }
 
     public function show(Request $request, DocumentoInterno $documentoInterno)
@@ -458,7 +462,7 @@ class DocumentoInternoController extends Controller
         $documentoInterno->load(['especie', 'departamento.gabinete', 'autor']);
 
         $html = view('documentos_internos.pdf', compact('documentoInterno'))->render();
-        $filename = 'Documento_'.str_replace('/', '-', $documentoInterno->numero_referencia).'.pdf';
+        $filename = 'Documento_'.str_replace('/', '-', $documentoInterno->numero_referencia ?: 'DOC-'.$documentoInterno->id).'.pdf';
         $isAttachment = $request->query('download') === '1';
 
         return $this->pdfService->createPdfResponse($html, $filename, $isAttachment);

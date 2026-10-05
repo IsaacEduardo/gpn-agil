@@ -89,7 +89,7 @@
         <tbody>
             @foreach($documentos as $doc)
                 <tr>
-                    <td>{{ $doc->numero_referencia }}</td>
+                    <td>{{ $doc->numero_referencia ?: 'S/N' }}</td>
                     <td>{{ \Illuminate\Support\Str::limit($doc->titulo, 50) }}</td>
                     <td>{{ $doc->especie->nome ?? '-' }}</td>
                     <td>{{ $doc->autor->name ?? '-' }}</td>

@@ -127,7 +127,7 @@ class OrdemDeServicoSecGeralTest extends TestCase
 
         // O número deixou de ser editável: fica um marcador, preenchido ao gravar com o
         // número reservado na série OS:{código} (numero_ordem enviado é ignorado).
-        $this->assertStringContainsString('class="ref-numero-ordem">__</span>', $processed);
+        $this->assertStringContainsString('class="ref-numero-ordem">_____</span>', $processed);
         $this->assertStringContainsString('Ausentando-me para cumprimento de missão oficial...', $processed);
         $this->assertStringContainsString('DETERMINO:', $processed);
         $this->assertStringContainsString('Designo o Dr. Manuel Silva', $processed);

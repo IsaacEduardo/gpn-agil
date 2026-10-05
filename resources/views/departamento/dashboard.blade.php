@@ -219,7 +219,7 @@
                                             @foreach ($docsParaAprovar as $doc)
                                                 <tr>
                                                     <td><input type="checkbox" name="documento_ids[]" value="{{ $doc->id }}" class="form-check-input check-doc"></td>
-                                                    <td class="fw-bold text-primary">{{ $doc->numero_referencia }}</td>
+                                                    <td class="fw-bold text-primary">{{ $doc->numero_referencia ?: 'S/N' }}</td>
                                                     <td class="fw-semibold">{{ Str::limit($doc->titulo, 50) }}</td>
                                                     <td>{{ $doc->autor->name }}</td>
                                                     <td class="small text-muted">{{ $doc->created_at->format('d/m/Y H:i') }}</td>
@@ -331,7 +331,7 @@
                                                         @foreach ($docsParaAssinar as $doc)
                                                             <tr>
                                                                 <td><input type="checkbox" name="documento_ids[]" value="{{ $doc->id }}" class="form-check-input check-sign-doc"></td>
-                                                                <td class="fw-bold">{{ $doc->numero_referencia }}</td>
+                                                                <td class="fw-bold">{{ $doc->numero_referencia ?: 'S/N' }}</td>
                                                                 <td>{{ Str::limit($doc->titulo, 25) }}</td>
                                                                 <td class="text-end">
                                                                     <button type="button" class="btn btn-sm btn-link p-0" data-bs-toggle="modal" data-bs-target="#edmsPreviewModal" data-preview-url="{{ route('documentos-internos.pdf', $doc) }}" data-preview-title="{{ $doc->titulo }}">

@@ -336,7 +336,7 @@ class DocumentoInternoService
 
         // Ordem de Serviço: o número vem da série do gabinete (OS:{código}), reservado ao
         // gravar; aqui fica um marcador (substituído em aplicarReferenciaDefinitiva).
-        $numeroOrdemFinal = '<span class="'.self::CLASSE_NUMERO_ORDEM.'">__</span>';
+        $numeroOrdemFinal = '<span class="'.self::CLASSE_NUMERO_ORDEM.'">'.SeriesNumeracao::NUMERO_EM_BRANCO.'</span>';
         $anoAtualServidor = (string) NumeracaoDocumentoService::anoCorrente();
         $codigoOrdemServico = $numeracao->codigoOficios($gab) ?? $numeracao->siglaEmissor($dep, $gab);
 
@@ -474,15 +474,16 @@ class DocumentoInternoService
      * Reserva a referência do documento (ver NumeracaoDocumentoService).
      * Chamar dentro da mesma transacção em que o documento é gravado.
      */
-    public function gerarNumeroReferencia(DocumentoInterno $doc): string
+    public function gerarNumeroReferencia(DocumentoInterno $doc): ?string
     {
         return app(NumeracaoDocumentoService::class)->gerar($doc);
     }
 
     /**
      * Como gerarNumeroReferencia, mas devolve também o número (ex.: o nº da Ordem de Serviço).
+     * Livro do gabinete ainda sem numeração automática: referencia/numero a null.
      *
-     * @return array{referencia: string, numero: int}
+     * @return array{referencia: ?string, numero: ?int, provisoria: string}
      */
     public function reservarNumero(DocumentoInterno $doc): array
     {
@@ -515,6 +516,18 @@ class DocumentoInternoService
         return $numero !== null
             ? $this->preencherMarcador($html, self::CLASSE_NUMERO_ORDEM, SeriesNumeracao::numeroParaTitulo($referencia, $numero))
             : $html;
+    }
+
+    /**
+     * Livro do gabinete ainda sem numeração automática: a referência e o "Nº" ficam em
+     * branco no corpo, para preencher à mão com o número do livro em papel.
+     */
+    public function aplicarReferenciaEmBranco(string $html, string $referenciaProvisoria): string
+    {
+        $html = $this->preencherMarcador($html, self::CLASSE_NOSSA_REFERENCIA, $referenciaProvisoria);
+        $html = $this->preencherMarcador($html, self::CLASSE_REFERENCIA_TITULO, SeriesNumeracao::semIdentificacao($referenciaProvisoria));
+
+        return $this->preencherMarcador($html, self::CLASSE_NUMERO_ORDEM, SeriesNumeracao::NUMERO_EM_BRANCO);
     }
 
     private function preencherMarcador(string $html, string $classe, string $texto): string

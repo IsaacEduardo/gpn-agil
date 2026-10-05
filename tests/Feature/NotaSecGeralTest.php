@@ -148,7 +148,7 @@ class NotaSecGeralTest extends TestCase
             'modelo_id' => $modelo->id,
         ])->assertOk()->json('content');
 
-        $this->assertStringContainsString("NOTA ___/SEC.GOV.PROV.HLA.DLP/{$this->ano}", $html);
+        $this->assertStringContainsString("NOTA _____/SEC.GOV.PROV.HLA.DLP/{$this->ano}", $html);
         $this->assertStringContainsString('O Chefe de Departamento', $html);
         $this->assertStringContainsString('Gilberto Silva', $html);
         $this->assertStringNotContainsString('Secretário Geral', $html);

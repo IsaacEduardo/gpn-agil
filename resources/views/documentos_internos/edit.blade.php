@@ -75,7 +75,7 @@
                                     <div class="mb-3">
                                         <label class="form-label">Referência</label>
                                         <input type="text" class="form-control"
-                                            value="{{ $documentoInterno->numero_referencia }}" disabled>
+                                            value="{{ $documentoInterno->numero_referencia ?: 'S/N' }}" disabled>
                                     </div>
 
                                     <div class="card bg-light">

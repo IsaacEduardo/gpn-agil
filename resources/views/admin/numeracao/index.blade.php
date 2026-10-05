@@ -41,6 +41,45 @@
             </div>
         @endif
 
+        {{-- Livros do gabinete: numerados pelo sistema só a partir de uma data --}}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold">Início da numeração dos livros do gabinete</h5>
+                <small class="text-muted">
+                    Ofício, Ordem de Serviço, Nota e Informação/Parecer. Antes desta data saem com o número em branco
+                    (ex.: <code>NOTA _____/SEC.GOV.PROV.HLA.AEX/{{ $anos[0] }}</code>), para preencher à mão a partir do livro em papel.
+                </small>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">
+                    @if ($inicioGabinete && now('Africa/Luanda')->lt($inicioGabinete))
+                        <span class="badge bg-warning text-dark">Numeração em papel</span>
+                        O sistema numera estes documentos a partir de <strong>{{ $inicioGabinete->format('d/m/Y') }}</strong>.
+                    @else
+                        <span class="badge bg-success">Numeração automática</span>
+                        {{ $inicioGabinete ? 'Activa desde '.$inicioGabinete->format('d/m/Y').'.' : 'O sistema numera estes documentos.' }}
+                    @endif
+                </p>
+                <form method="POST" action="{{ route('admin.numeracao.inicio-gabinete') }}" class="row g-3 align-items-end">
+                    @csrf
+                    <div class="col-md-3">
+                        <label class="form-label small mb-0" for="numeracao_gabinete_desde">Numerar a partir de</label>
+                        <input type="date" name="numeracao_gabinete_desde" id="numeracao_gabinete_desde" class="form-control form-control-sm"
+                               value="{{ old('numeracao_gabinete_desde', $inicioGabinete?->toDateString()) }}">
+                        <div class="form-text">Vazio = numerar desde já.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small mb-0" for="motivo_inicio">Motivo</label>
+                        <input type="text" name="motivo" id="motivo_inicio" class="form-control form-control-sm" minlength="5" maxlength="500" required
+                               placeholder="Ex.: Numeração no sistema a partir de 1 de Janeiro">
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-sm btn-primary" type="submit">Gravar data</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         {{-- Séries existentes --}}
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-white py-3">

@@ -636,6 +636,10 @@
                         setTimeout(() => {
                             btnPreview.click();
                         }, 150);
+                    } else {
+                        // Com alterações no editor não se substitui sozinho: avisa que é preciso
+                        // carregar (em vez de parecer que o modelo não carregou).
+                        showUpdateHint();
                     }
                 }
             });
@@ -701,15 +705,28 @@
                     }
                 });
 
+                // Accept JSON: uma recusa de validação (ex.: Nota com o gabinete como emissor)
+                // chega como 422 com a mensagem, em vez de um redirect para a página.
                 fetch('{{ route('documentos-internos.preview') }}', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
                         body: JSON.stringify(payload)
                     })
-                    .then(response => response.json())
+                    .then(async response => {
+                        const data = await response.json().catch(() => null);
+                        if (response.ok && data && typeof data.content === 'string') return data;
+
+                        const mensagem = data?.errors
+                            ? Object.values(data.errors).flat()[0]
+                            : (response.status === 419 || response.status === 401
+                                ? 'A sessão expirou. Recarregue a página e volte a tentar.'
+                                : 'Não foi possível carregar o modelo.');
+                        throw new Error(mensagem);
+                    })
                     .then(data => {
                         tinymce.get('conteudo_final').setContent(data.content);
                         if (window.Toast) {
@@ -719,7 +736,9 @@
                     .catch(error => {
                         console.error('Error:', error);
                         if (window.Toast) {
-                            window.Toast.error('Erro', 'Não foi possível carregar o modelo.');
+                            window.Toast.error('Modelo não carregado', error.message || 'Não foi possível carregar o modelo.');
+                        } else {
+                            alert(error.message || 'Não foi possível carregar o modelo.');
                         }
                     })
                     .finally(() => {

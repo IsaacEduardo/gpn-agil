@@ -74,7 +74,7 @@
                             @foreach($pasta->documentosInternos as $docInterno)
                                 <tr>
                                     <td><span class="badge bg-info">Interno</span></td>
-                                    <td>{{ $docInterno->numero_referencia }}</td>
+                                    <td>{{ $docInterno->numero_referencia ?: 'S/N' }}</td>
                                     <td>{{ $docInterno->titulo }}</td>
                                     <td>{{ $docInterno->destinatario_nome ?? $docInterno->destinatario_orgao ?? '—' }}</td>
                                     <td>{{ $docInterno->created_at->format('d/m/Y') }}</td>

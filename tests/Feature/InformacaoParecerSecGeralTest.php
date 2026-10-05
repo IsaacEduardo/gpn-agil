@@ -115,7 +115,7 @@ class InformacaoParecerSecGeralTest extends TestCase
     public function test_gravado_titulo_sem_identificacao_repetida_quadro_com_numero_data_e_proc(): void
     {
         $html = $this->preview($this->tecnicoDlp, ['numero_processo' => '45/2026']);
-        $this->assertStringContainsString("INFORMAÇÃO Nº <span class=\"ref-referencia-titulo\">___/SEC.GOV.PROV.HLA.DLP/{$this->ano}</span>", $html);
+        $this->assertStringContainsString("INFORMAÇÃO Nº <span class=\"ref-referencia-titulo\">_____/SEC.GOV.PROV.HLA.DLP/{$this->ano}</span>", $html);
 
         $this->criar($this->tecnicoDlp, conteudo: $html);
         $doc = DocumentoInterno::latest('id')->first();

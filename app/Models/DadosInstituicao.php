@@ -28,6 +28,11 @@ class DadosInstituicao extends Model
         'rodape_texto',
         'rodape_img_path',
         'etiqueta_formato',
+        'numeracao_gabinete_desde',
+    ];
+
+    protected $casts = [
+        'numeracao_gabinete_desde' => 'date',
     ];
 
     /**

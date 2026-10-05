@@ -88,7 +88,7 @@
         @foreach ($lists['internos'] as $doc)
             <tr>
                 <td>Produzido</td>
-                <td>{{ $doc->numero_referencia }}</td>
+                <td>{{ $doc->numero_referencia ?: 'S/N' }}</td>
                 <td>{{ optional($doc->created_at)->format('d/m/Y') }}</td>
                 <td>{{ optional($doc->especie)->nome }}</td>
                 <td>{{ $doc->titulo }}</td>

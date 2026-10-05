@@ -77,7 +77,7 @@ class SeriesNumeracaoTest extends TestCase
             'numero_ordem' => '99', // já não é editável: ignorado
         ])->assertOk()->json('content');
 
-        $this->assertStringContainsString('class="ref-numero-ordem">__</span>', $preview);
+        $this->assertStringContainsString('class="ref-numero-ordem">_____</span>', $preview);
         $this->assertStringContainsString('/SEC.GOV.PROV.HLA/', $preview);
         $this->assertStringNotContainsString('SEC.GER.GOV.PROV.HLA', $preview);
 

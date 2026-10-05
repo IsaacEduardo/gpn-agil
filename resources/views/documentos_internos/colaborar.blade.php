@@ -85,7 +85,7 @@
         <div>
             <h5 class="mb-0" id="collab-doc-titulo">{{ $documentoInterno->titulo }}</h5>
             <small class="text-muted">
-                {{ $documentoInterno->numero_referencia }} ·
+                {{ $documentoInterno->numero_referencia ?: 'S/N' }} ·
                 <span class="badge bg-{{ $documentoInterno->status->color() }}">{{ $documentoInterno->status->label() }}</span>
                 · Versão <strong id="collab-versao-atual">v{{ $versaoAtual }}</strong>
                 @if ($nivelAtual)

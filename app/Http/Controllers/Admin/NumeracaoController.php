@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\DadosInstituicao;
 use App\Models\Departamento;
 use App\Models\DocumentoEspecie;
 use App\Models\DocumentoInterno;
@@ -75,7 +76,51 @@ class NumeracaoController extends Controller
             'series' => $series,
             'gabinetes' => Gabinete::with(['departamentos' => fn ($q) => $q->orderBy('nome')])->orderBy('nome')->get(),
             'especies' => DocumentoEspecie::where('ativo', true)->orderBy('nome')->get(),
+            'inicioGabinete' => NumeracaoDocumentoService::inicioNumeracaoGabinete(),
         ]);
+    }
+
+    /**
+     * Data a partir da qual o sistema numera os livros do gabinete (Ofício, OS, Nota,
+     * Informação/Parecer). Antes dela esses documentos saem com o número em branco.
+     */
+    public function definirInicioGabinete(Request $request)
+    {
+        $this->autorizar();
+
+        $dados = $request->validate([
+            'numeracao_gabinete_desde' => 'nullable|date',
+            'motivo' => 'required|string|min:5|max:500',
+        ], [
+            'motivo.required' => 'Indique o motivo da alteração.',
+        ]);
+
+        $instituicao = DadosInstituicao::first();
+        if (! $instituicao) {
+            throw ValidationException::withMessages([
+                'numeracao_gabinete_desde' => 'Registe primeiro os dados da instituição.',
+            ]);
+        }
+
+        $anterior = $instituicao->numeracao_gabinete_desde?->toDateString();
+        $instituicao->update(['numeracao_gabinete_desde' => $dados['numeracao_gabinete_desde'] ?? null]);
+        $novo = $instituicao->numeracao_gabinete_desde?->toDateString();
+
+        AuditLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'numeracao.inicio_gabinete',
+            'auditable_type' => 'dados_instituicao',
+            'auditable_id' => $instituicao->id,
+            'old_values' => ['numeracao_gabinete_desde' => $anterior],
+            'new_values' => ['numeracao_gabinete_desde' => $novo],
+            'motivo' => $dados['motivo'],
+            'ip_address' => $request->ip(),
+            'user_agent' => (string) $request->userAgent(),
+        ]);
+
+        return redirect()->route('admin.numeracao.index')->with('success', $novo
+            ? 'Os livros do gabinete passam a ser numerados pelo sistema a partir de '.$instituicao->numeracao_gabinete_desde->format('d/m/Y').'.'
+            : 'Os livros do gabinete passam a ser numerados pelo sistema desde já.');
     }
 
     /** Pré-visualização: "O próximo documento será …" para um valor indicado. */

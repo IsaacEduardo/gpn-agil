@@ -259,7 +259,7 @@
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Número de Referência</span>
-                        <span class="detail-value fw-bold text-primary">{{ $documento->numero_referencia }}</span>
+                        <span class="detail-value fw-bold text-primary">{{ $documento->numero_referencia ?: 'S/N' }}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Assunto</span>

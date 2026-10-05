@@ -214,7 +214,7 @@
                                                     @if(!auth()->user()->isSuperChefeGabinete())
                                                         <td><input type="checkbox" name="documento_ids[]" value="{{ $doc->id }}" class="form-check-input check-sign"></td>
                                                     @endif
-                                                    <td class="fw-bold text-primary">{{ $doc->numero_referencia }}</td>
+                                                    <td class="fw-bold text-primary">{{ $doc->numero_referencia ?: 'S/N' }}</td>
                                                     <td>
                                                         <a href="{{ route('documentos-internos.show', $doc) }}" class="text-decoration-none text-dark fw-semibold">
                                                             {{ Str::limit($doc->titulo, 50) }}
@@ -326,7 +326,7 @@
                                                     @if(!auth()->user()->isSuperChefeGabinete())
                                                         <td><input type="checkbox" name="documento_ids[]" value="{{ $doc->id }}" class="form-check-input check-approve"></td>
                                                     @endif
-                                                    <td class="fw-bold text-warning">{{ $doc->numero_referencia }}</td>
+                                                    <td class="fw-bold text-warning">{{ $doc->numero_referencia ?: 'S/N' }}</td>
                                                     <td class="fw-semibold">{{ Str::limit($doc->titulo, 50) }}</td>
                                                     <td><span class="badge bg-light text-dark border">{{ $doc->departamento->sigla }}</span></td>
                                                     <td class="small">{{ $doc->autor->name }}</td>

@@ -273,6 +273,7 @@ Route::middleware(['auth'])->prefix('admin')->group(function () {
     Route::get('numeracao', [\App\Http\Controllers\Admin\NumeracaoController::class, 'index'])->name('admin.numeracao.index');
     Route::get('numeracao/previa', [\App\Http\Controllers\Admin\NumeracaoController::class, 'previa'])->name('admin.numeracao.previa');
     Route::post('numeracao', [\App\Http\Controllers\Admin\NumeracaoController::class, 'definir'])->name('admin.numeracao.definir');
+    Route::post('numeracao/inicio-gabinete', [\App\Http\Controllers\Admin\NumeracaoController::class, 'definirInicioGabinete'])->name('admin.numeracao.inicio-gabinete');
 
     // Gestão de Permissões (RBAC)
     Route::prefix('permissoes')->name('configuracoes.permissoes.')->group(function () {

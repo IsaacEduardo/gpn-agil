@@ -44,7 +44,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Documento {{ $documentoInterno->numero_referencia }}</title>
+    <title>Documento {{ $documentoInterno->numero_referencia ?: 'S/N' }}</title>
     <style>
         @page {
             /* Margens oficiais: Superior 2cm, Direita 2cm, Inferior 3.5cm (ou o que o

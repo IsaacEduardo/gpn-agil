@@ -233,7 +233,7 @@
                                     {{ $doc->titulo }}
                                 </h6>
                                 <small class="text-muted d-block text-truncate" style="font-size: 0.7rem">
-                                    {{ $doc->numero_referencia }}
+                                    {{ $doc->numero_referencia ?: 'S/N' }}
                                 </small>
                                 <small class="text-muted d-block text-truncate" style="font-size: 0.7rem">
                                     {{ $doc->arquivado_em ? $doc->arquivado_em->format('d/m/Y') : '-' }}

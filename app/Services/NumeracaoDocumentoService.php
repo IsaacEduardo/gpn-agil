@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\DadosInstituicao;
 use App\Models\Departamento;
 use App\Models\DocumentoEspecie;
 use App\Models\DocumentoInterno;
 use App\Models\Gabinete;
 use App\Support\SeriesNumeracao;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -17,6 +19,10 @@ use Illuminate\Validation\ValidationException;
  * lockForUpdate. Quem chama deve gravar o documento na mesma transacção, para que o
  * bloqueio só seja libertado depois de a referência existir. A 1 de Janeiro (hora de
  * Luanda) cada série recomeça em 1, por ser uma linha nova.
+ *
+ * Os livros do gabinete (Ofício, OS, Nota, Informação/Parecer) só são numerados a partir de
+ * DadosInstituicao::numeracao_gabinete_desde; antes dessa data o documento grava-se sem
+ * número (numero_referencia NULL) e com o número em branco, para preencher à mão.
  */
 class NumeracaoDocumentoService
 {
@@ -28,17 +34,51 @@ class NumeracaoDocumentoService
         return (int) now(self::FUSO)->year;
     }
 
-    public function gerar(DocumentoInterno $doc): string
+    /** Data (Luanda) a partir da qual os livros do gabinete são numerados; null = sempre. */
+    public static function inicioNumeracaoGabinete(): ?CarbonImmutable
+    {
+        $data = rescue(fn () => DadosInstituicao::query()->value('numeracao_gabinete_desde'), null, false);
+
+        // Só o dia conta (o cast devolve-o à meia-noite UTC): começa à meia-noite de Luanda.
+        $dia = $data instanceof \DateTimeInterface ? $data->format('Y-m-d') : (string) $data;
+
+        return $data ? CarbonImmutable::parse($dia, self::FUSO)->startOfDay() : null;
+    }
+
+    /** Se a série é numerada pelo sistema hoje (as restantes séries são-no sempre). */
+    public function numeracaoAutomatica(SeriesNumeracao $serie): bool
+    {
+        if (! $serie->livroDoGabinete()) {
+            return true;
+        }
+
+        $inicio = self::inicioNumeracaoGabinete();
+
+        return $inicio === null || now(self::FUSO)->greaterThanOrEqualTo($inicio);
+    }
+
+    public function gerar(DocumentoInterno $doc): ?string
     {
         return $this->reservarParaDocumento($doc)['referencia'];
     }
 
     /**
-     * @return array{referencia: string, numero: int}
+     * Sem numeração automática (livro do gabinete antes da data de início) não se reserva
+     * nada: referencia e numero vêm a null e `provisoria` traz o número em branco.
+     *
+     * @return array{referencia: ?string, numero: ?int, provisoria: string}
      */
     public function reservarParaDocumento(DocumentoInterno $doc): array
     {
-        return $this->reservar(SeriesNumeracao::paraDocumento($doc), self::anoCorrente());
+        $serie = SeriesNumeracao::paraDocumento($doc);
+        $ano = self::anoCorrente();
+        $provisoria = $serie->formatarProvisoria($ano);
+
+        if (! $this->numeracaoAutomatica($serie)) {
+            return ['referencia' => null, 'numero' => null, 'provisoria' => $provisoria];
+        }
+
+        return $this->reservar($serie, $ano) + ['provisoria' => $provisoria];
     }
 
     /** Próximo numero_sequencial do livro de entrada (números de apagados não são reutilizados). */

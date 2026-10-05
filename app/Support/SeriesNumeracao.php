@@ -69,12 +69,33 @@ final class SeriesNumeracao
         return str_starts_with($referencia, 'OS ') ? sprintf('%02d', $numero) : (string) $numero;
     }
 
-    /** Referência com o número em branco (pré-visualização), no formato real da série. */
+    /** Espaço para o número escrito à mão (pré-visualização e livros ainda sem numeração). */
+    public const NUMERO_EM_BRANCO = '_____';
+
+    /** Prefixos das chaves dos livros do gabinete (numerados só a partir da data de início). */
+    private const LIVROS_DO_GABINETE = ['OF:', 'OS:', 'NOTA:', 'INF:'];
+
+    /** Referência com o número em branco, no formato real da série. */
     public function formatarProvisoria(int $ano): string
     {
         $sentinela = 987654321;
 
-        return str_replace((string) $sentinela, '___', $this->formatar($sentinela, $ano));
+        return str_replace((string) $sentinela, self::NUMERO_EM_BRANCO, $this->formatar($sentinela, $ano));
+    }
+
+    /** Número de uma referência desta série e ano (null se a referência não for do formato da série). */
+    public function numeroDe(string $referencia, int $ano): ?int
+    {
+        $sentinela = '987654321';
+        $padrao = str_replace(preg_quote($sentinela, '#'), '(\d+)', preg_quote($this->formatar((int) $sentinela, $ano), '#'));
+
+        return preg_match('#^'.$padrao.'$#u', $referencia, $m) ? (int) $m[1] : null;
+    }
+
+    /** Ofício, Ordem de Serviço, Nota ou Informação/Parecer de um gabinete com código de ofícios. */
+    public function livroDoGabinete(): bool
+    {
+        return Str::startsWith($this->chave, self::LIVROS_DO_GABINETE);
     }
 
     // ---------------------------------------------------------------- fábricas
