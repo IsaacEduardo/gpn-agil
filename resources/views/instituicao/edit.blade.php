@@ -148,7 +148,8 @@
                         </div>
                         <small class="text-muted d-block">
                             A etiqueta sai em PDF com este tamanho exacto. Em cada posto, o driver da impressora
-                            térmica tem de ter o mesmo tamanho de papel, em orientação Paisagem.
+                            térmica tem de ter um papel com este tamanho (largura × altura), em orientação Retrato:
+                            o papel já é horizontal e Paisagem rodaria a etiqueta.
                         </small>
                     </div>
                 </div>

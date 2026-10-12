@@ -7,8 +7,10 @@ namespace App\Support;
  *
  * A etiqueta sai em PDF com o tamanho exacto do rolo e é impressa pelo driver
  * do Windows — assim serve qualquer marca de térmica (Zebra, TSC, Godex,
- * Argox, Elgin). O driver de cada posto tem de ter o mesmo tamanho de papel,
- * em Paisagem; o PDF não consegue impor isso.
+ * Argox, Elgin). O driver de cada posto tem de ter o mesmo tamanho de papel
+ * (largura × altura), em Retrato: o papel já é horizontal e Paisagem faz o
+ * Windows trocar os eixos, encolhendo ou rodando a etiqueta. O PDF não
+ * consegue impor isso.
  *
  * Definição única: a validação do formulário, o <select> e a geração do PDF
  * leem daqui.

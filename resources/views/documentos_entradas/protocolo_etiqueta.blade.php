@@ -59,8 +59,9 @@
 
         <div class="text-muted mt-3" style="font-size: 0.72rem;">
             <i class="fas fa-info-circle me-1"></i>
-            Na impressora: papel {{ (int) $formato->larguraMm }} × {{ (int) $formato->alturaMm }} mm, orientação Paisagem.
-            No diálogo: Margens <strong>Nenhuma</strong>, Escala <strong>100% / Tamanho real</strong>.
+            No diálogo: papel <strong>{{ (int) $formato->larguraMm }} × {{ (int) $formato->alturaMm }} mm</strong>,
+            Esquema <strong>Retrato</strong> (o papel já é horizontal; Paisagem roda a etiqueta),
+            Margens <strong>Nenhuma</strong>, Escala <strong>Tamanho real</strong>.
         </div>
     </div>
 
