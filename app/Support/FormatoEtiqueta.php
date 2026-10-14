@@ -19,19 +19,22 @@ final class FormatoEtiqueta
 {
     public const PADRAO = '100x50';
 
-    /** Distância mínima entre a borda do papel e qualquer conteúdo. */
-    public const MARGEM_MM = 2.5;
-
+    /**
+     * 'margem': distância mínima entre a borda do papel e qualquer conteúdo.
+     * No 60x40 é maior porque as térmicas de 2" (Zebra ZD411) só imprimem os
+     * 54 mm centrais do rolo de 60 mm a 300 dpi (56 mm a 203 dpi).
+     */
     private const FORMATOS = [
-        '100x50' => ['largura' => 100, 'altura' => 50, 'rotulo' => '100 × 50 mm (padrão)', 'compacto' => false],
-        '100x60' => ['largura' => 100, 'altura' => 60, 'rotulo' => '100 × 60 mm', 'compacto' => false],
-        '60x40' => ['largura' => 60, 'altura' => 40, 'rotulo' => '60 × 40 mm (compacta)', 'compacto' => true],
+        '100x50' => ['largura' => 100, 'altura' => 50, 'margem' => 2.5, 'rotulo' => '100 × 50 mm (padrão)', 'compacto' => false],
+        '100x60' => ['largura' => 100, 'altura' => 60, 'margem' => 2.5, 'rotulo' => '100 × 60 mm', 'compacto' => false],
+        '60x40' => ['largura' => 60, 'altura' => 40, 'margem' => 3.0, 'rotulo' => '60 × 40 mm (compacta, impressoras de 2")', 'compacto' => true],
     ];
 
     private function __construct(
         public readonly string $chave,
         public readonly float $larguraMm,
         public readonly float $alturaMm,
+        public readonly float $margemMm,
         public readonly string $rotulo,
         public readonly bool $compacto,
     ) {}
@@ -42,7 +45,7 @@ final class FormatoEtiqueta
         $chave = isset(self::FORMATOS[$chave ?? '']) ? $chave : self::PADRAO;
         $f = self::FORMATOS[$chave];
 
-        return new self($chave, $f['largura'], $f['altura'], $f['rotulo'], $f['compacto']);
+        return new self($chave, $f['largura'], $f['altura'], $f['margem'], $f['rotulo'], $f['compacto']);
     }
 
     public static function daInstituicao(): self

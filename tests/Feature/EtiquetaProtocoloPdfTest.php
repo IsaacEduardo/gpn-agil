@@ -109,6 +109,33 @@ class EtiquetaProtocoloPdfTest extends TestCase
         $this->assertEqualsWithDelta($altura * 72 / 25.4, $h, 1.0);
     }
 
+    /**
+     * Na ZD411 (2") só os 54 mm centrais do rolo de 60 mm imprimem a 300 dpi:
+     * a compacta precisa de 3 mm de margem e mantém o cabeçalho, sem logótipo.
+     */
+    public function test_compacta_cabe_numa_impressora_de_2_polegadas_e_identifica_a_instituicao(): void
+    {
+        $formato = FormatoEtiqueta::de('60x40');
+        $this->assertGreaterThanOrEqual(3.0, $formato->margemMm);
+        $this->assertLessThanOrEqual(54, $formato->larguraMm - 2 * $formato->margemMm);
+
+        $this->instituicaoCom('60x40');
+        $this->pdf();
+
+        $html = view('documentos_entradas.protocolo_etiqueta_pdf', [
+            'documento' => $this->doc->fresh(['departamento.gabinete', 'protocolo']),
+            'protocolo' => $this->doc->fresh()->protocolo,
+            'formato' => $formato,
+            'qrCodeSrc' => null,
+            'logoSrc' => 'data:image/png;base64,AAAA',
+        ])->render();
+
+        $this->assertStringContainsString('REPÚBLICA DE ANGOLA', $html);
+        $this->assertStringContainsString('Governo Provincial da Huíla', $html);
+        $this->assertStringNotContainsString('class="logo"', $html);
+        $this->assertStringContainsString('left: 3mm', $html);
+    }
+
     public function test_formato_invalido_cai_para_100x50(): void
     {
         $this->instituicaoCom('30x20');

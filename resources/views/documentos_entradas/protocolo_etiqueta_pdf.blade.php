@@ -7,16 +7,20 @@
      *
      * Tudo tem de caber numa página: os textos variáveis são cortados à medida
      * do formato e as zonas têm altura fixa.
+     *
+     * Na compacta (60x40) o cabeçalho fica em duas linhas, sem logótipo nem
+     * gabinete: o brasão a 203 dpi sai como uma mancha e não há largura.
      */
     $instituicao = \App\Support\CabecalhoDocumento::instituicao();
     $gabLinha = $formato->compacto
         ? null
         : \App\Support\CabecalhoDocumento::linhaGabinete(optional($documento->departamento)->gabinete, $instituicao);
 
-    $m = \App\Support\FormatoEtiqueta::MARGEM_MM;
+    $m = $formato->margemMm;
     $larguraUtil = $formato->larguraMm - 2 * $m;
     $alturaUtil = $formato->alturaMm - 2 * $m;
-    $alturaCabecalho = $formato->compacto ? 0 : ($formato->alturaMm >= 60 ? 11 : 10);
+    $alturaCabecalho = $formato->compacto ? 6 : ($formato->alturaMm >= 60 ? 11 : 10);
+    $limiteCabecalho = $formato->compacto ? 42 : 60;
     $alturaRodape = 4;
     $qr = $formato->ladoQrMm();
 
@@ -43,8 +47,8 @@
 
         .cabecalho { top: {{ $m }}mm; height: {{ $alturaCabecalho }}mm; border-bottom: 0.3mm dashed #000; }
         .logo { width: 9mm; height: 9mm; }
-        .pais { font-size: 6.5pt; font-weight: bold; text-transform: uppercase; line-height: 1.15; }
-        .gov { font-size: 5.8pt; font-weight: bold; text-transform: uppercase; line-height: 1.15; }
+        .pais { font-size: {{ $formato->compacto ? '5.5pt' : '6.5pt' }}; font-weight: bold; text-transform: uppercase; line-height: 1.15; }
+        .gov { font-size: {{ $formato->compacto ? '5.2pt' : '5.8pt' }}; font-weight: bold; text-transform: uppercase; line-height: 1.15; }
         .gabinete { font-size: 5.2pt; text-transform: uppercase; line-height: 1.15; }
 
         .corpo { top: {{ $topoCorpo }}mm; height: {{ $alturaCorpo }}mm; }
@@ -60,24 +64,22 @@
 </head>
 <body>
 
-@unless ($formato->compacto)
-    <div class="zona cabecalho">
-        <table>
-            <tr>
-                @if ($logoSrc)
-                    <td style="width: 11mm;"><img src="{{ $logoSrc }}" class="logo" alt=""></td>
+<div class="zona cabecalho">
+    <table>
+        <tr>
+            @if ($logoSrc && ! $formato->compacto)
+                <td style="width: 11mm;"><img src="{{ $logoSrc }}" class="logo" alt=""></td>
+            @endif
+            <td>
+                <div class="pais linha">{{ Str::limit($instituicao->cabecalho_linha1 ?: 'REPÚBLICA DE ANGOLA', $limiteCabecalho, '') }}</div>
+                <div class="gov linha">{{ Str::limit($instituicao->cabecalho_linha2 ?: ($instituicao->nome_oficial ?: 'GOVERNO PROVINCIAL'), $limiteCabecalho, '') }}</div>
+                @if ($gabLinha)
+                    <div class="gabinete linha">{{ Str::limit($gabLinha, 70) }}</div>
                 @endif
-                <td>
-                    <div class="pais linha">{{ Str::limit($instituicao->cabecalho_linha1 ?: 'REPÚBLICA DE ANGOLA', 60, '') }}</div>
-                    <div class="gov linha">{{ Str::limit($instituicao->cabecalho_linha2 ?: ($instituicao->nome_oficial ?: 'GOVERNO PROVINCIAL'), 60, '') }}</div>
-                    @if ($gabLinha)
-                        <div class="gabinete linha">{{ Str::limit($gabLinha, 70) }}</div>
-                    @endif
-                </td>
-            </tr>
-        </table>
-    </div>
-@endunless
+            </td>
+        </tr>
+    </table>
+</div>
 
 <div class="zona corpo">
     {{-- A altura vai nas células: na tabela, o dompdf ignora-a e o corpo
