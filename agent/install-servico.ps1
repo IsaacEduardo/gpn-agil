@@ -37,10 +37,21 @@ param(
     # Producao em HTTPS desde 2026-09-28 (o acesso pelo IP redirecciona para o dominio).
     [string[]]$Origem = @('https://ondaka-gph.ao'),
     [switch]$ExigirPareamento,
-    [string]$Executavel = "$PSScriptRoot\dist\webscan-bridge.exe"
+    [string]$Executavel
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Resolvido aqui e nao no param(): no Windows PowerShell 5.1, com `-File`, o
+# $PSScriptRoot chegou vazio no valor por omissao e o caminho ficava "\dist\...".
+if (-not $Executavel) {
+    $pastaScript = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $Executavel = Join-Path $pastaScript 'dist\webscan-bridge.exe'
+    if (-not (Test-Path $Executavel)) {
+        # Pacote extraido sem a subpasta dist: aceitar o .exe ao lado do script.
+        $Executavel = Join-Path $pastaScript 'webscan-bridge.exe'
+    }
+}
 
 $identidade = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $identidade.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
