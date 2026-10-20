@@ -25,7 +25,7 @@ from .errors import (
     InvalidRequest, NotAuthorised, OriginRejected, ScanBusy, ScannerNotFound,
     ScanTimeout, WebScanError,
 )
-from .pdf import build_pdf, ensure_jpeg
+from .pdf import build_pdf, prepare_page
 from .scanners.base import ScannerAdapter, ScanRequest
 
 logger = logging.getLogger(__name__)
@@ -180,9 +180,15 @@ class ScanService:
             raise ScannerNotFound('O scanner nao devolveu nenhuma pagina.')
         if len(pages) > self.config.max_pages:
             pages = pages[:self.config.max_pages]
-        pages = [ensure_jpeg(page) for page in pages]
+        captured_bytes = sum(len(page) for page in pages)
+        prepared = [
+            prepare_page(page, request.colour_mode, request.dpi,
+                         jpeg_quality=self.config.jpeg_quality, max_dpi=self.config.max_output_dpi)
+            for page in pages
+        ]
 
-        pdf = build_pdf(pages, dpi=request.dpi, title='Documento digitalizado')
+        pdf = build_pdf(prepared, dpi=request.dpi, title='Documento digitalizado')
+        # As miniaturas saem das folhas originais: o Pillow le BMP/TIFF/JPEG.
         previews = []
         for number, page in enumerate(pages, start=1):
             thumbnail = _thumbnail(page, self.config.preview_max_edge)
@@ -196,11 +202,13 @@ class ScanService:
 
         elapsed = time.monotonic() - started
         # Nao registamos conteudo nem nome de documento: apenas metrica tecnica.
-        logger.info('Digitalizacao concluida: %d pagina(s), %d bytes, %.1fs', len(pages), len(pdf), elapsed)
+        logger.info('Digitalizacao concluida: %d pagina(s), %s, %d DPI: %d bytes do driver -> PDF %d bytes, %.1fs',
+                    len(pages), request.colour_mode, request.dpi, captured_bytes, len(pdf), elapsed)
 
         return {
             'status': 'success',
             'page_count': len(pages),
+            'pdf_bytes': len(pdf),
             'filename': f'digitalizacao_{time.strftime("%Y%m%d_%H%M%S")}.pdf',
             'pdf_base64': base64.b64encode(pdf).decode('ascii'),
             'pages': previews,

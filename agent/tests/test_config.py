@@ -118,5 +118,35 @@ class LocalDaConfiguracaoTests(unittest.TestCase):
         self.assertEqual(maquina, default_config_path())
 
 
+class CompressaoTests(unittest.TestCase):
+    """Postos instalados antes da 1.2.0 nao tem as chaves: ficam com os valores por omissao."""
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self.caminho = Path(self._dir.name) / 'webscan-agent.json'
+
+    def tearDown(self):
+        self._dir.cleanup()
+
+    def carregar(self, **extra):
+        self.caminho.write_text(json.dumps({'allowed_origins': ['http://localhost'], **extra}), encoding='utf-8')
+        return load_config(self.caminho)
+
+    def test_sem_chaves_usa_os_valores_por_omissao(self):
+        config = self.carregar()
+        self.assertEqual(65, config.jpeg_quality)
+        self.assertEqual(200, config.max_output_dpi)
+
+    def test_valores_validos_sao_respeitados(self):
+        config = self.carregar(jpeg_quality=80, max_output_dpi=0)
+        self.assertEqual(80, config.jpeg_quality)
+        self.assertEqual(0, config.max_output_dpi)
+
+    def test_valores_fora_dos_limites_caem_no_omissao(self):
+        config = self.carregar(jpeg_quality=150, max_output_dpi='muito')
+        self.assertEqual(65, config.jpeg_quality)
+        self.assertEqual(200, config.max_output_dpi)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -30,6 +30,11 @@ DEFAULT_PORT = 18090
 DEFAULT_MAX_PAGES = 100
 DEFAULT_MAX_BODY_BYTES = 64 * 1024
 DEFAULT_SCAN_TIMEOUT = 180
+#: Qualidade JPEG de "Tons de cinza" e "Colorido" (1-95). 65 mantem o texto
+#: nitido e o OCR fiavel com uma fraccao do tamanho do JPEG do driver.
+DEFAULT_JPEG_QUALITY = 65
+#: Acima disto a folha e reduzida antes de entrar no PDF; 0 desliga a reducao.
+DEFAULT_MAX_OUTPUT_DPI = 200
 CONFIG_FILENAME = 'webscan-agent.json'
 
 
@@ -69,6 +74,8 @@ class AgentConfig:
     max_body_bytes: int = DEFAULT_MAX_BODY_BYTES
     scan_timeout_seconds: int = DEFAULT_SCAN_TIMEOUT
     preview_max_edge: int = 320
+    jpeg_quality: int = DEFAULT_JPEG_QUALITY
+    max_output_dpi: int = DEFAULT_MAX_OUTPUT_DPI
     path: Path | None = field(default=None, compare=False)
 
     @property
@@ -91,6 +98,8 @@ class AgentConfig:
             'max_body_bytes': self.max_body_bytes,
             'scan_timeout_seconds': self.scan_timeout_seconds,
             'preview_max_edge': self.preview_max_edge,
+            'jpeg_quality': self.jpeg_quality,
+            'max_output_dpi': self.max_output_dpi,
         }
 
     def save(self, path: Path | None = None) -> Path:
@@ -115,6 +124,15 @@ def _as_bool(value) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in ('1', 'true', 'yes', 'sim', 'on')
     return bool(value)
+
+
+def _as_int_in(value, default: int, minimum: int, maximum: int) -> int:
+    """Inteiro dentro dos limites; valor ausente ou invalido fica no omissao."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return number if minimum <= number <= maximum else default
 
 
 def load_config(path: Path | None = None, *, create_missing: bool = True) -> AgentConfig:
@@ -144,6 +162,8 @@ def load_config(path: Path | None = None, *, create_missing: bool = True) -> Age
         max_body_bytes=int(data.get('max_body_bytes') or DEFAULT_MAX_BODY_BYTES),
         scan_timeout_seconds=int(data.get('scan_timeout_seconds') or DEFAULT_SCAN_TIMEOUT),
         preview_max_edge=int(data.get('preview_max_edge') or 320),
+        jpeg_quality=_as_int_in(data.get('jpeg_quality'), DEFAULT_JPEG_QUALITY, 1, 95),
+        max_output_dpi=_as_int_in(data.get('max_output_dpi'), DEFAULT_MAX_OUTPUT_DPI, 0, 1200),
         path=target,
     )
 

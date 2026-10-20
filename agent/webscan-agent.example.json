@@ -11,5 +11,7 @@
   "max_pages": 100,
   "max_body_bytes": 65536,
   "scan_timeout_seconds": 180,
-  "preview_max_edge": 320
+  "preview_max_edge": 320,
+  "jpeg_quality": 65,
+  "max_output_dpi": 200
 }

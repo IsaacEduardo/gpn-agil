@@ -1,14 +1,32 @@
-"""Montagem de PDF multipagina a partir de JPEG, sem dependencias externas.
+"""Montagem de PDF multipagina a partir das folhas digitalizadas.
 
-Os bytes JPEG entregues pelo scanner sao embebidos tal e qual, atraves do filtro
-`/DCTDecode`. Nao ha descodificacao nem recompressao: o ficheiro fica menor, a
-imagem nao perde qualidade entre o vidro e o arquivo, e o OCR trabalha sobre o
-mesmo pixel que o operador viu na pre-visualizacao.
+Cada folha passa por `prepare_page` antes de entrar no PDF:
+
+- "Preto e branco" fica em 1 bit com compressao CCITT G4 (`/CCITTFaxDecode`), a
+  mesma que os scanners usam nos seus proprios PDF: uma A4 a 200 DPI ocupa
+  dezenas de KB. Antes era convertida em JPEG cinzento de 8 bits e pesava 10 a
+  20 vezes mais.
+- "Tons de cinza" e "Colorido" sao recomprimidos em JPEG com qualidade
+  controlada (`/DCTDecode`). O driver HP por WIA entrega JPEG de qualidade
+  maxima, que era embebido tal e qual e dava PDF de varios MB.
+- Acima de `max_dpi` a folha e reduzida: para correspondencia, mais resolucao
+  so aumenta o ficheiro, nao a leitura nem o OCR.
+
+Sem Pillow (so em desenvolvimento), o JPEG do driver segue intacto.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from io import BytesIO
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_JPEG_QUALITY = 65
+DEFAULT_MAX_DPI = 200
+#: Limiar de binarizacao do "Preto e branco" quando o driver entrega cinzento.
+BW_THRESHOLD = 160
 
 # SOF0..SOF15, excepto DHT (C4), JPG reservado (C8) e DAC (CC).
 _SOF_MARKERS = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
@@ -108,6 +126,109 @@ def ensure_jpeg(data: bytes, quality: int = 85) -> bytes:
     return buffer.getvalue()
 
 
+@dataclass(frozen=True)
+class Page:
+    """Folha pronta a embeber: os bytes ja no formato do filtro do PDF."""
+
+    data: bytes
+    width: int
+    height: int
+    #: Resolucao efectiva, depois de uma eventual reducao; define o MediaBox.
+    dpi: int
+    #: 'jpeg' (/DCTDecode) ou 'ccitt' (/CCITTFaxDecode, 1 bit).
+    encoding: str = 'jpeg'
+    components: int = 1
+    #: So no CCITT: o bit 1 representa preto (depende de quem codificou).
+    black_is_1: bool = False
+
+
+def _jpeg_page(data: bytes, dpi: int) -> Page:
+    info = read_jpeg_info(data)
+    info.colour_space  # valida cedo, antes de escrever seja o que for
+    return Page(data=data, width=info.width, height=info.height, dpi=dpi,
+                encoding='jpeg', components=info.components)
+
+
+def _reduce(image, dpi: int, max_dpi: int):
+    """Reduz a imagem para `max_dpi`; devolve (imagem, dpi efectivo)."""
+    if not max_dpi or dpi <= max_dpi:
+        return image, dpi
+    from PIL import Image
+
+    factor = max_dpi / float(dpi)
+    size = (max(1, round(image.width * factor)), max(1, round(image.height * factor)))
+    return image.resize(size, Image.LANCZOS), max_dpi
+
+
+def _ccitt_g4(image) -> tuple[bytes, bool]:
+    """Codifica uma imagem de 1 bit em CCITT G4; devolve (bytes, black_is_1).
+
+    O Pillow so escreve G4 dentro de um TIFF. Pedimos uma unica faixa
+    (RowsPerStrip = altura): faixas G4 sao codificadas uma a uma e nao podem ser
+    concatenadas num so fluxo. A polaridade sai do proprio TIFF, para nao
+    depender da versao do Pillow ou do libtiff.
+    """
+    from PIL import Image
+
+    buffer = BytesIO()
+    image.save(buffer, 'TIFF', compression='group4', tiffinfo={278: image.height})
+    tiff = buffer.getvalue()
+    tags = Image.open(BytesIO(tiff)).tag_v2
+    offsets, counts = tags[273], tags[279]
+    if len(offsets) != 1:
+        raise InvalidJpeg('O codificador CCITT devolveu mais do que uma faixa.')
+    # FillOrder 2 (bits invertidos) nao e o que o PDF espera.
+    if tags.get(266, 1) != 1:
+        raise InvalidJpeg('O codificador CCITT usou uma ordem de bits nao suportada.')
+    return tiff[offsets[0]:offsets[0] + counts[0]], tags.get(262, 0) == 1
+
+
+def prepare_page(data: bytes, colour_mode: str, dpi: int, *,
+                 jpeg_quality: int = DEFAULT_JPEG_QUALITY, max_dpi: int = DEFAULT_MAX_DPI) -> Page:
+    """Converte a folha do driver para o formato mais leve que o modo admite."""
+    try:
+        from PIL import Image
+    except ImportError:
+        # Sem Pillow nao ha como recomprimir; um JPEG valido segue como veio.
+        return _jpeg_page(ensure_jpeg(data), dpi)
+
+    try:
+        image = Image.open(BytesIO(data))
+        image.load()
+    except Exception as error:  # noqa: BLE001 - qualquer falha de leitura e imagem invalida
+        raise InvalidJpeg('O scanner devolveu uma imagem num formato desconhecido.') from error
+
+    if colour_mode == 'bw':
+        # Cinzento intermedio para reduzir sem serrilhar; depois limiar fixo,
+        # sem pontilhado: o pontilhado estraga o texto e a compressao G4.
+        grey = image.convert('L')
+        grey, efectivo = _reduce(grey, dpi, max_dpi)
+        mono = grey.point(lambda value: 255 if value >= BW_THRESHOLD else 0).convert('1')
+        try:
+            encoded, black_is_1 = _ccitt_g4(mono)
+        except Exception as error:  # noqa: BLE001 - Pillow sem libtiff ou codificador recusou
+            # Mais pesado, mas a folha nunca se perde por causa da compressao.
+            logger.warning('CCITT G4 indisponivel (%s); a pagina segue em JPEG cinzento.', error)
+            buffer = BytesIO()
+            mono.convert('L').save(buffer, 'JPEG', quality=jpeg_quality, optimize=True)
+            return _jpeg_page(buffer.getvalue(), efectivo)
+        return Page(data=encoded, width=mono.width, height=mono.height, dpi=efectivo,
+                    encoding='ccitt', components=1, black_is_1=black_is_1)
+
+    target_mode = 'L' if colour_mode == 'gray' else 'RGB'
+    converted = image.convert(target_mode) if image.mode != target_mode else image
+    converted, efectivo = _reduce(converted, dpi, max_dpi)
+    buffer = BytesIO()
+    converted.save(buffer, 'JPEG', quality=jpeg_quality, optimize=True)
+    recompressed = buffer.getvalue()
+
+    # Um JPEG do driver ja mais leve, sem reducao nem mudanca de modo, fica como veio.
+    if (efectivo == dpi and image.format == 'JPEG' and image.mode == target_mode
+            and len(data) <= len(recompressed)):
+        return _jpeg_page(data, dpi)
+    return _jpeg_page(recompressed, efectivo)
+
+
 def _points(pixels: int, dpi: int) -> float:
     """Converte pixeis para pontos PDF (1 ponto = 1/72 polegada)."""
     return pixels * 72.0 / float(dpi)
@@ -117,19 +238,43 @@ def _format_number(value: float) -> bytes:
     return f'{value:.4f}'.rstrip('0').rstrip('.').encode('ascii') or b'0'
 
 
-def build_pdf(pages: list[bytes], dpi: int = 200, title: str | None = None) -> bytes:
-    """Devolve um PDF 1.4 com uma pagina por JPEG recebido."""
+def _image_object(page: Page) -> bytes:
+    if page.encoding == 'ccitt':
+        header = (
+            b'<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceGray '
+            b'/BitsPerComponent 1 /Filter /CCITTFaxDecode '
+            b'/DecodeParms << /K -1 /Columns %d /Rows %d /BlackIs1 %s >> /Length %d >>\nstream\n'
+            % (page.width, page.height, page.width, page.height,
+               b'true' if page.black_is_1 else b'false', len(page.data))
+        )
+    else:
+        colour_space = _COLOUR_SPACES.get(page.components)
+        if colour_space is None:
+            raise InvalidJpeg(f'JPEG com {page.components} componentes nao e suportado.')
+        header = (
+            b'<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace %s '
+            b'/BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n'
+            % (page.width, page.height, colour_space, len(page.data))
+        )
+    return header + page.data + b'\nendstream'
+
+
+def build_pdf(pages: list[Page | bytes], dpi: int = 200, title: str | None = None) -> bytes:
+    """Devolve um PDF 1.4 com uma pagina por folha.
+
+    Aceita folhas ja preparadas (`Page`) ou JPEG em bytes, que entram tal e qual
+    com a resolucao `dpi`.
+    """
     if not pages:
         raise InvalidJpeg('Nao ha paginas para compor o PDF.')
     if dpi <= 0:
         raise ValueError('DPI tem de ser positivo.')
 
-    infos = [read_jpeg_info(page) for page in pages]
-    for info in infos:
-        info.colour_space  # valida cedo, antes de escrever seja o que for
+    # Valida tudo cedo, antes de escrever seja o que for.
+    prepared = [page if isinstance(page, Page) else _jpeg_page(page, dpi) for page in pages]
 
     # 1 catalogo + 1 arvore de paginas + 3 objectos por pagina.
-    page_count = len(pages)
+    page_count = len(prepared)
     objects: dict[int, bytes] = {}
     page_object_ids = [3 + index * 3 for index in range(page_count)]
 
@@ -137,12 +282,12 @@ def build_pdf(pages: list[bytes], dpi: int = 200, title: str | None = None) -> b
     objects[1] = b'<< /Type /Catalog /Pages 2 0 R >>'
     objects[2] = b'<< /Type /Pages /Count %d /Kids [%s] >>' % (page_count, kids)
 
-    for index, (jpeg, info) in enumerate(zip(pages, infos)):
+    for index, page in enumerate(prepared):
         page_id = page_object_ids[index]
         content_id = page_id + 1
         image_id = page_id + 2
-        width_pt = _points(info.width, dpi)
-        height_pt = _points(info.height, dpi)
+        width_pt = _points(page.width, page.dpi)
+        height_pt = _points(page.height, page.dpi)
 
         # A imagem ocupa a pagina inteira: escala pela matriz, sem reamostrar.
         content = b'q %s 0 0 %s 0 0 cm /Im0 Do Q\n' % (_format_number(width_pt), _format_number(height_pt))
@@ -154,11 +299,7 @@ def build_pdf(pages: list[bytes], dpi: int = 200, title: str | None = None) -> b
             % (_format_number(width_pt), _format_number(height_pt), image_id, content_id)
         )
         objects[content_id] = b'<< /Length %d >>\nstream\n%s\nendstream' % (len(content), content)
-        objects[image_id] = (
-            b'<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace %s '
-            b'/BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n'
-            % (info.width, info.height, info.colour_space, len(jpeg))
-        ) + jpeg + b'\nendstream'
+        objects[image_id] = _image_object(page)
 
     info_id = None
     if title:
