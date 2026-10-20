@@ -42,4 +42,25 @@ return [
 
     'fracao_aviso_prazo' => (float) env('DOCS_FRACAO_AVISO_PRAZO', 0.4),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Compressão de PDF no upload (rede de segurança)
+    |--------------------------------------------------------------------------
+    |
+    | O agente de digitalização 1.2.0 já entrega PDF leve; isto apanha os postos
+    | com o agente antigo e os PDF pesados carregados à mão. Só PDF acima do
+    | limite, nunca assinados nem cifrados, e só substitui o ficheiro se o
+    | resultado for válido, com as mesmas páginas e pelo menos 10% menor.
+    | Sem Ghostscript no servidor, o ficheiro segue como veio.
+    |
+    */
+
+    'compressao_pdf' => [
+        'ativa' => filter_var(env('DOCS_COMPRESSAO_PDF', true), FILTER_VALIDATE_BOOL),
+        'limite_kb' => (int) env('DOCS_COMPRESSAO_PDF_LIMITE_KB', 1024),
+        // Resolução das imagens a cores/cinzento depois de comprimir; 200 mantém o OCR fiável.
+        'resolucao_dpi' => (int) env('DOCS_COMPRESSAO_PDF_DPI', 200),
+        'timeout_segundos' => (int) env('DOCS_COMPRESSAO_PDF_TIMEOUT', 90),
+    ],
+
 ];

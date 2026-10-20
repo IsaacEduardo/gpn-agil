@@ -68,9 +68,9 @@ registo.
 **Sai sempre um único PDF.** Todas as folhas do lote ficam num ficheiro, pela
 ordem em que passaram no scanner.
 
-**O limite é 10 MB por ficheiro.** A janela mostra o tamanho do PDF antes de
-anexar. Se exceder, o botão fica bloqueado. Nesse caso: baixe a resolução para
-200 DPI, mude para preto e branco, ou divida o documento em dois registos.
+**O limite é 50 MB por ficheiro.** A janela mostra o tamanho do PDF antes de
+anexar. Se exceder, o botão fica bloqueado. Nesse caso: use Tons de cinza a
+200 DPI (a opção que a janela já traz), ou divida o documento em dois registos.
 
 **Pode misturar.** Digitalizar e, além disso, arrastar ficheiros do computador
 para a mesma caixa de anexos. Um não apaga o outro.

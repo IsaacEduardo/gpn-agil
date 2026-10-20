@@ -16,10 +16,15 @@ class StoreDocumentoEntradaRequest extends FormRequest
      * Limite único para o ficheiro principal e para os anexos, em KB.
      *
      * Havia três valores em desacordo: 2 MB no 'arquivo', 5 MB nos anexos e
-     * "Máx 10MB" anunciado no componente de upload. Fica alinhado pelo que a
-     * interface promete — e dentro dos 25 MB documentados para produção.
+     * "Máx 10MB" anunciado no componente de upload. Desde 2026-10-20 são 50 MB,
+     * a pedido do cliente (documentos externos digitalizados com muitas páginas).
+     *
+     * Tem de caber nos limites do servidor: upload_max_filesize do PHP-FPM
+     * igual ou superior, post_max_size e client_max_body_size do nginx acima
+     * da soma de um registo. Com o PHP abaixo disto, o ficheiro nem chega à
+     * aplicação e a recusa é a regra 'uploaded' (ver messages()).
      */
-    public const LIMITE_FICHEIRO_KB = 10240;
+    public const LIMITE_FICHEIRO_KB = 51200;
 
     public function authorize()
     {
@@ -78,14 +83,35 @@ class StoreDocumentoEntradaRequest extends FormRequest
         return [
             'classificacao_especie.required' => 'Selecione a espécie do documento.',
             'data_entrada.before_or_equal' => 'A data de entrada não pode ser posterior a hoje.',
+            ...self::mensagensFicheiro(),
+        ];
+    }
+
+    /**
+     * Mensagens dos ficheiros, partilhadas com a edição do documento
+     * (DocumentoEntradaController@update), que valida à parte.
+     *
+     * @return array<string, string>
+     */
+    public static function mensagensFicheiro(): array
+    {
+        $mb = (int) (self::LIMITE_FICHEIRO_KB / 1024);
+        // 'uploaded': o PHP recusou o ficheiro antes de a aplicação o ver (quase
+        // sempre por exceder o limite do servidor). Sem isto, o balcão lia
+        // "validation.uploaded" ou "Falha ao fazer upload do anexos.0".
+        $naoRecebido = "O ficheiro não chegou ao servidor. Confirme que não excede {$mb} MB e tente novamente.";
+
+        return [
             'arquivo.max' => 'O ficheiro não pode exceder :max KB.',
             'arquivo.mimes' => 'O ficheiro anexado deve ser PDF, JPG ou PNG.',
             'arquivo.file' => 'O ficheiro anexado não foi recebido corretamente. Tente novamente.',
+            'arquivo.uploaded' => $naoRecebido,
             // Sem estas, a mensagem do Laravel cai no nome técnico do campo e o
             // balconista lia "O campo anexos.0 deve ser um arquivo do tipo...".
             'anexos.*.max' => 'Cada anexo não pode exceder :max KB.',
             'anexos.*.mimes' => 'O ficheiro anexado deve ser PDF, JPG ou PNG.',
             'anexos.*.file' => 'O ficheiro anexado não foi recebido corretamente. Tente novamente.',
+            'anexos.*.uploaded' => $naoRecebido,
         ];
     }
 

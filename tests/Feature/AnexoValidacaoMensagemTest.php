@@ -97,6 +97,38 @@ class AnexoValidacaoMensagemTest extends TestCase
         $this->assertStringContainsString((string) StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB, $erro);
     }
 
+    /**
+     * Em produção o PHP-FPM tinha upload_max_filesize = 2M: o ficheiro nem
+     * chegava à aplicação e o balcão via "validation.uploaded".
+     */
+    public function test_ficheiro_recusado_pelo_php_explica_o_limite(): void
+    {
+        Storage::fake('public');
+        $user = $this->balcao();
+
+        $caminho = tempnam(sys_get_temp_dir(), 'up-');
+        file_put_contents($caminho, '%PDF-1.4 truncado');
+        $recusado = new UploadedFile($caminho, 'grande.pdf', 'application/pdf', UPLOAD_ERR_INI_SIZE, true);
+
+        $resposta = $this->actingAs($user)->post(
+            route('documentos-entradas.store'),
+            $this->payload(['anexos' => [$recusado]])
+        );
+
+        $resposta->assertSessionHasErrors('anexos.0');
+        $erro = session('errors')->first('anexos.0');
+
+        $this->assertStringNotContainsString('validation.', $erro);
+        $this->assertStringNotContainsString('anexos.0', $erro);
+        $this->assertStringContainsString((int) (StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB / 1024).' MB', $erro);
+        @unlink($caminho);
+    }
+
+    public function test_limite_e_de_50_mb_por_ficheiro(): void
+    {
+        $this->assertSame(50 * 1024, StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB);
+    }
+
     public function test_pdf_dentro_do_limite_e_aceite(): void
     {
         Storage::fake('public');

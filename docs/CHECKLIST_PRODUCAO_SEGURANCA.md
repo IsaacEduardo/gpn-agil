@@ -43,8 +43,9 @@ server {
     # Ocultação de assinaturas e versões
     server_tokens off;
 
-    # Limite de tamanho de upload (ajustado para PDFs e anexos pesados)
-    client_max_body_size 25M;
+    # Limite de tamanho de upload: 50 MB por ficheiro (StoreDocumentoEntradaRequest),
+    # e o pedido inteiro (principal + anexos) até ao post_max_size do PHP.
+    client_max_body_size 210M;
     client_body_buffer_size 128k;
 
     # Proteção de Arquivos Ocultos e Dotfiles (.env, .git, etc.)
@@ -120,8 +121,8 @@ log_errors = On
 error_log = /var/log/php/error.log
 memory_limit = 512M
 max_execution_time = 180
-upload_max_filesize = 25M
-post_max_size = 30M
+upload_max_filesize = 50M
+post_max_size = 210M
 session.cookie_httponly = 1
 session.cookie_secure = 1
 session.cookie_samesite = "Lax"

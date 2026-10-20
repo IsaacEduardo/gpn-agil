@@ -24,6 +24,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -44,6 +45,19 @@ class DocumentoEntradaService
     private function concorrencia(): TarefaConcorrenciaService
     {
         return app(TarefaConcorrenciaService::class);
+    }
+
+    /**
+     * Comprime um PDF pesado antes de o guardar (ver CompressorPdf). Nunca
+     * impede o registo: se algo correr mal, o ficheiro segue como veio.
+     */
+    private function comprimirAntesDeGuardar(UploadedFile $ficheiro): void
+    {
+        try {
+            app(CompressorPdf::class)->comprimirUpload($ficheiro);
+        } catch (\Throwable $e) {
+            Log::warning('Compressão de PDF ignorada: '.$e->getMessage());
+        }
     }
 
     /**
@@ -385,6 +399,7 @@ class DocumentoEntradaService
 
         if ($mainFile) {
             $base = 'documentos_entradas/'.$ano.'/'.$gabSlug.'/'.$depSlug.'/'.sprintf('%03d', $seq);
+            $this->comprimirAntesDeGuardar($mainFile);
             $storedPath = $mainFile->store($base, $docsDisk);
             $doc->arquivo_caminho = $storedPath;
             $doc->save();
@@ -411,6 +426,7 @@ class DocumentoEntradaService
             $ordem = 0;
             foreach ($attachments as $file) {
                 $ordem++;
+                $this->comprimirAntesDeGuardar($file);
                 $storedPath = $file->store($base, $docsDisk);
                 $mime = $file->getMimeType();
                 $isOcr = ($mime === 'application/pdf' || str_starts_with((string) $mime, 'image/'));
@@ -1434,6 +1450,7 @@ class DocumentoEntradaService
                 $depSlug = Str::slug(optional($dep)->nome ?? 'sem-departamento');
                 $gabSlug = Str::slug(optional($gab)->sigla ?? (optional($gab)->nome ?? 'sem-gabinete'));
                 $base = 'documentos_entradas/'.$documento->ano_referencia.'/'.$gabSlug.'/'.$depSlug.'/'.sprintf('%03d', $documento->numero_sequencial);
+                $this->comprimirAntesDeGuardar($mainFile);
                 $documento->arquivo_caminho = $mainFile->store($base, config('filesystems.docs_disk'));
             }
 
@@ -1448,6 +1465,7 @@ class DocumentoEntradaService
 
                 foreach ($attachments as $file) {
                     $ordem++;
+                    $this->comprimirAntesDeGuardar($file);
                     $storedPath = $file->store($base, $docsDisk);
                     $mime = $file->getMimeType();
                     $isOcr = ($mime === 'application/pdf' || str_starts_with((string) $mime, 'image/'));

@@ -173,7 +173,7 @@ class DocumentoEntradaRegistoIntegridadeTest extends TestCase
     {
         $this->actingAs($this->balcao)
             ->post(route('documentos-entradas.store'), $this->payload([
-                'anexos' => [UploadedFile::fake()->create('enorme.pdf', 11000, 'application/pdf')],
+                'anexos' => [UploadedFile::fake()->create('enorme.pdf', \App\Http\Requests\StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB + 800, 'application/pdf')],
             ]))
             ->assertSessionHasErrors('anexos.0');
     }

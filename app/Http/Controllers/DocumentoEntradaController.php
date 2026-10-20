@@ -1254,6 +1254,7 @@ Parecer: {$t->resposta}";
             'anexos.*' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.StoreDocumentoEntradaRequest::LIMITE_FICHEIRO_KB],
         ], [
             'data_entrada.before_or_equal' => 'A data de entrada não pode ser posterior a hoje.',
+            ...StoreDocumentoEntradaRequest::mensagensFicheiro(),
         ]);
 
         // Mudar de setor faz-se por encaminhamento, que deixa rasto. Gravar

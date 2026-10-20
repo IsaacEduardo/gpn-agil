@@ -712,6 +712,22 @@ class OcrService
     }
 
     /**
+     * Resolve o pdfinfo (poppler), ao lado do pdftoppm configurado ou no PATH.
+     */
+    public function resolvePdfinfoBinary(): ?string
+    {
+        $pdftoppm = config('services.ocr.pdftoppm_path');
+        if ($pdftoppm && file_exists($pdftoppm)) {
+            $irmao = dirname($pdftoppm).DIRECTORY_SEPARATOR.(str_ends_with(strtolower($pdftoppm), '.exe') ? 'pdfinfo.exe' : 'pdfinfo');
+            if (file_exists($irmao)) {
+                return $irmao;
+            }
+        }
+
+        return $this->findInPath('pdfinfo');
+    }
+
+    /**
      * Resolve Ghostscript binary path.
      */
     public function resolveGhostscriptBinary(): ?string
