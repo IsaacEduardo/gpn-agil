@@ -4,10 +4,14 @@
     <div class="container">
         @if (! $documentoInterno->assinado_em
             && \App\Support\SeriesNumeracao::abreviaturaEspecie($documentoInterno->especie) === 'NOTA'
-            && ! $documentoInterno->departamento?->chefeDesignado())
+            && ! $documentoInterno->departamento?->signatarioDaNota())
             <div class="alert alert-warning d-print-none">
                 <i class="fas fa-user-slash me-1"></i>
-                Este departamento não tem Chefe de Departamento designado: a Nota não pode ser assinada até ser designado na Gestão de Utilizadores.
+                @if ($documentoInterno->departamento?->notaAssinadaPeloSecretario())
+                    O gabinete não tem Secretário (responsável) definido: a Nota do Expediente não pode ser assinada até ser definido na gestão dos gabinetes.
+                @else
+                    Este departamento não tem Chefe de Departamento designado: a Nota não pode ser assinada até ser designado na Gestão de Utilizadores.
+                @endif
             </div>
         @endif
 

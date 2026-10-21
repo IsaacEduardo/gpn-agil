@@ -174,6 +174,54 @@ class NotaSecGeralTest extends TestCase
         $this->assertFalse($assinaturas->canSign($doc, $this->tecnicoDlp));
     }
 
+    public function test_nota_do_expediente_e_assinada_pelo_secretario(): void
+    {
+        $expediente = Departamento::create([
+            'nome' => 'Departamento de Expediente', 'sigla' => 'AEX', 'gabinete_id' => $this->sg->id, 'is_area_expediente' => true,
+        ]);
+        $chefeExpediente = $this->designar('Chefe Expediente', $expediente);
+        $tecnicoExpediente = User::factory()->create(['departamento_id' => $expediente->id]);
+
+        $modelo = ModeloDocumento::where('codigo', 'NOTA_SEC_GERAL')->firstOrFail();
+        $html = $this->actingAs($tecnicoExpediente)->postJson(route('documentos-internos.preview'), [
+            'modelo_id' => $modelo->id,
+        ])->assertOk()->json('content');
+
+        $this->assertStringContainsString('O Secretário Geral', $html);
+        $this->assertStringContainsString('Secretário Geral</div>', $html); // nome do responsável do gabinete
+        $this->assertStringNotContainsString('O Chefe de Departamento', $html);
+        $this->assertStringNotContainsString('Chefe Expediente', $html);
+        // Datação pela Secretaria, não pelo departamento.
+        $this->assertStringContainsString('<strong>SECRETARIA GERAL DO ', $html);
+        $this->assertStringNotContainsString('DEPARTAMENTO DE EXPEDIENTE', $html);
+
+        $this->criar($tecnicoExpediente)->assertRedirect();
+        $doc = DocumentoInterno::latest('id')->first();
+        $assinaturas = app(SignatureService::class);
+
+        $this->assertTrue($assinaturas->canSign($doc, $this->secretarioGeral));
+        $this->assertFalse($assinaturas->canSign($doc, $chefeExpediente));
+        $this->assertFalse($assinaturas->canSign($doc, $tecnicoExpediente));
+        $this->assertFalse($assinaturas->canSign($doc, $this->chefeDlp));
+    }
+
+    public function test_nota_do_expediente_sem_secretario_fica_sem_assinante(): void
+    {
+        $this->sg->update(['responsavel_id' => null]);
+        $expediente = Departamento::create([
+            'nome' => 'Departamento de Expediente', 'sigla' => 'AEX', 'gabinete_id' => $this->sg->id, 'is_area_expediente' => true,
+        ]);
+        $tecnicoExpediente = User::factory()->create(['departamento_id' => $expediente->id]);
+
+        $html = app(DocumentoInternoService::class)->processarTemplate('{{NOTA_NOME_SIGNATARIO}}', null, $tecnicoExpediente, [], $expediente);
+        $this->assertSame('[Secretário não definido]', $html);
+
+        $this->criar($tecnicoExpediente)->assertRedirect();
+        $doc = DocumentoInterno::latest('id')->first();
+        $this->actingAs($tecnicoExpediente)->get(route('documentos-internos.show', $doc))
+            ->assertOk()->assertSee('não tem Secretário (responsável) definido');
+    }
+
     public function test_segundo_chefe_no_mesmo_departamento_e_recusado(): void
     {
         $roleChefe = Role::where('name', 'chefe-departamento')->value('id');
@@ -200,8 +248,10 @@ class NotaSecGeralTest extends TestCase
         $this->assertNull($this->dlp->fresh()->responsavel_id);
         $this->assertFalse(app(SignatureService::class)->canSign($doc->fresh(), $this->chefeDlp->fresh()));
 
-        $html = app(DocumentoInternoService::class)->processarTemplate('{{CHEFE_DEPARTAMENTO_NOME}}', null, $this->tecnicoDlp, [], $this->dlp->fresh());
-        $this->assertSame('[Chefe de Departamento não definido]', $html);
+        foreach (['{{CHEFE_DEPARTAMENTO_NOME}}', '{{NOTA_NOME_SIGNATARIO}}'] as $marcador) {
+            $html = app(DocumentoInternoService::class)->processarTemplate($marcador, null, $this->tecnicoDlp, [], $this->dlp->fresh());
+            $this->assertSame('[Chefe de Departamento não definido]', $html);
+        }
 
         $this->actingAs($this->tecnicoDlp)->get(route('documentos-internos.show', $doc))
             ->assertOk()->assertSee('não tem Chefe de Departamento designado');
@@ -269,7 +319,7 @@ class NotaSecGeralTest extends TestCase
         $outro = User::factory()->create(['departamento_id' => Departamento::create(['nome' => 'Dep X', 'sigla' => 'DX', 'gabinete_id' => $outroGab->id])->id]);
         $this->assertFalse($service->getTemplatesForUser($outro)->contains('id', $modelo->id));
 
-        foreach (['{{DESTINATARIO_NOME}}', '{{DESTINATARIO_CARGO}}', '{{DESTINATARIO_ORGAO}}', '{{DESTINATARIO_LOCAL}}', '{{NOSSA_REFERENCIA}}', '{{CHEFE_DEPARTAMENTO_NOME}}'] as $marcador) {
+        foreach (['{{DESTINATARIO_NOME}}', '{{DESTINATARIO_CARGO}}', '{{DESTINATARIO_ORGAO}}', '{{DESTINATARIO_LOCAL}}', '{{NOSSA_REFERENCIA}}', '{{NOTA_CARGO_SIGNATARIO}}', '{{NOTA_NOME_SIGNATARIO}}', '{{NOTA_DATACAO}}'] as $marcador) {
             $this->assertStringContainsString($marcador, $modelo->conteudo);
         }
         $this->assertStringNotContainsString('{{ nome_signatario }}', $modelo->conteudo);

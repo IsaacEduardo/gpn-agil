@@ -321,12 +321,13 @@ class SignatureService
         }
 
         // NOTA: só o Chefe de Departamento designado para o departamento emissor
-        // (Gestão de Utilizadores → departamentos.responsavel_id). Sem chefe designado, ninguém
-        // (além do Admin, tratado acima) assina — o ecrã do documento explica porquê.
+        // (Gestão de Utilizadores → departamentos.responsavel_id) ou, no Expediente, o
+        // Secretário (Departamento::signatarioDaNota). Sem signatário, ninguém (além do
+        // Admin, tratado acima) assina — o ecrã do documento explica porquê.
         if ($especie === 'NOTA') {
-            $chefe = $doc->departamento?->chefeDesignado();
+            $signatario = $doc->departamento?->signatarioDaNota();
 
-            return $chefe !== null && (int) $chefe->id === (int) $user->id;
+            return $signatario !== null && (int) $signatario->id === (int) $user->id;
         }
 
         // REQUERIMENTO / DECLARAÇÃO: Chefe de Departamento (regra anterior)

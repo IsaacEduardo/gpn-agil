@@ -272,6 +272,17 @@ class DocumentoInternoService
             ? mb_strtoupper($dep->nome.($gab?->nome ? ' '.$this->preposicaoPara($gab->nome).' ' : ' do ')
                 .($gab?->nome ? $gab->nome.' do ' : '').$dadosInstituicao->nome_oficial)
             : $placeholders['{{GABINETE_INSTITUICAO}}'];
+
+        // Nota: assinatura e datação pelo departamento emissor; no Expediente, pelo
+        // Secretário e pela Secretaria (Departamento::signatarioDaNota).
+        $notaPeloSecretario = (bool) $dep?->notaAssinadaPeloSecretario();
+        $signatarioNota = $dep?->signatarioDaNota()?->name
+            ?? ($notaPeloSecretario ? '[Secretário não definido]' : '[Chefe de Departamento não definido]');
+        $placeholders['{{NOTA_CARGO_SIGNATARIO}}'] = $notaPeloSecretario ? 'O Secretário Geral' : 'O Chefe de Departamento';
+        $placeholders['{{NOTA_NOME_SIGNATARIO}}'] = e($signatarioNota);
+        $placeholders['{{NOTA_DATACAO}}'] = $notaPeloSecretario
+            ? $placeholders['{{GABINETE_INSTITUICAO}}']
+            : $placeholders['{{DEPARTAMENTO_GABINETE_INSTITUICAO}}'];
         $placeholders['{{SUA_REFERENCIA}}'] = $docEntrada
             ? ($docEntrada->classificacao_ref_numero ?: $docEntrada->numero_sequencial.'/'.$docEntrada->ano_referencia)
             : '';
@@ -713,8 +724,7 @@ class DocumentoInternoService
 
         // Documentos de outros em que o utilizador foi convidado a colaborar.
         if ($tab === 'partilhados') {
-            $query->where('criado_por', '!=', $user->id)
-                ->whereHas('colaboradores', fn ($c) => $c->where('user_id', $user->id));
+            $query->where('criado_por', '!=', $user->id)->partilhadoCom($user);
 
             return;
         }

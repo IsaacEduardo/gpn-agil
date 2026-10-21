@@ -39,7 +39,7 @@ class Departamento extends Model
      * para este departamento na ficha do utilizador. responsavel_id é o espelho mantido por
      * DepartamentoChefiaService; sem espelho (utilizadores criados por outros caminhos), conta
      * o único utilizador com o papel. Com zero ou vários, não há chefe — ao contrário do acessor
-     * $this->chefe, nunca escolhe "um qualquer". É quem assina as Notas.
+     * $this->chefe, nunca escolhe "um qualquer". É quem assina as Notas (fora do Expediente).
      */
     public function chefeDesignado(): ?User
     {
@@ -56,6 +56,27 @@ class Departamento extends Model
             ->get();
 
         return $candidatos->count() === 1 ? $candidatos->first() : null;
+    }
+
+    /**
+     * As Notas do Expediente (is_area_expediente) são assinadas pelo Secretário, o
+     * responsável do gabinete; as dos outros departamentos, pelo Chefe de Departamento.
+     */
+    public function notaAssinadaPeloSecretario(): bool
+    {
+        return (bool) $this->is_area_expediente;
+    }
+
+    /**
+     * Quem assina as Notas deste departamento — regra única do texto do modelo
+     * (DocumentoInternoService), da assinatura (SignatureService) e do aviso da ficha.
+     * Null se ainda não estiver designado.
+     */
+    public function signatarioDaNota(): ?User
+    {
+        return $this->notaAssinadaPeloSecretario()
+            ? $this->gabinete?->responsavel
+            : $this->chefeDesignado();
     }
 
     public function parent()
