@@ -55,9 +55,10 @@ class DocumentoCollaborationService
             return NivelColaboracao::ADMINISTRAR;
         }
 
-        // Colaborador explicitamente convidado.
+        // Colaborador explicitamente convidado, enquanto for técnico do gabinete do
+        // documento (quem muda de função ou de gabinete perde o acesso).
         $colab = $doc->colaboradores()->where('user_id', $user->id)->first();
-        if ($colab) {
+        if ($colab && $this->podeSerColaborador($doc, $user)) {
             return $colab->nivel;
         }
 
@@ -436,14 +437,14 @@ class DocumentoCollaborationService
     }
 
     /**
-     * Convida (ou atualiza o nível de) um colaborador do MESMO gabinete do documento.
+     * Convida (ou atualiza o nível de) um técnico de um departamento do gabinete do documento.
      *
-     * @throws \InvalidArgumentException se o convidado não pertencer ao gabinete do documento.
+     * @throws \InvalidArgumentException se o convidado não for técnico do gabinete do documento.
      */
     public function convidar(DocumentoInterno $doc, User $inviter, User $invitee, NivelColaboracao $nivel): DocumentoColaborador
     {
-        if (! $this->mesmoGabinete($doc, $invitee)) {
-            throw new \InvalidArgumentException('Só é possível convidar utilizadores do mesmo gabinete do documento.');
+        if (! $this->podeSerColaborador($doc, $invitee)) {
+            throw new \InvalidArgumentException('Só é possível convidar técnicos dos departamentos do gabinete do documento.');
         }
 
         return DocumentoColaborador::updateOrCreate(
@@ -480,6 +481,16 @@ class DocumentoCollaborationService
         $userGab = optional($user->departamento)->gabinete_id;
 
         return $docGab !== null && $userGab !== null && (int) $docGab === (int) $userGab;
+    }
+
+    /**
+     * Regra de quem pode ser colaborador convidado: técnico de qualquer departamento do
+     * gabinete do documento. Vale no convite e em cada acesso (DocumentoInterno::scopePartilhadoCom
+     * aplica a mesma regra às listagens).
+     */
+    public function podeSerColaborador(DocumentoInterno $doc, User $user): bool
+    {
+        return $user->isTecnico() && $this->mesmoGabinete($doc, $user);
     }
 
     /**

@@ -175,6 +175,98 @@ class ColaboracaoDocumentoTest extends TestCase
         ]);
     }
 
+    public function test_pode_convidar_tecnico_de_outro_departamento_do_mesmo_gabinete(): void
+    {
+        Notification::fake();
+        $depA2 = Departamento::create(['nome' => 'Dep A2', 'sigla' => 'DA2', 'gabinete_id' => $this->gabineteA->id]);
+        $tecnico = User::factory()->create(['departamento_id' => $depA2->id]);
+
+        $this->actingAs($this->autor)
+            ->postJson(route('documentos-internos.collab.convidar', $this->doc), [
+                'user_id' => $tecnico->id,
+                'nivel' => 'editar',
+            ])
+            ->assertCreated();
+    }
+
+    public function test_nao_pode_convidar_chefe_de_departamento_do_mesmo_gabinete(): void
+    {
+        $depA2 = Departamento::create(['nome' => 'Dep A2', 'sigla' => 'DA2', 'gabinete_id' => $this->gabineteA->id]);
+        $chefe = User::factory()->create(['departamento_id' => $depA2->id]);
+        $depA2->update(['responsavel_id' => $chefe->id]);
+
+        $this->actingAs($this->autor)
+            ->postJson(route('documentos-internos.collab.convidar', $this->doc), [
+                'user_id' => $chefe->id,
+                'nivel' => 'editar',
+            ])
+            ->assertStatus(422);
+
+        $this->assertDatabaseMissing('documento_colaboradores', ['user_id' => $chefe->id]);
+    }
+
+    public function test_candidatos_a_convite_sao_so_tecnicos_do_gabinete(): void
+    {
+        $depA2 = Departamento::create(['nome' => 'Dep A2', 'sigla' => 'DA2', 'gabinete_id' => $this->gabineteA->id]);
+        $tecnico = User::factory()->create(['name' => 'Tecnico A2', 'departamento_id' => $depA2->id]);
+        $chefe = User::factory()->create(['name' => 'Chefe A2', 'departamento_id' => $depA2->id]);
+        $depA2->update(['responsavel_id' => $chefe->id]);
+
+        $candidatos = $this->actingAs($this->autor)
+            ->get(route('documentos-internos.collab.editor', $this->doc))
+            ->assertOk()
+            ->viewData('candidatos');
+
+        $ids = $candidatos->pluck('id')->all();
+        $this->assertContains($tecnico->id, $ids);
+        $this->assertContains($this->colegaA->id, $ids);
+        $this->assertNotContains($chefe->id, $ids);
+        $this->assertNotContains($this->forasteiro->id, $ids);
+    }
+
+    public function test_colaborador_que_muda_de_gabinete_perde_o_acesso(): void
+    {
+        DocumentoColaborador::create([
+            'documento_interno_id' => $this->doc->id,
+            'user_id' => $this->colegaA->id,
+            'nivel' => 'editar',
+            'convidado_por' => $this->autor->id,
+        ]);
+
+        $this->colegaA->update(['departamento_id' => $this->depB->id]);
+
+        $this->actingAs($this->colegaA->fresh())
+            ->getJson(route('documentos-internos.collab.state', $this->doc))
+            ->assertForbidden();
+
+        $this->assertFalse(
+            DocumentoInterno::accessibleBy($this->colegaA->fresh())->whereKey($this->doc->id)->exists()
+        );
+    }
+
+    public function test_colaborador_que_passa_a_chefe_perde_o_acesso(): void
+    {
+        DocumentoColaborador::create([
+            'documento_interno_id' => $this->doc->id,
+            'user_id' => $this->forasteiro->id,
+            'nivel' => 'editar',
+            'convidado_por' => $this->autor->id,
+        ]);
+        $depA2 = Departamento::create(['nome' => 'Dep A2', 'sigla' => 'DA2', 'gabinete_id' => $this->gabineteA->id]);
+        $this->forasteiro->update(['departamento_id' => $depA2->id]);
+
+        // Técnico do gabinete: entra.
+        $this->actingAs($this->forasteiro->fresh())
+            ->getJson(route('documentos-internos.collab.state', $this->doc))
+            ->assertOk();
+
+        // Designado chefe do departamento: deixa de ser colaborador.
+        $depA2->update(['responsavel_id' => $this->forasteiro->id]);
+        $this->actingAs($this->forasteiro->fresh())
+            ->getJson(route('documentos-internos.collab.state', $this->doc))
+            ->assertForbidden();
+    }
+
     public function test_colaborador_sem_nivel_administrar_nao_convida(): void
     {
         DocumentoColaborador::create([

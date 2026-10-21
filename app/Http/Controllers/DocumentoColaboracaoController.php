@@ -51,14 +51,16 @@ class DocumentoColaboracaoController extends Controller
 
         $colaboradores = $documentoInterno->colaboradores()->with('user')->get();
 
-        // Candidatos a convite: utilizadores do mesmo gabinete do documento (excluindo já colaboradores/autor).
+        // Candidatos a convite: técnicos dos departamentos do gabinete do documento
+        // (excluindo já colaboradores/autor) — DocumentoCollaborationService::podeSerColaborador.
         $gabineteId = $documentoInterno->gabineteEmissorId();
         $jaColaboram = $colaboradores->pluck('user_id')->push($documentoInterno->criado_por)->all();
         $candidatos = collect();
         if ($gabineteId) {
             $candidatos = User::whereHas('departamento', function ($q) use ($gabineteId) {
                 $q->where('gabinete_id', $gabineteId);
-            })->whereNotIn('id', $jaColaboram)->orderBy('name')->get(['id', 'name']);
+            })->whereNotIn('id', $jaColaboram)->orderBy('name')->get()
+                ->filter(fn (User $u) => $u->isTecnico())->values();
         }
 
         $nivel = $this->service->nivelDe(Auth::user(), $documentoInterno);

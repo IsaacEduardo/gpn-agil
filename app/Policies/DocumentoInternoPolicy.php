@@ -67,7 +67,8 @@ class DocumentoInternoPolicy
 
         // Colaborador convidado: o convite é por gabinete, e o convidado de outro
         // departamento editava pelo link sem conseguir ver a ficha nem o PDF.
-        return $doc->colaboradores()->where('user_id', $user->id)->exists();
+        return $doc->colaboradores()->where('user_id', $user->id)->exists()
+            && app(DocumentoCollaborationService::class)->podeSerColaborador($doc, $user);
     }
 
     public function download(User $user, DocumentoInterno $doc)

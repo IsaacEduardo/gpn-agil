@@ -194,8 +194,24 @@ class DocumentoInterno extends Model
         // mesmo sendo de outro departamento do gabinete (o convite é por gabinete).
         return $query->where(function ($q) use ($user) {
             $q->where(fn ($base) => static::visibilidadePorFuncao($base, $user))
-                ->orWhereHas('colaboradores', fn ($c) => $c->where('user_id', $user->id));
+                ->orWhere(fn ($partilhado) => $partilhado->partilhadoCom($user));
         });
+    }
+
+    /**
+     * Documentos em que o utilizador é colaborador convidado e ainda cumpre a regra do
+     * convite: técnico de um departamento do gabinete do documento
+     * (DocumentoCollaborationService::podeSerColaborador).
+     */
+    public function scopePartilhadoCom($query, User $user)
+    {
+        $gabineteId = $user->departamento?->gabinete_id;
+        if (! $gabineteId || ! $user->isTecnico()) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereHas('colaboradores', fn ($c) => $c->where('user_id', $user->id))
+            ->doGabinete($gabineteId);
     }
 
     /** Visibilidade pela função na estrutura (gabinete, departamento, autoria). */
