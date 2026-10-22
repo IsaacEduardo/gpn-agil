@@ -158,7 +158,7 @@
                 </div>
                 <div class="col-md-6 text-center text-md-end">
                     <span>&copy; {{ date('Y') }} · Fornecido por
-                        <a href="#" class="fw-semibold">Infinity Link</a>
+                        <a href="https://www.infinitylink.ao" target="_blank" rel="noopener noreferrer" class="fw-semibold">Infinity Link</a>
                     </span>
                 </div>
             </div>
