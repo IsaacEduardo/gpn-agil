@@ -83,12 +83,22 @@
 
             if(!fileInput || !dropZone) return;
 
-            // Mantém no input apenas o que o servidor aceitaria e diz o que ficou de fora.
+            // O input nativo esquece a seleção anterior a cada nova escolha —
+            // incluindo o PDF que o scanner lá pôs. É daqui que ela é reposta.
+            let selecionados = [];
+            const chave = file => [file.name, file.size, file.lastModified].join('|');
+
+            // Mantém no input apenas o que o servidor aceitaria, sem repetidos,
+            // e diz o que ficou de fora.
             function filtrarInput(candidatos) {
                 const aceites = new DataTransfer();
                 const recusados = [];
+                const vistos = new Set();
 
                 Array.from(candidatos || []).forEach(file => {
+                    if (vistos.has(chave(file))) return;
+                    vistos.add(chave(file));
+
                     const motivo = motivoDeRecusa(file);
                     if (motivo) {
                         recusados.push({ nome: file.name, motivo });
@@ -98,8 +108,13 @@
                 });
 
                 fileInput.files = aceites.files;
+                selecionados = Array.from(fileInput.files);
                 mostrarRecusas(rejectsBox, recusados);
-                updateFileList(fileInput.files, fileList);
+                updateFileList(fileInput.files, fileList, retirar);
+            }
+
+            function retirar(indice) {
+                filtrarInput(selecionados.filter((_, i) => i !== indice));
             }
 
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -114,7 +129,12 @@
                 dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
             });
 
-            fileInput.addEventListener('change', function() { filtrarInput(this.files); }, false);
+            // Acrescenta à seleção em vez de a substituir. O scanner também
+            // dispara `change`, com o input já a conter os anteriores; os
+            // repetidos caem no filtro.
+            fileInput.addEventListener('change', function() {
+                filtrarInput([...selecionados, ...Array.from(this.files || [])]);
+            }, false);
 
             dropZone.addEventListener('drop', function(e) {
                 // Acrescenta aos anexos já presentes. Substituir apagaria o PDF
@@ -122,18 +142,15 @@
                 // O atributo accept não se aplica ao arrasto: sem este filtro, um
                 // .txt largado aqui era listado com tamanho e só recusado depois
                 // da submissão, perdendo o upload e o preenchimento do bloco.
-                const merged = new DataTransfer();
-                Array.from(fileInput.files || []).forEach(file => merged.items.add(file));
-                Array.from(e.dataTransfer.files || []).forEach(file => merged.items.add(file));
-                filtrarInput(merged.files);
+                filtrarInput([...selecionados, ...Array.from(e.dataTransfer.files || [])]);
             }, false);
         }
 
-        function updateFileList(files, listElement) {
+        function updateFileList(files, listElement, onRetirar) {
             listElement.innerHTML = '';
             if (!files || files.length === 0) return;
 
-            Array.from(files).forEach(file => {
+            Array.from(files).forEach((file, indice) => {
                 const li = document.createElement('li');
                 li.className = 'list-group-item d-flex justify-content-between align-items-center bg-transparent border-0 px-0 py-2';
                 const iconClass = file.type.includes('pdf') ? 'fa-file-pdf text-danger' : 'fa-file-image text-primary';
@@ -144,9 +161,23 @@
                     <div class="d-flex align-items-center text-truncate me-3">
                         <i class="fas ${iconClass} me-2 fs-5"></i>
                     </div>
-                    <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-1">${(file.size/1024).toFixed(1)} KB</span>
+                    <div class="d-flex align-items-center flex-shrink-0">
+                        <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-1">${(file.size/1024).toFixed(1)} KB</span>
+                    </div>
                 `;
                 li.querySelector('div').appendChild(name);
+
+                if (onRetirar) {
+                    const retirar = document.createElement('button');
+                    retirar.type = 'button';
+                    retirar.className = 'btn btn-sm btn-link text-danger p-0 ms-2';
+                    retirar.title = 'Retirar da lista';
+                    retirar.setAttribute('aria-label', 'Retirar ' + file.name);
+                    retirar.innerHTML = '<i class="fas fa-times"></i>';
+                    retirar.addEventListener('click', () => onRetirar(indice));
+                    li.querySelector('div:last-child').appendChild(retirar);
+                }
+
                 listElement.appendChild(li);
             });
         }

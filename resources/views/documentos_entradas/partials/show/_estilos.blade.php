@@ -167,8 +167,47 @@
             min-height: 420px;
             border: 0;
             overflow: auto;
+            /* Reserva o lugar da barra de deslocamento: o ajuste à largura mede
+               a área antes de o PDF a fazer aparecer, e sem isto sobrava uma
+               barra horizontal de ~15px. */
+            scrollbar-gutter: stable;
         }
-        .doc-viewer-card.is-expandido .doc-viewer-frame { height: calc(100vh - 8rem); }
+
+        /* Ecrã inteiro do cartão: pela API Fullscreen (:fullscreen) ou, onde ela
+           não existe (Safari em iPhone), por CSS (.is-ecra-inteiro). */
+        .doc-viewer-card:fullscreen,
+        .doc-viewer-card.is-ecra-inteiro {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            /* O fundo por omissão do :fullscreen é preto. */
+            background: var(--bs-body-bg, #fff);
+        }
+        .doc-viewer-card.is-ecra-inteiro {
+            position: fixed;
+            inset: 0;
+            /* Acima da barra de topo e da navegação fixa, abaixo dos modais. */
+            z-index: 1045;
+        }
+        body.doc-viewer-ecra-inteiro { overflow: hidden; }
+        .doc-viewer-card:fullscreen > .card-body,
+        .doc-viewer-card.is-ecra-inteiro > .card-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .doc-viewer-card:fullscreen .doc-viewer-frame,
+        .doc-viewer-card.is-ecra-inteiro .doc-viewer-frame {
+            flex: 1 1 auto;
+            height: auto;
+            min-height: 0;
+            max-height: none;
+        }
+        .list-group-item.is-visualizado { background: #eff6ff; box-shadow: inset 3px 0 0 var(--bs-primary); }
 
         /* ---------- Percurso: chips ---------- */
         .percurso-chip {

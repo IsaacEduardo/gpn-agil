@@ -229,15 +229,21 @@
                                                     </td>
                                                     <td>{{ number_format(($an->tamanho_bytes ?? 0) / 1024, 1) }} KB</td>
                                                     <td class="text-end">
-                                                        <form
-                                                            action="{{ route('documentos-entradas.anexos.destroy', [$doc, $an]) }}"
-                                                            method="POST"
-                                                            onsubmit="return confirm('Remover este anexo?');">
-                                                            @csrf
-                                                            @method('DELETE')
-                                                            <button class="btn btn-outline-danger btn-sm"><i
+                                                        {{-- O botão liga-se pelo atributo `form` a um formulário
+                                                             fora deste. Um <form> aqui dentro seria ignorado pelo
+                                                             browser e o caixote enviava o formulário de edição com
+                                                             _method=DELETE — que apagava o documento inteiro. --}}
+                                                        @if ($doc->arquivo_caminho && $an->caminho_arquivo === $doc->arquivo_caminho)
+                                                            <span class="d-inline-block" tabindex="0"
+                                                                title="É o original digitalizado do documento. Para o trocar, use &quot;Arquivo principal&quot;.">
+                                                                <button type="button" class="btn btn-outline-danger btn-sm" disabled><i
+                                                                        class="fas fa-trash"></i></button>
+                                                            </span>
+                                                        @else
+                                                            <button type="submit" form="remover-anexo-{{ $an->id }}"
+                                                                class="btn btn-outline-danger btn-sm" title="Remover anexo"><i
                                                                     class="fas fa-trash"></i></button>
-                                                        </form>
+                                                        @endif
                                                     </td>
                                                 </tr>
                                             @endforeach
@@ -269,6 +275,15 @@
                 </div>
             </div>
         </form>
+
+        @foreach ($doc->anexos as $an)
+            <form id="remover-anexo-{{ $an->id }}" class="d-none"
+                action="{{ route('documentos-entradas.anexos.destroy', [$doc, $an]) }}" method="POST"
+                onsubmit="return confirm('Remover este anexo?');">
+                @csrf
+                @method('DELETE')
+            </form>
+        @endforeach
         <script>
             const anexosInputEdit = document.getElementById('anexosInputEdit');
             const anexosPreviewEdit = document.getElementById('anexosPreviewEdit');

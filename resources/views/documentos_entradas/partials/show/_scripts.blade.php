@@ -63,15 +63,8 @@
                 });
             }
 
-            document.querySelectorAll('.doc-viewer-zoom').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    const cartao = btn.closest('.doc-viewer-card');
-                    const expandido = cartao.classList.toggle('is-expandido');
-                    btn.querySelector('i').className = expandido
-                        ? 'fas fa-down-left-and-up-right-to-center'
-                        : 'fas fa-up-right-and-down-left-from-center';
-                });
-            });
+            // O "Expandir" do visualizador vive no controlador do próprio
+            // visualizador (_visualizador-script), que precisa de redesenhar o PDF.
         });
 
         document.addEventListener('DOMContentLoaded', function() {

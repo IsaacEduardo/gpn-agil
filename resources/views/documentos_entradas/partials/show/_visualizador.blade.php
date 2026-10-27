@@ -1,112 +1,167 @@
 {{--
     O documento é o objeto do ecrã.
-    Visualizador universal de PDF baseado em Mozilla PDF.js.
-    Garante renderização inline em 100% dos navegadores (desktop e mobile).
+    Visualizador de PDF (Mozilla PDF.js) e de imagens. Abre no ficheiro
+    principal e troca para qualquer outro anexo sem recarregar a página.
 --}}
 @php
-    $temFicheiro = (bool) $doc->arquivo_caminho;
-    $urlFicheiro = $temFicheiro ? route('documentos-entradas.arquivo.download', $doc) : null;
-    $extensao = $temFicheiro ? strtolower(pathinfo($doc->arquivo_caminho, PATHINFO_EXTENSION)) : null;
-    $ehImagem = in_array($extensao, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true);
+    // Só PDF e imagens se pré-visualizam; o resto fica na lista para descarregar.
+    $tipoParaVisualizar = function (?string $mime, ?string $caminho): ?string {
+        $mime = strtolower((string) $mime);
+        if ($mime === 'application/pdf') {
+            return 'pdf';
+        }
+        if (in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
+            return 'imagem';
+        }
+        $extensao = strtolower(pathinfo((string) $caminho, PATHINFO_EXTENSION));
+        if ($extensao === 'pdf') {
+            return 'pdf';
+        }
+
+        return in_array($extensao, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true) ? 'imagem' : null;
+    };
+
+    // Sequência de visualização: o principal primeiro, depois os anexos por
+    // `ordem`. Cada ficheiro físico entra uma vez — o 1.º anexo do registo é o
+    // próprio principal, e a edição pode deixar dois anexos no mesmo caminho.
+    $ficheirosVisualizaveis = [];
+    $indicePorCaminho = [];
+    $anexoPrincipal = $doc->arquivo_caminho
+        ? $doc->anexos->firstWhere('caminho_arquivo', $doc->arquivo_caminho)
+        : null;
+
+    if ($doc->arquivo_caminho && ($tipo = $tipoParaVisualizar($anexoPrincipal?->mime_type, $doc->arquivo_caminho))) {
+        $indicePorCaminho[$doc->arquivo_caminho] = count($ficheirosVisualizaveis);
+        $ficheirosVisualizaveis[] = [
+            'url' => route('documentos-entradas.arquivo.download', $doc),
+            'tipo' => $tipo,
+            'nome' => $anexoPrincipal?->nome_original ?? 'Ficheiro principal',
+        ];
+    }
+
+    foreach ($doc->anexos as $an) {
+        if (! $an->caminho_arquivo || isset($indicePorCaminho[$an->caminho_arquivo])) {
+            continue;
+        }
+        $tipo = $tipoParaVisualizar($an->mime_type, $an->caminho_arquivo);
+        if (! $tipo) {
+            continue;
+        }
+        $indicePorCaminho[$an->caminho_arquivo] = count($ficheirosVisualizaveis);
+        $ficheirosVisualizaveis[] = [
+            'url' => route('documentos-entradas.anexos.download', [$doc, $an]),
+            'tipo' => $tipo,
+            'nome' => $an->nome_original ?? basename($an->caminho_arquivo),
+        ];
+    }
+
+    $temFicheiro = count($ficheirosVisualizaveis) > 0;
+    $temPdf = collect($ficheirosVisualizaveis)->contains('tipo', 'pdf');
+    $varios = count($ficheirosVisualizaveis) > 1;
+    $inicial = $ficheirosVisualizaveis[0] ?? null;
+    // Prefixo dos IDs: o script recebe-o por configuração em vez de procurar IDs fixos.
+    $visor = 'docViewer_'.$doc->id;
 @endphp
 
-<div class="card shadow-sm border-0 rounded-3 mb-4 doc-viewer-card">
+<div class="card shadow-sm border-0 rounded-3 mb-4 doc-viewer-card" id="{{ $visor }}">
     <div class="card-header bg-white py-2 px-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
-        <h2 class="h6 fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+        <h2 class="h6 fw-bold text-dark mb-0 d-flex align-items-center gap-2 text-truncate">
             <i class="fas fa-file-alt text-primary"></i>
             <span>Documento Digitalizado</span>
+            @if ($temFicheiro)
+                <span class="fw-normal text-muted small text-truncate" id="{{ $visor }}_nome"
+                      title="{{ $inicial['nome'] }}">{{ $inicial['nome'] }}</span>
+            @endif
         </h2>
 
-        @if ($temFicheiro && !$ehImagem)
-            {{-- Controles do PDF.js (Navegação & Zoom) --}}
-            <div class="d-flex align-items-center gap-2 flex-wrap" id="pdfControls">
-                {{-- Páginas --}}
-                <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-outline-secondary" id="pdfPrevPage" title="Página Anterior">
-                        <i class="fas fa-chevron-left"></i>
-                    </button>
-                    <span class="btn btn-outline-secondary disabled text-dark fw-bold px-2" id="pdfPageIndicator">
-                        <span id="pdfPageNum">1</span> / <span id="pdfPageCount">-</span>
-                    </span>
-                    <button type="button" class="btn btn-outline-secondary" id="pdfNextPage" title="Próxima Página">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
+        @if ($temFicheiro)
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                @if ($varios)
+                    {{-- Ficheiros do documento --}}
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Ficheiros do documento">
+                        <button type="button" class="btn btn-outline-primary" id="{{ $visor }}_fichAnterior" title="Ficheiro anterior" disabled>
+                            <i class="fas fa-backward-step"></i><span class="d-none d-md-inline ms-1">Anterior</span>
+                        </button>
+                        <span class="btn btn-outline-primary disabled text-dark fw-semibold px-2" id="{{ $visor }}_fichPosicao" aria-live="polite">
+                            1 de {{ count($ficheirosVisualizaveis) }}
+                        </span>
+                        <button type="button" class="btn btn-outline-primary" id="{{ $visor }}_fichSeguinte" title="Ficheiro seguinte">
+                            <span class="d-none d-md-inline me-1">Seguinte</span><i class="fas fa-forward-step"></i>
+                        </button>
+                    </div>
+                @endif
+
+                {{-- Páginas e zoom: só para PDF; o script mostra-os conforme o ficheiro --}}
+                <div class="d-flex align-items-center gap-2 flex-wrap {{ $inicial['tipo'] === 'pdf' ? '' : 'd-none' }}" id="{{ $visor }}_controlosPdf">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Páginas">
+                        <button type="button" class="btn btn-outline-secondary" id="{{ $visor }}_paginaAnterior" title="Página Anterior">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span class="btn btn-outline-secondary disabled text-dark fw-bold px-2">
+                            <span id="{{ $visor }}_pagina">1</span> / <span id="{{ $visor }}_paginas">-</span>
+                        </span>
+                        <button type="button" class="btn btn-outline-secondary" id="{{ $visor }}_paginaSeguinte" title="Próxima Página">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Zoom">
+                        <button type="button" class="btn btn-outline-secondary" id="{{ $visor }}_zoomOut" title="Reduzir Zoom">
+                            <i class="fas fa-search-minus"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="{{ $visor }}_zoomReset" title="Zoom Original (100%)">
+                            <span id="{{ $visor }}_zoomNivel">100%</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="{{ $visor }}_zoomIn" title="Aumentar Zoom">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                    </div>
                 </div>
 
-                {{-- Zoom --}}
-                <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-outline-secondary" id="pdfZoomOut" title="Reduzir Zoom">
-                        <i class="fas fa-search-minus"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary" id="pdfZoomReset" title="Zoom Original (100%)">
-                        <span id="pdfZoomLevel">100%</span>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary" id="pdfZoomIn" title="Aumentar Zoom">
-                        <i class="fas fa-search-plus"></i>
-                    </button>
-                </div>
-
-                {{-- Ações Gerais --}}
                 <div class="d-flex align-items-center gap-1">
-                    <button type="button" class="btn btn-sm btn-outline-secondary doc-viewer-zoom" data-alvo="docViewerFrame"
-                            title="Aumentar a altura do visualizador">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="{{ $visor }}_expandir"
+                            aria-pressed="false" aria-label="Ver em ecrã inteiro" title="Ver em ecrã inteiro">
                         <i class="fas fa-up-right-and-down-left-from-center"></i>
                         <span class="d-none d-md-inline ms-1">Expandir</span>
                     </button>
-                    <a href="{{ $urlFicheiro }}" target="_blank" rel="noopener"
+                    <a href="{{ $inicial['url'] }}" id="{{ $visor }}_abrir" target="_blank" rel="noopener"
                        class="btn btn-sm btn-outline-primary" title="Abrir em separador novo">
                         <i class="fas fa-arrow-up-right-from-square"></i>
                         <span class="d-none d-md-inline ms-1">Abrir</span>
                     </a>
                 </div>
             </div>
-        @elseif ($temFicheiro && $ehImagem)
-            <div class="d-flex align-items-center gap-1">
-                <button type="button" class="btn btn-sm btn-outline-secondary doc-viewer-zoom" data-alvo="docViewerFrame"
-                        title="Aumentar a altura do visualizador">
-                    <i class="fas fa-up-right-and-down-left-from-center"></i>
-                    <span class="d-none d-md-inline ms-1">Expandir</span>
-                </button>
-                <a href="{{ $urlFicheiro }}" target="_blank" rel="noopener"
-                   class="btn btn-sm btn-outline-primary" title="Abrir em separador novo">
-                    <i class="fas fa-arrow-up-right-from-square"></i>
-                    <span class="d-none d-md-inline ms-1">Abrir</span>
-                </a>
-            </div>
         @endif
     </div>
 
     <div class="card-body p-0 position-relative">
         @if ($temFicheiro)
-            @if ($ehImagem)
-                <div class="doc-viewer-frame text-center bg-body-tertiary" id="docViewerFrame">
-                    <img src="{{ $urlFicheiro }}" alt="Documento {{ $doc->numero_sequencial }}/{{ $doc->ano_referencia }} digitalizado"
-                         class="img-fluid">
-                </div>
-            @else
-                {{-- Container de Renderização PDF.js --}}
-                <div class="doc-viewer-frame w-100 bg-secondary-subtle overflow-auto text-center p-3" id="docViewerFrame" style="min-height: 550px; max-height: 750px;">
-                    {{-- Spinner de Carregamento --}}
-                    <div id="pdfLoadingSpinner" class="py-5 text-center text-muted">
-                        <div class="spinner-border text-primary mb-3" role="status" style="width: 2.5rem; height: 2.5rem;">
-                            <span class="visually-hidden">A carregar PDF...</span>
-                        </div>
-                        <p class="fw-semibold mb-0">A carregar documento...</p>
-                    </div>
+            {{-- Aviso de que um ficheiro não abriu e se passou ao seguinte --}}
+            <div class="alert alert-warning small rounded-0 border-0 border-bottom mb-0 py-2 px-3 d-none"
+                 id="{{ $visor }}_aviso" role="status"></div>
 
-                    {{-- Canvas principal de renderização --}}
-                    <canvas id="pdfRenderCanvas" class="shadow rounded d-none mx-auto bg-white"></canvas>
-
-                    {{-- Mensagem de Erro / Fallback em caso de indisponibilidade --}}
-                    <div id="pdfFallback" class="p-5 text-center text-muted d-none">
-                        <i class="fas fa-exclamation-triangle fa-2x mb-3 text-warning"></i>
-                        <p class="mb-3">Não foi possível carregar a pré-visualização inline do documento.</p>
-                        <a href="{{ $urlFicheiro }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
-                            <i class="fas fa-arrow-up-right-from-square me-1"></i> Abrir / Descarregar documento
-                        </a>
+            {{-- A altura vem de .doc-viewer-frame em _estilos. Limites escritos
+                 aqui sobrepunham-se ao CSS e anulavam o ecrã inteiro. --}}
+            <div class="doc-viewer-frame w-100 bg-secondary-subtle overflow-auto text-center p-3" id="{{ $visor }}_frame">
+                <div id="{{ $visor }}_carregando" class="py-5 text-center text-muted">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 2.5rem; height: 2.5rem;">
+                        <span class="visually-hidden">A carregar documento...</span>
                     </div>
+                    <p class="fw-semibold mb-0">A carregar documento...</p>
                 </div>
-            @endif
+
+                <canvas id="{{ $visor }}_canvas" class="shadow rounded d-none mx-auto bg-white"></canvas>
+
+                <img id="{{ $visor }}_imagem" class="img-fluid d-none" alt="">
+
+                <div id="{{ $visor }}_erro" class="p-5 text-center text-muted d-none">
+                    <i class="fas fa-exclamation-triangle fa-2x mb-3 text-warning"></i>
+                    <p class="mb-3">Não foi possível carregar a pré-visualização inline do documento.</p>
+                    <a href="{{ $inicial['url'] }}" id="{{ $visor }}_erroLink" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+                        <i class="fas fa-arrow-up-right-from-square me-1"></i> Abrir / Descarregar documento
+                    </a>
+                </div>
+            </div>
         @else
             <div class="p-5 text-center text-muted">
                 <i class="far fa-file fa-2x mb-3 opacity-50"></i>
@@ -117,155 +172,8 @@
     </div>
 </div>
 
-@if ($temFicheiro && !$ehImagem)
-    {{-- Carregamento do PDF.js CDN da Mozilla --}}
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            if (typeof pdfjsLib === 'undefined') {
-                document.getElementById('pdfLoadingSpinner')?.classList.add('d-none');
-                document.getElementById('pdfFallback')?.classList.remove('d-none');
-                return;
-            }
-
-            // Define o Worker do PDF.js
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
-            const pdfUrl = @json($urlFicheiro);
-            let pdfDoc = null;
-            let pageNum = 1;
-            let pageRendering = false;
-            let pageNumPending = null;
-            let scale = 1.25;
-
-            const canvas = document.getElementById('pdfRenderCanvas');
-            const ctx = canvas ? canvas.getContext('2d') : null;
-            const spinner = document.getElementById('pdfLoadingSpinner');
-            const fallback = document.getElementById('pdfFallback');
-
-            if (!canvas || !ctx) return;
-
-            /**
-             * Renderiza uma página específica no Canvas
-             */
-            function renderPage(num) {
-                pageRendering = true;
-
-                pdfDoc.getPage(num).then(function (page) {
-                    const viewport = page.getViewport({ scale: scale });
-
-                    // Ajusta resoluções HD para telas com alta densidade de píxeis (Retina/Mobile)
-                    const outputScale = window.devicePixelRatio || 1;
-
-                    canvas.width = Math.floor(viewport.width * outputScale);
-                    canvas.height = Math.floor(viewport.height * outputScale);
-                    canvas.style.width = Math.floor(viewport.width) + "px";
-                    canvas.style.height = Math.floor(viewport.height) + "px";
-
-                    const transform = outputScale !== 1
-                        ? [outputScale, 0, 0, outputScale, 0, 0]
-                        : null;
-
-                    const renderContext = {
-                        canvasContext: ctx,
-                        transform: transform,
-                        viewport: viewport
-                    };
-
-                    const renderTask = page.render(renderContext);
-
-                    renderTask.promise.then(function () {
-                        pageRendering = false;
-
-                        if (pageNumPending !== null) {
-                            renderPage(pageNumPending);
-                            pageNumPending = null;
-                        }
-                    });
-                }).catch(function(err) {
-                    console.error('Erro ao renderizar página:', err);
-                });
-
-                document.getElementById('pdfPageNum').textContent = num;
-            }
-
-            /**
-             * Adiciona à fila a renderização de uma página
-             */
-            function queueRenderPage(num) {
-                if (pageRendering) {
-                    pageNumPending = num;
-                } else {
-                    renderPage(num);
-                }
-            }
-
-            /**
-             * Página Anterior
-             */
-            document.getElementById('pdfPrevPage')?.addEventListener('click', function () {
-                if (pageNum <= 1) return;
-                pageNum--;
-                queueRenderPage(pageNum);
-            });
-
-            /**
-             * Próxima Página
-             */
-            document.getElementById('pdfNextPage')?.addEventListener('click', function () {
-                if (!pdfDoc || pageNum >= pdfDoc.numPages) return;
-                pageNum++;
-                queueRenderPage(pageNum);
-            });
-
-            /**
-             * Controles de Zoom
-             */
-            document.getElementById('pdfZoomIn')?.addEventListener('click', function () {
-                if (scale >= 3.0) return;
-                scale += 0.25;
-                updateZoomIndicator();
-                queueRenderPage(pageNum);
-            });
-
-            document.getElementById('pdfZoomOut')?.addEventListener('click', function () {
-                if (scale <= 0.5) return;
-                scale -= 0.25;
-                updateZoomIndicator();
-                queueRenderPage(pageNum);
-            });
-
-            document.getElementById('pdfZoomReset')?.addEventListener('click', function () {
-                scale = 1.25;
-                updateZoomIndicator();
-                queueRenderPage(pageNum);
-            });
-
-            function updateZoomIndicator() {
-                const percent = Math.round((scale / 1.25) * 100);
-                const zoomEl = document.getElementById('pdfZoomLevel');
-                if (zoomEl) zoomEl.textContent = `${percent}%`;
-            }
-
-            /**
-             * Carregamento assíncrono do documento PDF
-             */
-            pdfjsLib.getDocument(pdfUrl).promise.then(function (pdfDoc_) {
-                pdfDoc = pdfDoc_;
-                document.getElementById('pdfPageCount').textContent = pdfDoc.numPages;
-
-                spinner?.classList.add('d-none');
-                canvas?.classList.remove('d-none');
-
-                renderPage(pageNum);
-            }).catch(function (reason) {
-                console.error('Erro no carregamento do PDF.js:', reason);
-                spinner?.classList.add('d-none');
-                fallback?.classList.remove('d-none');
-            });
-        });
-    </script>
+@if ($temFicheiro)
+    @include('documentos_entradas.partials.show._visualizador-script')
 @endif
 
 @include('documentos_entradas.partials.show._anexos')

@@ -1,3 +1,10 @@
+            {{-- Ficheiros do documento. "Visualizar" abre o ficheiro no visualizador
+                 acima; $indicePorCaminho e $anexoPrincipal vêm de _visualizador. --}}
+            @php
+                $indicePorCaminho = $indicePorCaminho ?? [];
+                $anexoPrincipal = $anexoPrincipal ?? null;
+                $podeCorrigirRegisto = auth()->user()?->can('update', $doc) ?? false;
+            @endphp
             <!-- Attachments Card -->
             <div class="card shadow-sm border-0 mb-4 rounded-3">
                 <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
@@ -9,9 +16,39 @@
                 </div>
                 <div class="card-body p-0">
                     <ul class="list-group list-group-flush">
+                        {{-- Principal substituído na edição: não é anexo, mas é o documento. --}}
+                        @if ($doc->arquivo_caminho && ! $anexoPrincipal)
+                            @php
+                                $indice = $indicePorCaminho[$doc->arquivo_caminho] ?? null;
+                            @endphp
+                            <li class="list-group-item d-flex justify-content-between align-items-center p-3"
+                                @if (! is_null($indice)) data-doc-viewer-item="{{ $indice }}" @endif>
+                                <div class="d-flex align-items-center overflow-hidden">
+                                    <div class="bg-primary bg-opacity-10 p-2 rounded me-3 text-primary">
+                                        <i class="fas fa-file-alt"></i>
+                                    </div>
+                                    <div class="text-truncate">
+                                        <div class="fw-semibold text-truncate">Ficheiro principal</div>
+                                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle mt-1" style="font-size: 0.75rem;">Principal</span>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-1 ms-2">
+                                    @if (! is_null($indice))
+                                        <button type="button" class="btn btn-sm btn-light text-dark" data-doc-viewer-ver="{{ $indice }}" title="Visualizar"><i class="fas fa-eye"></i></button>
+                                    @endif
+                                    <a href="{{ route('documentos-entradas.arquivo.download', $doc) }}" target="_blank" class="btn btn-sm btn-light text-primary" title="Baixar Arquivo"><i class="fas fa-download"></i></a>
+                                </div>
+                            </li>
+                        @endif
+
                         <!-- Attachments -->
                         @foreach ($doc->anexos as $an)
-                            <li class="list-group-item d-flex justify-content-between align-items-center p-3">
+                            @php
+                                $ehPrincipal = $doc->arquivo_caminho && $an->caminho_arquivo === $doc->arquivo_caminho;
+                                $indice = $an->caminho_arquivo ? ($indicePorCaminho[$an->caminho_arquivo] ?? null) : null;
+                            @endphp
+                            <li class="list-group-item d-flex justify-content-between align-items-center p-3"
+                                @if (! is_null($indice)) data-doc-viewer-item="{{ $indice }}" @endif>
                                 <div class="d-flex align-items-center overflow-hidden">
                                     <div class="bg-secondary bg-opacity-10 p-2 rounded me-3 text-secondary">
                                         <i class="fas fa-paperclip"></i>
@@ -19,6 +56,9 @@
                                     <div class="text-truncate">
                                         <div class="fw-semibold text-truncate" title="{{ $an->nome_original }}">{{ $an->nome_original ?? basename($an->caminho_arquivo) }}</div>
                                         <div class="d-flex align-items-center gap-2 mt-1">
+                                            @if ($ehPrincipal)
+                                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size: 0.75rem;">Principal</span>
+                                            @endif
                                             <span class="small text-muted">{{ number_format(($an->tamanho_bytes ?? 0) / 1024, 1) }} KB</span>
                                             @if($an->isOcrAplicavel())
                                                 @if($an->ocr_status === 'CONCLUIDO')
@@ -43,21 +83,33 @@
                                     </div>
                                 </div>
                                 <div class="d-flex gap-1 ms-2">
+                                    @if (! is_null($indice))
+                                        <button type="button" class="btn btn-sm btn-light text-dark" data-doc-viewer-ver="{{ $indice }}" title="Visualizar"><i class="fas fa-eye"></i></button>
+                                    @endif
                                     @if($an->isOcrAplicavel())
                                         <button type="button" class="btn btn-sm btn-light text-secondary btn-ver-ocr" data-anexo-id="{{ $an->id }}" data-nome="{{ $an->nome_original }}" title="Ver Texto Extraído (OCR)">
                                             <i class="fas fa-file-alt text-success"></i>
                                         </button>
                                     @endif
                                     <a href="{{ route('documentos-entradas.anexos.download', [$doc, $an]) }}" target="_blank" class="btn btn-sm btn-light text-primary" title="Baixar Arquivo"><i class="fas fa-download"></i></a>
-                                    <form action="{{ route('documentos-entradas.anexos.destroy', [$doc, $an]) }}" method="POST" onsubmit="return confirm('Remover este anexo?');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button class="btn btn-sm btn-light text-danger" title="Excluir Anexo"><i class="fas fa-trash"></i></button>
-                                    </form>
+                                    @if ($podeCorrigirRegisto)
+                                        @if ($ehPrincipal)
+                                            {{-- O servidor recusa a remoção; o botão só o antecipa. --}}
+                                            <span class="d-inline-block" tabindex="0" title="É o original digitalizado do documento. Para o trocar, use &quot;Arquivo principal&quot; na edição.">
+                                                <button type="button" class="btn btn-sm btn-light text-danger" disabled><i class="fas fa-trash"></i></button>
+                                            </span>
+                                        @else
+                                            <form action="{{ route('documentos-entradas.anexos.destroy', [$doc, $an]) }}" method="POST" onsubmit="return confirm('Remover este anexo?');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button class="btn btn-sm btn-light text-danger" title="Excluir Anexo"><i class="fas fa-trash"></i></button>
+                                            </form>
+                                        @endif
+                                    @endif
                                 </div>
                             </li>
                         @endforeach
-                        
+
                         @if(!$doc->arquivo_caminho && $doc->anexos->count() === 0)
                             <li class="list-group-item p-4 text-center text-muted">
                                 Nenhum arquivo anexado.

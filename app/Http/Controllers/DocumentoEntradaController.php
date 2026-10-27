@@ -1301,19 +1301,43 @@ Parecer: {$t->resposta}";
             abort(403);
         }
 
-        if ($anexo->caminho_arquivo) {
-            $docsDisk = config('filesystems.docs_disk');
-            if (Storage::disk($docsDisk)->exists($anexo->caminho_arquivo)) {
-                Storage::disk($docsDisk)->delete($anexo->caminho_arquivo);
-            }
-            // Cleanup legacy public file if exists
-            if (Storage::disk('public')->exists($anexo->caminho_arquivo)) {
-                Storage::disk('public')->delete($anexo->caminho_arquivo);
-            }
+        // O registo com anexos copia o caminho do 1.º anexo para
+        // arquivo_caminho: os dois são o mesmo ficheiro físico. Apagá-lo aqui
+        // destruía o original digitalizado e deixava o documento a apontar
+        // para nada. O principal troca-se pela edição, que guarda o anterior.
+        if ($documento->arquivo_caminho && $anexo->caminho_arquivo === $documento->arquivo_caminho) {
+            return back()->with('error', 'Este ficheiro é o original digitalizado do documento. Para o trocar, use "Arquivo principal" na edição.');
         }
+
+        $caminho = $anexo->caminho_arquivo;
         $anexo->delete();
 
+        // Primeiro o registo, depois o ficheiro: se a remoção do ficheiro
+        // falhar, sobra um órfão no disco, não um registo sem ficheiro.
+        if ($caminho && ! $this->ficheiroAindaReferenciado($caminho)) {
+            $docsDisk = config('filesystems.docs_disk');
+            if (Storage::disk($docsDisk)->exists($caminho)) {
+                Storage::disk($docsDisk)->delete($caminho);
+            }
+            // Cleanup legacy public file if exists
+            if (Storage::disk('public')->exists($caminho)) {
+                Storage::disk('public')->delete($caminho);
+            }
+        }
+
         return back()->with('success', 'Anexo removido com sucesso.');
+    }
+
+    /**
+     * Substituir o principal na edição guarda o anterior como anexo novo com o
+     * mesmo caminho: num documento registado com anexos, ficam dois anexos
+     * sobre um só ficheiro. Remover um deles não pode apagar o do outro.
+     * Os documentos apagados contam: podem ser restaurados.
+     */
+    private function ficheiroAindaReferenciado(string $caminho): bool
+    {
+        return Anexo::where('caminho_arquivo', $caminho)->exists()
+            || DocumentoEntrada::withTrashed()->where('arquivo_caminho', $caminho)->exists();
     }
 
     // Visto Aprovar/Rejeitar - keeping as is but ensuring status strings match Enums implicitly
