@@ -5,10 +5,12 @@
     .form-floating > label {
         color: #6c757d;
     }
+    /* --gov-header-h: altura do cabeçalho fixo (definida no layout). Sem ela o
+       painel parava por trás do cabeçalho. */
     .sticky-sidebar {
         position: sticky;
-        top: 20px;
-        height: calc(100vh - 40px);
+        top: calc(var(--gov-header-h, 0px) + 20px);
+        height: calc(100vh - var(--gov-header-h, 0px) - 40px);
         overflow-y: auto;
     }
     .variable-tag {

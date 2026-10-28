@@ -8,18 +8,30 @@ use Illuminate\Support\Str;
 
 class ProcedenciaController extends Controller
 {
+    /** Máximo de resultados que o combobox pode pedir de uma vez. */
+    private const LIMITE_MAXIMO = 50;
+
     /**
      * GET /api/procedencias
      * Retorna a lista de procedências ativas com suporte a busca.
+     *
+     * `limite` é opcional: o combobox do registo pede só as primeiras, em vez
+     * de receber o catálogo inteiro no HTML (milhares de opções). Sem ele, a
+     * resposta continua a ser a lista completa.
      */
     public function index(Request $request)
     {
         $search = trim($request->query('q') ?? $request->query('search') ?? '');
+        $limite = (int) $request->query('limite', 0);
 
         $query = Procedencia::where('ativo', true);
 
         if (! empty($search)) {
             $query->where('nome', 'like', "%{$search}%");
+        }
+
+        if ($limite > 0) {
+            $query->limit(min($limite, self::LIMITE_MAXIMO));
         }
 
         $procedencias = $query->orderBy('nome', 'asc')

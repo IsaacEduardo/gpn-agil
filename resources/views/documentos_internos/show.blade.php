@@ -15,13 +15,13 @@
             </div>
         @endif
 
-        <div class="d-flex justify-content-between align-items-center mb-4 d-print-none">
+        <div class="doc-acoes d-flex justify-content-between align-items-center mb-4 d-print-none">
             <div>
                 <a href="{{ route('documentos-internos.index') }}" class="btn btn-secondary">
                     <i class="fas fa-arrow-left me-2"></i>Voltar
                 </a>
             </div>
-            <div>
+            <div class="doc-acoes__botoes">
                 @if (config('app.feature_assistente') && auth()->user()?->can('assistente.usar'))
                     <button type="button" class="btn btn-primary me-2 fw-semibold shadow-xs" onclick="window.gerarResumoIaDocWidget ? window.gerarResumoIaDocWidget({{ $documentoInterno->id }}, 'INTERNO') : null">
                         <i class="fas fa-brain me-1"></i> ✨ Resumir com IA
@@ -215,8 +215,12 @@
         <div class="row justify-content-center">
             <div class="col-md-10">
                 <!-- A4 Paper Container -->
-                <div class="paper-container shadow-lg">
-                    @include('documentos_internos.partials.paper')
+                {{-- .paper-escala: em ecrãs mais estreitos que a folha, o script no fim
+                     reduz a folha para caber; sem suporte a zoom, desliza aqui dentro. --}}
+                <div class="paper-escala">
+                    <div class="paper-container shadow-lg">
+                        @include('documentos_internos.partials.paper')
+                    </div>
                 </div>
 
                 @if ($documentoInterno->documentoEntrada)
@@ -435,6 +439,51 @@
             box-sizing: border-box;
         }
 
+        /* A folha tem a largura de um A4 (~794px): mais larga que um telemóvel ou
+           um tablet ao alto, fazia a página inteira deslizar para o lado. */
+        .paper-escala {
+            overflow-x: auto;
+        }
+
+        /* Telemóvel: as ações numa grelha regular, em vez de uma pilha de botões
+           de larguras diferentes. */
+        @media (max-width: 575.98px) {
+            .doc-acoes {
+                flex-direction: column;
+                align-items: stretch !important;
+                gap: 0.75rem;
+            }
+            .doc-acoes__botoes {
+                display: grid;
+                /* minmax(0, …): com 1fr a coluna crescia até à palavra mais longa
+                   ("COLABORAÇÃO") e a página passava os 360px. */
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.5rem;
+            }
+            .doc-acoes__botoes > *,
+            .doc-acoes__botoes form,
+            .doc-acoes__botoes .btn {
+                margin: 0 !important;
+                width: 100%;
+            }
+            /* Duas colunas de ~160px: com o tamanho e o espaçamento de letra do
+               tema, "COLABORAÇÃO" e até "IMPRIMIR" partiam a meio da palavra. */
+            .doc-acoes__botoes .btn {
+                white-space: normal;
+                font-size: 0.78rem;
+                letter-spacing: 0;
+                padding: 0.5rem 0.4rem;
+                gap: 0.35rem;
+            }
+            .doc-acoes__botoes .btn i {
+                margin-right: 0 !important;
+            }
+            .doc-acoes__botoes .btn-group {
+                display: flex;
+                gap: 0.5rem;
+            }
+        }
+
         .paper-content {
             font-family: 'Times New Roman', Times, serif;
             /* Official Serif Font */
@@ -543,7 +592,13 @@
                 height: auto !important;
             }
 
+            /* A redução feita para caber no ecrã não passa para o papel. */
+            .paper-escala {
+                overflow: visible !important;
+            }
+
             .paper-container {
+                zoom: 1 !important;
                 width: 100% !important;
                 max-width: 100% !important;
                 margin: 0 !important;
@@ -598,6 +653,25 @@
         .diff-versao del, del.diff-legenda { background: #fee2e2; color: #991b1b; }
     </style>
     <script>
+        // Folha A4 mais larga que o ecrã: reduz-se com `zoom` (que, ao contrário de
+        // transform, também encolhe o espaço ocupado) até caber. Nunca amplia.
+        // Browsers sem `zoom` ficam com o deslizar dentro de .paper-escala.
+        (function () {
+            const escala = document.querySelector('.paper-escala');
+            const folha = escala ? escala.querySelector('.paper-container') : null;
+            if (!folha || !('zoom' in folha.style)) return;
+
+            const ajustar = function () {
+                folha.style.zoom = '';
+                const disponivel = escala.clientWidth;
+                const largura = folha.offsetWidth;
+                folha.style.zoom = largura > disponivel ? String(disponivel / largura) : '';
+            };
+
+            ajustar();
+            window.addEventListener('resize', ajustar);
+        })();
+
         // Histórico: carrega as diferenças da versão para a anterior.
         document.querySelectorAll('.btn-diff-versao').forEach(function (btn) {
             btn.addEventListener('click', function () {

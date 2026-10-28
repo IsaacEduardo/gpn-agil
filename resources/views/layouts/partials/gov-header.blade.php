@@ -6,6 +6,13 @@
 @auth
 <header class="gov-header">
     <div class="gov-header__top">
+        {{-- Abaixo de 992px o menu vive num painel lateral (offcanvas-lg em gov-nav):
+             a barra horizontal partia-se em até 9 linhas e ocupava 3/4 do ecrã. --}}
+        <button class="gov-menu-toggle d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#govNavMenu"
+            aria-controls="govNavMenu" aria-expanded="false" aria-label="Abrir menu">
+            <i class="fas fa-bars"></i>
+        </button>
+
         <a href="{{ route('home') }}" class="gov-brand">
             <img src="{{ $dadosInstituicao->logo_url }}" alt="Brasão da {{ $dadosInstituicao->cabecalho_linha1 ?? 'República de Angola' }}" class="gov-brand__emblem">
             <span class="gov-brand__text">
@@ -15,11 +22,12 @@
         </a>
 
         <div class="gov-header__actions">
-            {{-- Pesquisa global (funcionalidade preservada) --}}
+            {{-- Pesquisa global (funcionalidade preservada). Abaixo de 992px aparece
+                 no menu lateral; o JS do layout liga-se a cada .gov-search. --}}
             <form id="globalSearchForm" class="gov-search" role="search">
                 <i class="fas fa-search gov-search__icon"></i>
                 <input type="search" name="q" class="gov-search__input" placeholder="Pesquisar..." autocomplete="off">
-                <div id="searchResults" class="dropdown-menu w-100 shadow mt-2 border-0"
+                <div id="searchResults" class="gov-search__results dropdown-menu w-100 shadow mt-2 border-0"
                     style="display:none; max-height: 400px; overflow-y: auto; border-radius: 6px;"></div>
             </form>
 

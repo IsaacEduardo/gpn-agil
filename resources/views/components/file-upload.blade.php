@@ -1,12 +1,12 @@
 @props(['name' => 'anexos[]', 'id' => 'fileInput', 'multiple' => true, 'enableScanner' => true, 'modalId' => 'webscanModal'])
 
-<div class="mb-2 d-flex justify-content-between align-items-center">
+<div class="mb-2 d-flex flex-wrap gap-2 justify-content-between align-items-center">
     <span class="small fw-bold text-muted">Seleção ou Captura de Arquivo</span>
 
     @if($enableScanner)
         {{-- Os identificadores levam o sufixo do input para que a mesma página
              possa ter mais do que um campo de anexos sem IDs repetidos. --}}
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
             <span id="mainScannerBadgeIndicator_{{ $id }}" class="badge bg-light text-muted border rounded-pill px-2 py-1" style="font-size: 0.75rem;">
                 <i class="fas fa-circle text-secondary me-1" style="font-size: 0.6rem;"></i> Scanner Offline
             </span>

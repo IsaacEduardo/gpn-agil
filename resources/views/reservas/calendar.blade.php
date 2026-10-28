@@ -26,6 +26,19 @@
             border: 1px solid #e2e8f0;
         }
 
+        /* No telemóvel as três zonas da barra (navegação, título, vistas) não
+           cabem numa linha: a página deslizava para o lado (517px a 390px). */
+        @media (max-width: 575.98px) {
+            .fc-header-toolbar {
+                flex-wrap: wrap;
+                justify-content: center !important;
+                gap: 0.5rem;
+                padding: 0.5rem;
+            }
+            .fc-header-toolbar .fc-toolbar-chunk { display: flex; flex-wrap: wrap; justify-content: center; }
+            .fc .fc-button { padding: 0.4rem 0.6rem !important; }
+        }
+
         .fc-toolbar-title {
             font-family: var(--font-heading) !important;
             font-weight: 700 !important;

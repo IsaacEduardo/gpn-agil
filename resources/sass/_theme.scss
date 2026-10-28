@@ -363,16 +363,101 @@ small, .text-caption { font-size: .75rem; color: $text-muted; }
 // ===========================================================================
 //  RESPONSIVIDADE
 // ===========================================================================
+// Botão do menu lateral (só < 992px; a classe d-lg-none esconde-o acima).
+.gov-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    color: $text-primary;
+    background: #FFFFFF;
+    border: 1px solid $border-default;
+    border-radius: 4px;
+    &:hover { background: $gray-100; }
+}
+
+// Com o menu aberto, o cabeçalho sobe acima do fundo escurecido (z-index 1040,
+// anexado ao body). Precisa de !important: o layout fixa .gov-header a 1040 !important.
+.gov-header.gov-header--menu-aberto { z-index: 1046 !important; }
+
+// ≥992px o offcanvas-lg é conteúdo normal, mas o Bootstrap põe o offcanvas-body
+// em flex sem crescer, o que encolhia a lista à largura do conteúdo.
+@media (min-width: 992px) {
+    .gov-nav__offcanvas .offcanvas-body { display: block; }
+}
+
 @media (max-width: 991.98px) {
-    .gov-search { display: none; }
-    .gov-nav__list { flex-wrap: wrap; }   // quebra em linhas (dropdowns não são recortados)
-    .gov-nav__link { padding: 12px 14px; }
+    // Botão do menu, marca e ações: a marca encosta ao botão, as ações à direita.
+    .gov-header__top { justify-content: flex-start; }
+    .gov-header__actions { margin-left: auto; }
+
+    // No cabeçalho a pesquisa não cabe; vive no menu lateral.
+    .gov-header__actions .gov-search { display: none; }
+
+    // O <nav> fica vazio (o painel é fixo): sem a linha de separação.
+    .gov-nav { border-top: 0; }
+    .gov-nav__offcanvas { --bs-offcanvas-width: min(320px, 85vw); }
+
+    .gov-nav__extras { margin-bottom: 12px; }
+    .gov-search--menu { width: 100%; }
+    .gov-search--menu .gov-search__results { position: static; max-height: 50vh; overflow-y: auto; box-shadow: none; }
+
+    .gov-nav__list { flex-direction: column; flex-wrap: nowrap; max-width: none; padding: 0; }
+    .gov-nav__item.ms-auto { margin-left: 0 !important; }
+    .gov-nav__link {
+        padding: 12px 10px;
+        white-space: normal;
+        border-bottom: 0;
+        border-left: 3px solid transparent;
+    }
+    .gov-nav__link:hover,
+    .gov-nav__link.gov-nav__link--active { border-left-color: $portal-red; }
+
+    // Submenus por baixo do item, em vez de flutuarem (o Popper põe estilos
+    // inline, daí os !important).
+    .gov-nav .dropdown-menu {
+        position: static !important;
+        inset: auto !important;
+        transform: none !important;
+        min-width: 0;
+        margin: 0;
+        padding: 0 0 6px 28px;
+        border: 0;
+        box-shadow: none;
+    }
 }
 
 @media (max-width: 575.98px) {
-    .gov-brand__emblem { width: 40px; height: 40px; }
-    .gov-brand__ministry { font-size: 15px; }
+    .gov-header__top { padding: 10px 12px; gap: 10px; }
+    .gov-header__actions { flex-shrink: 0; gap: 8px; }
+    // A marca encolhe primeiro: nome numa linha, com reticências.
+    .gov-brand { flex: 1 1 auto; min-width: 0; gap: 10px; }
+    .gov-brand__text { min-width: 0; }
+    .gov-brand__emblem { width: 36px; height: 36px; }
+    .gov-brand__republic { display: none; }
+    .gov-brand__ministry {
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .gov-user { padding: 4px; gap: 4px; }
     .gov-user__name, .gov-user__role { display: none; }
-    .gov-header__top { padding: 10px 16px; }
     .gov-container { padding: 0 16px; }
+}
+
+// Campos a 16px em ecrãs de toque: abaixo disso o Safari do iPhone amplia a
+// página ao tocar num campo. No computador mantém-se o tamanho do tema.
+@media (hover: none) and (pointer: coarse) {
+    input:not([type=checkbox]):not([type=radio]):not([type=range]),
+    select,
+    textarea,
+    .form-control,
+    .form-control-sm,
+    .form-select,
+    .form-select-sm {
+        font-size: 16px;
+    }
 }

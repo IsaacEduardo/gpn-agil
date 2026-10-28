@@ -63,7 +63,7 @@
                 <p class="text-muted small mb-0">{{ __('Gerencie suas atividades e prazos com eficiência.') }}</p>
             </div>
 
-            <div class="d-flex gap-2 align-items-center">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
                 {{-- View Switcher --}}
                 <div class="btn-group shadow-sm" role="group">
                     <button type="button" class="btn btn-outline-secondary" :class="{ 'active': view === 'list' }"

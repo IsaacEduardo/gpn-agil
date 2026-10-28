@@ -171,7 +171,7 @@ tr.keyboard-selected {
                 </h2>
                 <p class="text-muted mb-0 small">Gerencie e acompanhe todos os documentos de entrada.</p>
             </div>
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap gap-2">
                 <div class="btn-group">
                     <button type="button" class="btn btn-outline-secondary dropdown-toggle shadow-sm"
                         data-bs-toggle="dropdown" aria-expanded="false">

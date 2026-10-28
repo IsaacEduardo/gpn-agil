@@ -91,14 +91,14 @@
 @section('content')
 <div class="container-fluid py-4">
     {{-- Header --}}
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-4">
         <div>
             <h1 class="h3 mb-0 text-gray-800 fw-bold">
                 <i class="fas fa-sitemap text-primary me-2"></i>Gestão Departamental: {{ $departamento->nome }}
             </h1>
             <p class="text-muted mb-0">Visão unificada das requisições e documentos internos sob competência deste departamento.</p>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2">
             <a href="{{ route('documentos-internos.create') }}" class="btn btn-outline-primary rounded-pill px-3">
                 <i class="fas fa-plus me-1"></i>Doc. Interno
             </a>

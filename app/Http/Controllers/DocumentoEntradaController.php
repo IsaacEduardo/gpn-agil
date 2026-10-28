@@ -18,7 +18,6 @@ use App\Models\DocumentoTarefa;
 use App\Models\Gabinete;
 use App\Models\ModeloDespacho;
 use App\Models\Pasta;
-use App\Models\Procedencia;
 use App\Models\User;
 use App\Services\Ai\DocumentoAssistantService;
 use App\Services\DocumentoEntradaService;
@@ -224,16 +223,15 @@ class DocumentoEntradaController extends Controller
             return DocumentoEspecie::where('ativo', true)->orderBy('ordem')->pluck('nome')->all();
         });
 
-        $procedencias = Cache::remember('procedencias_list', 300, function () {
-            return Procedencia::where('ativo', true)->orderBy('nome')->get(['id', 'nome']);
-        });
+        // As procedências já não vêm para a página: o combobox pesquisa-as em
+        // /api/procedencias à medida que se escreve (eram milhares de opções no HTML).
 
         // Destino provavel por procedencia, a partir do historico. Fica vazio
         // enquanto nao houver base — ver departamentoSugeridoPara().
         $sugestoesDestino = $this->documentoService->sugestoesDeDestino();
 
         return view('documentos_entradas.create', compact(
-            'departamentos', 'especies', 'procedencias', 'sugestoesDestino'
+            'departamentos', 'especies', 'sugestoesDestino'
         ));
     }
 
@@ -1199,7 +1197,6 @@ Parecer: {$t->resposta}";
 
         $departamentos = Cache::remember('departamentos_list', 600, fn () => Departamento::select('id', 'nome')->orderBy('nome')->get());
         $especies = Cache::remember('documento_especies_names', 600, fn () => DocumentoEspecie::where('ativo', true)->orderBy('ordem')->pluck('nome')->all());
-        $procedencias = Cache::remember('procedencias_list', 300, fn () => Procedencia::where('ativo', true)->orderBy('nome')->get(['id', 'nome']));
 
         $tags = $documentos_entrada->tags->pluck('nome')->implode(', ');
 
@@ -1207,7 +1204,6 @@ Parecer: {$t->resposta}";
             'doc' => $documentos_entrada,
             'departamentos' => $departamentos,
             'especies' => $especies,
-            'procedencias' => $procedencias,
             'tags' => $tags,
             'podeAlterarDepartamento' => $this->podeAlterarDepartamento(Auth::user(), $documentos_entrada),
             // Só um administrador chega aqui com o registo congelado; a view

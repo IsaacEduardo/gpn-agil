@@ -37,7 +37,7 @@
                     <div class="text-muted small">
                         Mostrando {{ $viaturas->count() }} de {{ $viaturas->total() }} resultados
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex flex-wrap gap-2">
                         @php $baseQuery = request()->except('page'); @endphp
                         <a href="{{ route('viaturas.index', array_merge($baseQuery, ['status' => 'Operacional'])) }}"
                             class="btn btn-sm {{ request('status') === 'Operacional' ? 'btn-secondary' : 'btn-outline-secondary' }}"

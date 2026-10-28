@@ -165,7 +165,7 @@
                 </h2>
                 <p class="text-muted mb-0 small">Elaboração, análise, homologação e consulta do acervo documental interno.</p>
             </div>
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap gap-2">
                 <div class="dropdown d-inline-block">
                     <button class="btn btn-outline-secondary dropdown-toggle shadow-sm" type="button" data-bs-toggle="dropdown"
                         aria-expanded="false">
@@ -936,14 +936,16 @@
         };
     </script>
 
-    {{-- Barra Flutuante de Ações em Lote --}}
-    <div id="batchActionBar" class="card shadow-lg border-0 rounded-4 position-fixed bottom-0 start-50 translate-middle-x mb-4 px-4 py-3 bg-dark text-white d-none" style="z-index: 1050; min-width: 480px;">
-        <div class="d-flex align-items-center justify-content-between">
+    {{-- Barra Flutuante de Ações em Lote. Nunca mais larga que o ecrã: com um
+         min-width de 480px, num telemóvel os botões das pontas ficavam fora e,
+         por ser fixa, não havia como lá chegar. --}}
+    <div id="batchActionBar" class="card shadow-lg border-0 rounded-4 position-fixed bottom-0 start-50 translate-middle-x mb-4 px-4 py-3 bg-dark text-white d-none" style="z-index: 1050; min-width: min(480px, calc(100vw - 2rem)); max-width: calc(100vw - 2rem);">
+        <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between">
             <div>
                 <i class="fas fa-tasks text-warning me-2"></i>
                 <span class="fw-bold" id="selectedDocsCount">0</span> selecionados
             </div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
                 <button id="batchDownloadZipBtn" type="button" class="btn btn-sm btn-outline-light">
                     <i class="fas fa-file-archive me-1"></i> Descarregar ZIP
                 </button>

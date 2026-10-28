@@ -23,7 +23,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Plugins CSS -->
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
     <link rel="stylesheet" href="https://unpkg.com/nprogress@0.2.0/nprogress.css">
     @stack('lightbox_styles')
 
@@ -89,9 +88,9 @@
     </footer>
 
     <!-- Scripts -->
+    {{-- O DataTables saiu: carregava em todas as páginas e nenhuma o usava. O jQuery
+         fica — o NProgress abaixo depende dele ($(document).ajaxStart). --}}
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
     <script src="https://unpkg.com/nprogress@0.2.0/nprogress.js"></script>
     <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
@@ -102,9 +101,12 @@
         $(document).ajaxStart(() => NProgress.start());
         $(document).ajaxStop(() => NProgress.done());
 
-        // Pesquisa global (funcionalidade inalterada)
-        const searchInput = document.querySelector('input[name="q"]');
-        const searchResults = document.getElementById('searchResults');
+        // Pesquisa global (funcionalidade inalterada). Há um formulário no
+        // cabeçalho e outro no menu lateral dos ecrãs pequenos: cada um tem os
+        // seus resultados, por isso a ligação é feita formulário a formulário.
+        document.querySelectorAll('.gov-search').forEach(function(searchForm) {
+        const searchInput = searchForm.querySelector('input[name="q"]');
+        const searchResults = searchForm.querySelector('.gov-search__results');
         let debounceTimer;
 
         if (searchInput && searchResults) {
@@ -171,6 +173,38 @@
                 if (this.value.trim().length >= 2 && searchResults.innerHTML !== '') {
                     searchResults.style.display = 'block';
                 }
+            });
+        }
+        });
+
+        // Altura do cabeçalho fixo em --gov-header-h, para que os painéis
+        // `position: sticky` das páginas parem por baixo dele e não por trás
+        // (com top: 20px, até 165px da árvore do Arquivo ficavam tapados).
+        (function () {
+            const cabecalho = document.querySelector('.gov-header');
+            if (!cabecalho) return;
+            const atualizar = () => {
+                const fixo = getComputedStyle(cabecalho).position === 'sticky';
+                document.documentElement.style.setProperty('--gov-header-h', (fixo ? cabecalho.offsetHeight : 0) + 'px');
+            };
+            atualizar();
+            if ('ResizeObserver' in window) new ResizeObserver(atualizar).observe(cabecalho);
+        })();
+
+        // Menu lateral (ecrãs < 992px). O painel vive dentro do cabeçalho, que
+        // tem z-index próprio: sem subir o cabeçalho enquanto está aberto, o fundo
+        // escurecido do Bootstrap (anexado ao body) ficava por cima do menu.
+        const govNavMenu = document.getElementById('govNavMenu');
+        if (govNavMenu) {
+            const govHeader = document.querySelector('.gov-header');
+            const govMenuToggles = document.querySelectorAll('.gov-menu-toggle');
+            govNavMenu.addEventListener('show.bs.offcanvas', () => {
+                govHeader?.classList.add('gov-header--menu-aberto');
+                govMenuToggles.forEach(t => t.setAttribute('aria-expanded', 'true'));
+            });
+            govNavMenu.addEventListener('hidden.bs.offcanvas', () => {
+                govHeader?.classList.remove('gov-header--menu-aberto');
+                govMenuToggles.forEach(t => t.setAttribute('aria-expanded', 'false'));
             });
         }
 

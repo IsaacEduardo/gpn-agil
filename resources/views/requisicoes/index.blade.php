@@ -16,7 +16,7 @@
 @section('content')
     <div class="container">
         <div class="card shadow-sm border-0">
-            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+            <div class="card-header bg-white py-3 border-bottom d-flex flex-wrap gap-2 justify-content-between align-items-center">
                 <h5 class="mb-0 text-primary fw-bold"><i class="fas fa-file-alt me-2"></i>Requisições</h5>
                 @can('create', App\Models\Requisicao::class)
                     <div class="dropdown">

@@ -19,6 +19,45 @@
 @endphp
 
 <nav class="gov-nav" aria-label="Navegação principal">
+    {{-- ≥992px o offcanvas-lg comporta-se como conteúdo normal (a barra de
+         sempre); abaixo disso é um painel lateral aberto pelo botão do cabeçalho. --}}
+    <div class="offcanvas-lg offcanvas-start gov-nav__offcanvas" tabindex="-1" id="govNavMenu" aria-labelledby="govNavMenuTitulo">
+    <div class="offcanvas-header d-lg-none">
+        <h2 class="offcanvas-title h6 mb-0" id="govNavMenuTitulo">Menu</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#govNavMenu" aria-label="Fechar menu"></button>
+    </div>
+    <div class="offcanvas-body">
+
+    {{-- Só no painel lateral: o que o cabeçalho esconde em ecrãs pequenos. --}}
+    <div class="gov-nav__extras d-lg-none">
+        <form class="gov-search gov-search--menu" role="search">
+            <i class="fas fa-search gov-search__icon"></i>
+            <input type="search" name="q" class="gov-search__input" placeholder="Pesquisar..." autocomplete="off" aria-label="Pesquisar">
+            <div class="gov-search__results dropdown-menu w-100 border-0" style="display:none;"></div>
+        </form>
+
+        {{-- Ações rápidas: no cabeçalho só aparecem a partir de 576px. --}}
+        @php
+            $perfilMenu = $userProfile ?? ($menuCounts['user_profile'] ?? 'tecnico');
+        @endphp
+        @if ($perfilMenu === 'expediente')
+            <a href="{{ route('documentos-entradas.create') }}" class="btn btn--primary w-100 d-sm-none mt-2">
+                <i class="fas fa-plus-circle"></i> Registar Entrada
+            </a>
+        @elseif (! (method_exists(Auth::user(), 'isSuperChefeGabinete') && Auth::user()->isSuperChefeGabinete()))
+            <div class="d-sm-none mt-2 d-grid gap-2">
+                <a href="{{ route('documentos-internos.create') }}" class="btn btn--primary">
+                    <i class="fas fa-plus"></i> Novo Documento Interno
+                </a>
+                @if ($canCreateEntrada ?? Auth::user()->can('create', App\Models\DocumentoEntrada::class))
+                    <a href="{{ route('documentos-entradas.create') }}" class="btn btn--secondary">
+                        <i class="fas fa-file-import"></i> Registar Entrada Externa
+                    </a>
+                @endif
+            </div>
+        @endif
+    </div>
+
     <ul class="gov-nav__list">
 
         {{-- 1. INÍCIO (DASHBOARD) --}}
@@ -204,5 +243,7 @@
         </li>
 
     </ul>
+    </div>
+    </div>
 </nav>
 @endauth

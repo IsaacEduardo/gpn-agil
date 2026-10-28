@@ -196,7 +196,8 @@
 
         {{-- 1. LEFT SIDEBAR: CRONOLOGICAL TREE VIEW NAVIGATOR (1/4 Width) --}}
         <div class="col-lg-3">
-            <div class="card border-0 shadow-sm rounded-4 sticky-top" style="top: 20px; z-index: 10;">
+            {{-- --gov-header-h: altura do cabeçalho fixo (definida no layout). --}}
+            <div class="card border-0 shadow-sm rounded-4 sticky-top" style="top: calc(var(--gov-header-h, 0px) + 20px); z-index: 10;">
                 <div class="card-header bg-white border-0 py-3 px-3">
                     <h6 class="fw-bold text-dark mb-0 d-flex align-items-center justify-content-between">
                         <span><i class="fas fa-sitemap text-primary me-2"></i>Navegador de Arquivos</span>
